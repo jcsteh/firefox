@@ -7,6 +7,7 @@
   ======================================================================= */
 
 @namespace url("http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul");
+@namespace html url("http://www.w3.org/1999/xhtml");
 
 /* ::::: menu/menuitem ::::: */
 
@@ -17,7 +18,9 @@ menubar {
 
 menu,
 menuitem,
-menucaption {
+menucaption,
+html|div.menuitem,
+html|div.menucaption {
   -moz-appearance: menuitem;
   -moz-box-align: center;
   max-width: 42em;
@@ -25,17 +28,28 @@ menucaption {
   -moz-image-region: auto;
 }
 
+html|div.menuitem,
+html|div.menucaption {
+  white-space: nowrap;
+  width: 100%;
+}
+
+html|div.menupopup-scrollwrapper {
+  contain: paint;
+}
+
 menu[_moz-menuactive="true"],
-menuitem[_moz-menuactive="true"] {
+menuitem[_moz-menuactive="true"],
+html|div.menuitem[_moz-menuactive="true"] {
   color: -moz-menuhovertext;
   background-color: -moz-menuhover;
 }
 
-menuitem[customoptionstyling="true"] {
+html|div.menuitem[customoptionstyling="true"] {
   -moz-appearance: none;
 }
 
-menuitem[customoptionstyling="true"][_moz-menuactive="true"] {
+html|div.menuitem[customoptionstyling="true"][_moz-menuactive="true"] {
   /* -moz-menuhovertext and -moz-menuhover only apply
      when -moz-appearance is set to menuitem. */
   color: highlighttext;
@@ -44,7 +58,9 @@ menuitem[customoptionstyling="true"][_moz-menuactive="true"] {
 
 menu[disabled="true"],
 menuitem[disabled="true"],
-menucaption[disabled="true"] {
+menucaption[disabled="true"],
+html|div.menuitem[disabled="true"],
+html|div.menucaption[disabled="true"] {
   color: GrayText;
 }
 
@@ -73,7 +89,9 @@ menubar > menu[open] {
 
 menuitem[default="true"],
 menuitem.spell-suggestion,
-menucaption {
+menucaption,
+html|div.menuitem[default="true"],
+html|div.menucaption {
   font-weight: bold;
 }
 
@@ -85,6 +103,8 @@ menulist > menupopup {
 
 menulist > menupopup > menuitem,
 menulist > menupopup > menucaption,
+menulist > menupopup > html|div > html|div.menuitem,
+menulist > menupopup > html|div > html|div.menucaption,
 menulist > menupopup > menu {
   padding: 1px 5px;
   max-width: none;

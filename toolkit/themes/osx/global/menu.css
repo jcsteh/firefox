@@ -3,10 +3,17 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 @namespace url("http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul");
+@namespace html url("http://www.w3.org/1999/xhtml");
 
+/* Note: here and below, .menuitem and .menucaption are for the select box
+ * implementation which reuses menulist styles but is implemented in HTML
+ * for performance reasons.
+ */
 menu,
 menuitem,
-menucaption {
+menucaption,
+html|div.menuitem,
+html|div.menucaption {
   -moz-appearance: menuitem;
   -moz-font-smoothing-background-color: -moz-mac-menuitem;
   -moz-box-align: center;
@@ -15,16 +22,29 @@ menucaption {
   padding: 0 21px 2px;
 }
 
+html|div.menuitem,
+html|div.menucaption {
+  white-space: nowrap;
+  width: 100%;
+}
+
+html|div.menupopup-scrollwrapper {
+  contain: paint;
+}
+
 menu[disabled="true"], menuitem[disabled="true"],
 menu[_moz-menuactive="true"][disabled="true"],
-menuitem[_moz-menuactive="true"][disabled="true"] {
+menuitem[_moz-menuactive="true"][disabled="true"],
+html|div.menuitem[_moz-menuactive="true"][disabled="true"] {
   color: -moz-mac-menutextdisable;
   -moz-font-smoothing-background-color: -moz-mac-menuitem;
 }
 
 menuitem[default="true"],
 menuitem.spell-suggestion,
-menucaption {
+menucaption,
+html|div.menuitem[default="true"],
+html|div.menucaption {
   font-weight: bold;
 }
 
@@ -115,18 +135,21 @@ menupopup {
 
 menupopup > menu,
 menupopup > menuitem,
-menupopup > menucaption {
+menupopup > menucaption,
+menupopup > html|div > html|div.menuitem,
+menupopup > html|div > html|div.menucaption {
   max-width: 42em;
 }
 
 menu[_moz-menuactive="true"],
-menuitem[_moz-menuactive="true"] {
+menuitem[_moz-menuactive="true"],
+html|div.menuitem[_moz-menuactive="true"] {
   -moz-font-smoothing-background-color: -moz-mac-active-menuitem;
   color: -moz-mac-menutextselect;
   background-color: Highlight;
 }
 
-menuitem[customoptionstyling="true"] {
+html|div.menuitem[customoptionstyling="true"] {
   -moz-appearance: none;
   padding-top: 0;
   padding-bottom: 0;
@@ -140,6 +163,8 @@ menulist > menupopup {
 
 menulist > menupopup > menuitem,
 menulist > menupopup > menucaption,
+menulist > menupopup > html|div > html|div.menuitem,
+menulist > menupopup > html|div > html|div.menucaption,
 menulist > menupopup > menu {
   max-width: none;
   color: -moz-FieldText;
@@ -148,16 +173,26 @@ menulist > menupopup > menu {
 /* ::::: checked menuitems ::::: */
 
 :not(menulist) > menupopup > menuitem[checked="true"],
-:not(menulist) > menupopup > menuitem[selected="true"] {
+:not(menulist) > menupopup > menuitem[selected="true"],
+:not(menulist) > menupopup > html|div > html|div.menuitem[checked="true"],
+:not(menulist) > menupopup > html|div > html|div.menuitem[selected="true"] {
   -moz-appearance: checkmenuitem;
 }
 
 menulist > menupopup > menuitem[checked="true"]::before,
-menulist > menupopup > menuitem[selected="true"]::before {
+menulist > menupopup > menuitem[selected="true"]::before,
+menulist > menupopup > html|div > html|div.menuitem[checked="true"]::before,
+menulist > menupopup > html|div > html|div.menuitem[selected="true"]::before {
   content: '\2713'; /* a checkmark */
   display: block;
   width: 15px;
   margin-inline-start: -15px;
+}
+
+menulist > menupopup > html|div > html|div.menuitem[checked="true"]::before,
+menulist > menupopup > html|div > html|div.menuitem[selected="true"]::before {
+  display: inline;
+  margin-inline-end: 5px;
 }
 
 /* ::::: menuseparator ::::: */

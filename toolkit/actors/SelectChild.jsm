@@ -26,6 +26,8 @@ XPCOMUtils.defineLazyGlobalGetters(this, ["InspectorUtils"]);
 const kStateActive = 0x00000001; // NS_EVENT_STATE_ACTIVE
 const kStateHover = 0x00000004; // NS_EVENT_STATE_HOVER
 
+const kOptionChunkSize = 500;
+
 // Duplicated in SelectParent.jsm
 // Please keep these lists in sync.
 const SUPPORTED_PROPERTIES = [
@@ -115,18 +117,71 @@ SelectContentHelper.prototype = {
     this._setupPseudoClassStyles();
     let rect = this._getBoundingContentRect();
     let computedStyles = getComputedStyles(this.element);
-    let options = this._buildOptionList();
+    let seenSelected = false;
+    let sentFirst = false;
+    let selectedIndex = this.element.selectedIndex;
     let defaultStyles = this.element.ownerGlobal.getDefaultComputedStyle(
       this.element
     );
-    this.actor.sendAsyncMessage("Forms:ShowDropDown", {
-      isOpenedViaTouch: this.isOpenedViaTouch,
-      options,
-      rect,
-      selectedIndex: this.element.selectedIndex,
-      style: supportedStyles(computedStyles),
-      defaultStyle: supportedStyles(defaultStyles),
-    });
+    let uniqueStylesIncremental = [];
+    let optionDataIncremental = [];
+    let generator = buildOptionList(this.element);
+
+    // Generally, select dropdowns will be rather short. However, we want our
+    // performance to not suffer if users encounter extremely long select lists,
+    // as there are some cases of these. So, we send the data in chunks so the
+    // parent can get started on displaying the items which are visible right
+    // away, and draw the other ones later.
+    let it = generator.next();
+    while (!it.done) {
+      let item = it.value;
+      if (item.style) {
+        uniqueStylesIncremental.push(item.style);
+      } else if (item.optionData) {
+        optionDataIncremental.push(item.optionData);
+        if (item.optionData.index == selectedIndex) {
+          // We don't want to send until we've sent the selected item, as that is
+          // the one which will need to be scrolled into view.
+          seenSelected = true;
+        }
+      }
+
+      it = generator.next();
+      if (
+        it.done ||
+        (optionDataIncremental.length > kOptionChunkSize && seenSelected)
+      ) {
+        if (!sentFirst) {
+          sentFirst = true;
+
+          // If we're not done, get an estimate of the total option count, so that
+          // the parent can give a realistic scroll window, even though it hasn't
+          // actually gotten all of the items yet.
+          let estimatedOptionCount = it.done
+            ? optionDataIncremental.length
+            : estimateTotalCount(this.element);
+          this.actor.sendAsyncMessage("Forms:ShowDropDownBegin", {
+            isOpenedViaTouch: this.isOpenedViaTouch,
+            options: optionDataIncremental,
+            uniqueStyles: uniqueStylesIncremental,
+            estimatedOptionCount,
+            rect,
+            selectedIndex: this.element.selectedIndex,
+            style: supportedStyles(computedStyles),
+            defaultStyle: supportedStyles(defaultStyles),
+          });
+        } else {
+          this.actor.sendAsyncMessage("Forms:ShowDropDownContinue", {
+            options: optionDataIncremental,
+            uniqueStyles: uniqueStylesIncremental,
+            isDone: it.done,
+          });
+        }
+
+        optionDataIncremental = [];
+        uniqueStylesIncremental = [];
+      }
+    }
     this._clearPseudoClassStyles();
     gOpen = true;
   },
@@ -170,15 +225,6 @@ SelectContentHelper.prototype = {
     return BrowserUtils.getElementBoundingScreenRect(this.element);
   },
 
-  _buildOptionList() {
-    if (!this._pseudoStylesSetup) {
-      throw new Error("pseudo styles must be set up");
-    }
-    let uniqueStyles = [];
-    let options = buildOptionListForChildren(this.element, uniqueStyles);
-    return { options, uniqueStyles };
-  },
-
   _update() {
     // The <select> was updated while the dropdown was open.
     // Let's send up a new list of options.
@@ -190,8 +236,25 @@ SelectContentHelper.prototype = {
     let defaultStyles = this.element.ownerGlobal.getDefaultComputedStyle(
       this.element
     );
+
+    // buildOptionList is a generator for the common case where we want to
+    // show a static list. If that list is too long, the generator makes it
+    // simple to break it into chunks and start sending it to the parent
+    // early.  If our list has updated, however, it's a bit too complicated to
+    // incrementally update the data on the parent side, so just send it in
+    // one large chunk and take the (uncommon), performance hit.
+    let uniqueStyles = [];
+    let optionData = [];
+    for (let item of buildOptionList(this.element)) {
+      if (item.style) {
+        uniqueStyles.push(item.style);
+      } else {
+        optionData.push(item.optionData);
+      }
+    }
     this.actor.sendAsyncMessage("Forms:UpdateDropDown", {
-      options: this._buildOptionList(),
+      options: optionData,
+      uniqueStyles,
       selectedIndex: this.element.selectedIndex,
       style: supportedStyles(computedStyles),
       defaultStyle: supportedStyles(defaultStyles),
@@ -362,51 +425,83 @@ function uniqueStylesIndex(cs, uniqueStyles) {
   let styles = supportedStyles(cs);
   for (let i = uniqueStyles.length; i--; ) {
     if (supportedStylesEqual(uniqueStyles[i], styles)) {
-      return i;
+      return { styleIndex: i, isNew: false };
     }
   }
   uniqueStyles.push(styles);
-  return uniqueStyles.length - 1;
+  return {
+    styleIndex: uniqueStyles.length - 1,
+    isNew: true,
+  };
 }
 
-function buildOptionListForChildren(node, uniqueStyles) {
-  let result = [];
+function estimateTotalCount(node) {
+  let stack = [node];
+  let count = 0;
+  for (let child of stack.pop().children) {
+    if (child.hidden) {
+      continue;
+    }
 
-  for (let child of node.children) {
     let tagName = child.tagName.toUpperCase();
+    if (tagName == "OPTION") {
+      count++;
+    } else if (tagName == "OPTGROUP") {
+      count++;
+      stack.push(child);
+    }
+  }
 
+  return count;
+}
+
+function* buildOptionList(node, uniqueStyles = [], state = { totalCount: 0 }) {
+  let parentIndex = state.totalCount - 1;
+  for (let child of node.children) {
+    if (child.hidden) {
+      continue;
+    }
+
+    let tagName = child.tagName.toUpperCase();
     if (tagName == "OPTION" || tagName == "OPTGROUP") {
-      if (child.hidden) {
-        continue;
-      }
+      let isOptGroup = tagName == "OPTGROUP";
 
-      let textContent =
-        tagName == "OPTGROUP" ? child.getAttribute("label") : child.text;
+      let textContent = isOptGroup ? child.getAttribute("label") : child.text;
       if (textContent == null) {
         textContent = "";
       }
 
       let cs = getComputedStyles(child);
-      let info = {
+      if (cs.display == "none") {
+        continue;
+      }
+
+      let { styleIndex, isNew } = uniqueStylesIndex(cs, uniqueStyles);
+      if (isNew) {
+        yield { style: uniqueStyles[uniqueStyles.length - 1] };
+      }
+
+      let optionData = {
         index: child.index,
-        tagName,
+        isOptGroup,
         textContent,
+        parentIndex,
         disabled: child.disabled,
         display: cs.display,
         tooltip: child.title,
-        children:
-          tagName == "OPTGROUP"
-            ? buildOptionListForChildren(child, uniqueStyles)
-            : [],
         // Most options have the same style. In order to reduce the size of the
         // IPC message, coalesce them in uniqueStyles.
-        styleIndex: uniqueStylesIndex(cs, uniqueStyles),
+        styleIndex,
       };
 
-      result.push(info);
+      state.totalCount++;
+      yield { optionData };
+
+      if (isOptGroup) {
+        yield* buildOptionList(child, uniqueStyles, state);
+      }
     }
   }
-  return result;
 }
 
 // Hold the instance of SelectContentHelper created

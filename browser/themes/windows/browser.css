@@ -814,7 +814,8 @@ notification[value="translation"] {
 #widget-overflow[touchmode] .toolbarbutton-1,
 panel[touchmode] .PanelUI-subView .subviewbutton,
 menupopup[touchmode] menu,
-menupopup[touchmode] menuitem {
+menupopup[touchmode] menuitem,
+menupopup[touchmode] .menuitem {
   padding-top: 12px;
   padding-bottom: 12px;
 }
@@ -858,7 +859,9 @@ panel[touchmode] .PanelUI-subView #appMenu-zoom-controls > .subviewbutton-iconic
 }
 
 #ContentSelectDropdown > menupopup > menucaption,
-#ContentSelectDropdown > menupopup > menuitem {
+#ContentSelectDropdown > menupopup > .menucaption,
+#ContentSelectDropdown > menupopup > menuitem,
+#ContentSelectDropdown > menupopup > .menuitem {
   padding: 0 6px;
   border-width: 0;
 }
@@ -879,7 +882,8 @@ panel[touchmode] .PanelUI-subView #appMenu-zoom-controls > .subviewbutton-iconic
   font-weight: bold;
 }
 
-#ContentSelectDropdown > menupopup > menuitem[_moz-menuactive="true"][disabled="true"] {
+#ContentSelectDropdown > menupopup > menuitem[_moz-menuactive="true"][disabled="true"],
+#ContentSelectDropdown > menupopup > .menuitem[_moz-menuactive="true"][disabled="true"] {
   color: GrayText;
   background-color: unset;
 }

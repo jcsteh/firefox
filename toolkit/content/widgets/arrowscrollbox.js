@@ -358,13 +358,17 @@
 
     _getScrollableElements() {
       let nodes = this.children;
-      if (nodes.length == 1) {
+      while (nodes.length == 1) {
         let node = nodes[0];
         if (
           node.localName == "slot" &&
           node.namespaceURI == "http://www.w3.org/1999/xhtml"
         ) {
           nodes = node.getRootNode().host.children;
+        } else if (node.classList.contains("menupopup-scrollwrapper")) {
+          nodes = node.children;
+        } else {
+          break;
         }
       }
       return Array.prototype.filter.call(nodes, this._canScrollToElement, this);

@@ -1019,6 +1019,13 @@ toolbarpaletteitem[place="palette"] > #downloads-button[indicator] > .toolbarbut
   direction: ltr;
 }
 
+#ContentSelectDropdown > menupopup > div > search-textbox {
+  /* On all platforms we set the horizontal margin of search-textboxes to 4px.
+     We want the search inside a select dropdown to fill the horizontal space,
+     so set it to 100% - 2 * 4px. */
+  width: calc(100% - 8px);
+}
+
 /* Indent options in optgroups */
 .contentSelectDropdown-ingroup .menu-iconic-text {
   padding-inline-start: 2em;

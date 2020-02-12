@@ -316,7 +316,11 @@
       }
 
       var parent = item.parentNode;
-      return parent && parent.parentNode == this;
+      if (!parent || !parent.parentNode) {
+        return false;
+      }
+
+      return parent.parentNode == this || parent.parentNode.parentNode == this;
     }
 
     handleMutation(aRecords) {
