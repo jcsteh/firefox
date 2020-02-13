@@ -323,6 +323,10 @@ var SelectParentHelper = {
     }
     if (item) {
       item.setAttribute("_moz-menuactive", true);
+      this._currentMenulist.menupopup.setAttribute(
+        "aria-activedescendant",
+        item.id
+      );
     }
     this._activeItem = item;
     this._pendingActiveItem = null;
@@ -941,11 +945,7 @@ var SelectParentHelper = {
       item.textContent = option.textContent;
       item.title = option.tooltip;
 
-      if (option.isOptGroup) {
-        item.setAttribute("role", "group");
-      } else {
-        item.removeAttribute("role");
-      }
+      item.setAttribute("role", option.isOptGroup ? "group" : "option");
 
       let optionBackgroundSet =
         style["background-color"] != this._selectStyle["background-color"];
