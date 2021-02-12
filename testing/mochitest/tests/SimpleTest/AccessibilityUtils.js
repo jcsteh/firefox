@@ -223,6 +223,69 @@ this.AccessibilityUtils = (function() {
   }
 
   /**
+   * Determine if an accessible is a keyboard focusable browser toolbar button.
+   * Browser toolbar buttons aren't keyboard focusable in the normal way.
+   * Instead, focus is managed by JS code which sets tabindex on a single
+   * button at a time. Thus, we need to special case the focusable check for
+   * these buttons.
+   */
+  function isKeyboardFocusableBrowserToolbarButton(accessible) {
+    const node = accessible.DOMNode;
+    if (!node || !node.ownerGlobal) {
+      return false;
+    }
+    const toolbar = node.closest("toolbar");
+    if (!toolbar || toolbar.getAttribute("keyNav") != "true") {
+      return false;
+    }
+    return node.ownerGlobal.ToolbarKeyboardNavigator._isButton(node);
+  }
+
+  /**
+   * Determine if an accessible is a keyboard focusable PanelMultiView control.
+   * These controls aren't keyboard focusable in the normal way. Instead, focus
+   * is managed by JS code which sets tabindex dynamically. Thus, we need to
+   * special case the focusable check for these controls.
+   */
+  function isKeyboardFocusablePanelMultiViewControl(accessible) {
+    const node = accessible.DOMNode;
+    if (!node || !node.ownerGlobal) {
+      return false;
+    }
+    const panelview = node.closest("panelview");
+    if (!panelview || panelview.hasAttribute("disablekeynav")) {
+      return false;
+    }
+    return (
+      node.ownerGlobal.PanelView.forNode(panelview)._tabNavigableWalker.filter(
+        node
+      ) == NodeFilter.FILTER_ACCEPT
+    );
+  }
+
+  /**
+   * Determine if an accessible is a keyboard focusable XUL tab.
+   * Only one tab is focusable at a time, but after focusing it, you can use
+   * the keyboard to focus other tabs.
+   */
+  function isKeyboardFocusableXULTab(accessible) {
+    const node = accessible.DOMNode;
+    return node && node instanceof XULElement && node.tagName == "tab";
+  }
+
+  /**
+   * Determine if a node is a XUL element for which tabIndex should be ignored.
+   * Some XUL elements report -1 for the .tabIndex property, even though they
+   * are in fact keyboard focusable.
+   */
+  function shouldIgnoreTabIndex(node) {
+    if (!(node instanceof XULElement)) {
+      return false;
+    }
+    return node.tagName == "label" && node.getAttribute("is") == "text-link";
+  }
+
+  /**
    * Determine if accessible is focusable with the keyboard.
    *
    * @param   {nsIAccessible} accessible
@@ -232,13 +295,23 @@ this.AccessibilityUtils = (function() {
    *          True if focusable with the keyboard.
    */
   function isKeyboardFocusable(accessible) {
+    if (
+      isKeyboardFocusableBrowserToolbarButton(accessible) ||
+      isKeyboardFocusablePanelMultiViewControl(accessible) ||
+      isKeyboardFocusableXULTab(accessible)
+    ) {
+      return true;
+    }
     // State will be focusable even if the tabindex is negative.
+    const node = accessible.DOMNode;
     return (
       matchState(accessible, STATE_FOCUSABLE) &&
       // Platform accessibility will still report STATE_FOCUSABLE even with the
       // tabindex="-1" so we need to check that it is >= 0 to be considered
       // keyboard focusable.
-      (!gEnv.nonNegativeTabIndexRule || accessible.DOMNode.tabIndex > -1)
+      (!gEnv.nonNegativeTabIndexRule ||
+        node.tabIndex > -1 ||
+        shouldIgnoreTabIndex(node))
     );
   }
 
@@ -488,6 +561,29 @@ this.AccessibilityUtils = (function() {
     return accessibilityService.getAccessibleFor(node);
   }
 
+  /**
+   * Find the nearest interactive accessible ancestor for a node.
+   */
+  function findInteractiveAccessible(node) {
+    let acc;
+    // Walk DOM ancestors until we find one with an accessible.
+    for (; node && !acc; node = node.parentNode) {
+      acc = getAccessible(node);
+    }
+    if (!acc) {
+      // No accessible ancestor.
+      return acc;
+    }
+    // Walk a11y ancestors until we find one which is interactive.
+    for (; acc; acc = acc.parent) {
+      if (INTERACTIVE_ROLES.has(acc.role)) {
+        return acc;
+      }
+    }
+    // No interactive ancestor.
+    return null;
+  }
+
   function runIfA11YChecks(task) {
     return (...args) => (gA11YChecks ? task(...args) : null);
   }
@@ -502,8 +598,14 @@ this.AccessibilityUtils = (function() {
    *
    */
   const AccessibilityUtils = {
+    _testScope: null,
+
     assertCanBeClicked(node) {
-      const acc = getAccessible(node);
+      // Click events might fire on an inaccessible or non-interactive
+      // descendant, even if the test author targeted them at an interactive
+      // element. For example, if there's a button with an image inside it,
+      // node might be the image.
+      const acc = findInteractiveAccessible(node);
       if (!acc) {
         if (gEnv.mustHaveAccessibleRule) {
           a11yFail("Node is not accessible via accessibility API", {
@@ -546,6 +648,44 @@ this.AccessibilityUtils = (function() {
       // Reset accessibility environment flags that might've been set within the
       // test.
       this.resetEnv();
+    },
+
+    init() {
+      this.handleClick = this.handleClick.bind(this);
+
+      console.log("===== INIT AccessibilityUtils");
+      if (!this._handler) {
+        this._handler = window.docShell.chromeEventHandler;
+        if (!this._handler) {
+          // Toplevel xul window's docshell doesn't have chromeEventHandler
+          // attribute. The chrome event handler is just the global window object.
+          this._handler = window.docShell.domWindow;
+        }
+      }
+
+      this._handler.addEventListener("click", this.handleClick, true, true);
+    },
+
+    uninit() {
+      if (!this._handler) {
+        return;
+      }
+
+      this._handler.removeEventListener("click", this.handleClick, true);
+      this._handler = null;
+    },
+
+    handleClick({ composedTarget }) {
+      const bounds = composedTarget.ownerGlobal?.windowUtils?.getBoundsWithoutFlushing(
+        composedTarget
+      );
+      if (bounds && (bounds.width == 0 || bounds.height == 0)) {
+        // Some tests click hidden nodes. These clearly aren't testing the UI
+        // for the node itself (and presumably there is a test somewhere else
+        // that does). Therefore, we can't (and shouldn't) do a11y checks.
+        return;
+      }
+      this.assertCanBeClicked(composedTarget);
     },
   };
 
