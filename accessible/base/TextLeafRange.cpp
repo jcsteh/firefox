@@ -44,9 +44,9 @@ namespace mozilla::a11y {
  * map them to TextLeafAccessibles.
  */
 
-static int32_t RenderedToContentOffset(LocalAccessible* aAcc,
+static int32_t RenderedToContentOffset(nsIFrame* aFrame,
                                        uint32_t aRenderedOffset) {
-  nsTextFrame* frame = do_QueryFrame(aAcc->GetFrame());
+  nsTextFrame* frame = do_QueryFrame(aFrame);
   MOZ_ASSERT(frame);
   if (frame->StyleText()->WhiteSpaceIsSignificant() &&
       frame->StyleText()->NewlineIsSignificant(frame)) {
@@ -62,9 +62,9 @@ static int32_t RenderedToContentOffset(LocalAccessible* aAcc,
   return text.mOffsetWithinNodeText;
 }
 
-static uint32_t ContentToRenderedOffset(LocalAccessible* aAcc,
+static uint32_t ContentToRenderedOffset(nsIFrame* aFrame,
                                         int32_t aContentOffset) {
-  nsTextFrame* frame = do_QueryFrame(aAcc->GetFrame());
+  nsTextFrame* frame = do_QueryFrame(aFrame);
   MOZ_ASSERT(frame);
   if (frame->StyleText()->WhiteSpaceIsSignificant() &&
       frame->StyleText()->NewlineIsSignificant(frame)) {
@@ -441,7 +441,7 @@ TextLeafPoint TextLeafPoint::FindPrevLineStartSameLocalAcc(
   // Each line of a text node is rendered as a continuation frame. Get the
   // continuation containing the origin.
   int32_t origOffset = mOffset;
-  origOffset = RenderedToContentOffset(acc, origOffset);
+  origOffset = RenderedToContentOffset(frame, origOffset);
   nsTextFrame* continuation = nullptr;
   int32_t unusedOffsetInContinuation = 0;
   frame->GetChildFrameContainingOffset(
@@ -462,7 +462,7 @@ TextLeafPoint TextLeafPoint::FindPrevLineStartSameLocalAcc(
     // start.
     return TextLeafPoint();
   }
-  lineStart = static_cast<int32_t>(ContentToRenderedOffset(acc, lineStart));
+  lineStart = static_cast<int32_t>(ContentToRenderedOffset(frame, lineStart));
   return TextLeafPoint(acc, lineStart);
 }
 
@@ -486,7 +486,7 @@ TextLeafPoint TextLeafPoint::FindNextLineStartSameLocalAcc(
   // Each line of a text node is rendered as a continuation frame. Get the
   // continuation containing the origin.
   int32_t origOffset = mOffset;
-  origOffset = RenderedToContentOffset(acc, origOffset);
+  origOffset = RenderedToContentOffset(frame, origOffset);
   nsTextFrame* continuation = nullptr;
   int32_t unusedOffsetInContinuation = 0;
   frame->GetChildFrameContainingOffset(
@@ -506,7 +506,7 @@ TextLeafPoint TextLeafPoint::FindNextLineStartSameLocalAcc(
     return TextLeafPoint();
   }
   int32_t lineStart = continuation->GetContentOffset();
-  lineStart = static_cast<int32_t>(ContentToRenderedOffset(acc, lineStart));
+  lineStart = static_cast<int32_t>(ContentToRenderedOffset(frame, lineStart));
   return TextLeafPoint(acc, lineStart);
 }
 
