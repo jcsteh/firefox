@@ -12,9 +12,15 @@
 #include "AccAttributes.h"
 #include "nsDirection.h"
 #include "nsIAccessibleText.h"
+#include "nsTArray.h"
+
+class nsINode;
+class nsRange;
 
 namespace mozilla::a11y {
 class Accessible;
+class DocAccessibleParent;
+class TextRangeData;
 
 /**
  * Represents a point within accessible text.
@@ -44,6 +50,8 @@ class TextLeafPoint final {
   static TextLeafPoint GetCaret(Accessible* aAcc) {
     return TextLeafPoint(aAcc, nsIAccessibleText::TEXT_OFFSET_CARET);
   }
+
+  static TextLeafPoint FromDOMPoint(nsINode* aNode, uint32_t aNodeOffset);
 
   Accessible* mAcc;
   int32_t mOffset;
@@ -193,10 +201,20 @@ class TextLeafRange final {
   explicit TextLeafRange(const TextLeafPoint& aStart)
       : mStart(aStart), mEnd(aStart) {}
 
+  explicit TextLeafRange(const nsRange* aRange);
+  explicit TextLeafRange(DocAccessibleParent* aDoc,
+                         const TextRangeData& aRange);
+
+  explicit operator bool() const { return mStart && mEnd; }
+
   TextLeafPoint Start() { return mStart; }
   void SetStart(const TextLeafPoint& aStart) { mStart = aStart; }
   TextLeafPoint End() { return mEnd; }
   void SetEnd(const TextLeafPoint& aEnd) { mEnd = aEnd; }
+
+  static nsTArray<TextLeafRange> RangesFrom(dom::Selection* aSelection);
+  static nsTArray<TextLeafRange> RangesFrom(
+      DocAccessibleParent* aDoc, const nsTArray<TextRangeData>& aRangeData);
 
  private:
   TextLeafPoint mStart;

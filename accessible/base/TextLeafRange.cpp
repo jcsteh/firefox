@@ -10,7 +10,9 @@
 #include "mozilla/a11y/Accessible.h"
 #include "mozilla/a11y/DocAccessible.h"
 #include "mozilla/a11y/DocAccessibleParent.h"
+#include "mozilla/a11y/DocManager.h"
 #include "mozilla/a11y/LocalAccessible.h"
+#include "mozilla/a11y/TextRangeData.h"
 #include "mozilla/BinarySearch.h"
 #include "mozilla/Casting.h"
 #include "mozilla/intl/Segmenter.h"
@@ -20,12 +22,15 @@
 #include "nsContentUtils.h"
 #include "nsIAccessiblePivot.h"
 #include "nsILineIterator.h"
+#include "nsINode.h"
+#include "nsRange.h"
 #include "nsStyleStructInlines.h"
 #include "nsTArray.h"
 #include "nsTextFrame.h"
 #include "nsUnicodeProperties.h"
 #include "Pivot.h"
 #include "TextAttrs.h"
+#include "TreeWalker.h"
 
 using mozilla::intl::WordBreaker;
 
@@ -382,6 +387,70 @@ TextLeafPoint::TextLeafPoint(Accessible* aAcc, int32_t aOffset) {
   }
   mAcc = aAcc;
   mOffset = aOffset;
+}
+
+/* static */
+TextLeafPoint TextLeafPoint::FromDOMPoint(nsINode* aNode,
+                                          uint32_t aNodeOffset) {
+  if (!aNode) {
+    return TextLeafPoint();
+  }
+  DocAccessible* docAcc = GetExistingDocAccessible(aNode->OwnerDoc());
+  if (!docAcc) {
+    return TextLeafPoint();
+  }
+
+  nsINode* findNode = nullptr;
+  uint32_t offset = 0;
+  if (aNode->IsText()) {
+    // For text nodes, aNodeOffset is a character offset into the text.
+    nsIFrame* frame = aNode->AsContent()->GetPrimaryFrame();
+    if (!frame) {
+      return TextLeafPoint();
+    }
+    offset = ContentToRenderedOffset(frame, aNodeOffset);
+    findNode = aNode;
+  } else {
+    findNode = aNode->GetChildAt_Deprecated(aNodeOffset);
+    if (!findNode) {
+      if (aNodeOffset == 0) {
+        // There are no children, so we're at this node.
+        findNode = aNode;
+      } else {
+        MOZ_ASSERT(aNodeOffset == aNode->GetChildCount());
+        // We're after the last child. Get the next node.
+        for (nsINode* tmpNode = aNode; !findNode && tmpNode;
+             tmpNode = tmpNode->GetParent()) {
+          findNode = tmpNode->GetNextSibling();
+        }
+      }
+    }
+  }
+  if (!findNode) {
+    return TextLeafPoint();
+  }
+
+  // Get the Accessible for findNode.
+  LocalAccessible* acc = docAcc->GetAccessible(findNode);
+  if (acc) {
+    return TextLeafPoint(acc, offset);
+  }
+  // findNode didn't have an Accessible. Use the Accessible for the next DOM
+  // node which has one (based on forward depth first search).
+  if (findNode->IsContent()) {
+    return TextLeafPoint();
+  }
+  LocalAccessible* container = docAcc->GetContainerAccessible(findNode);
+  if (!container) {
+    return TextLeafPoint();
+  }
+  TreeWalker walker(container, findNode->AsContent(),
+                    TreeWalker::eWalkContextTree);
+  acc = walker.Next();
+  if (!acc) {
+    acc = container;
+  }
+  return TextLeafPoint(acc, 0);
 }
 
 bool TextLeafPoint::operator<(const TextLeafPoint& aPoint) const {
@@ -1142,6 +1211,57 @@ LayoutDeviceIntRect TextLeafPoint::CharBounds() {
   }
 
   return LayoutDeviceIntRect();
+}
+
+/*** TextLeafRange ***/
+
+TextLeafRange::TextLeafRange(const nsRange* aRange) {
+  mStart = TextLeafPoint::FromDOMPoint(aRange->GetStartContainer(),
+                                       aRange->StartOffset());
+  if (mStart) {
+    mEnd = TextLeafPoint::FromDOMPoint(aRange->GetEndContainer(),
+                                       aRange->EndOffset());
+  }
+}
+
+TextLeafRange::TextLeafRange(DocAccessibleParent* aDoc,
+                             const TextRangeData& aRange) {
+  mStart = TextLeafPoint(aDoc->GetAccessible(aRange.StartID()),
+                         aRange.StartOffset());
+  if (mStart) {
+    mEnd =
+        TextLeafPoint(aDoc->GetAccessible(aRange.EndID()), aRange.EndOffset());
+  }
+}
+
+/* static */
+nsTArray<TextLeafRange> TextLeafRange::RangesFrom(dom::Selection* aSelection) {
+  uint32_t count = aSelection->RangeCount();
+  nsTArray<TextLeafRange> ranges(count);
+  for (uint32_t i = 0; i < count; ++i) {
+    const nsRange* dr = aSelection->GetRangeAt(i);
+    MOZ_ASSERT(dr);
+    TextLeafRange tlr = TextLeafRange(dr);
+    if (!tlr) {
+      continue;
+    }
+    ranges.AppendElement(std::move(tlr));
+  }
+  return ranges;
+}
+
+/* static */
+nsTArray<TextLeafRange> TextLeafRange::RangesFrom(
+    DocAccessibleParent* aDoc, const nsTArray<TextRangeData>& aRangeData) {
+  nsTArray<TextLeafRange> ranges(aRangeData.Length());
+  for (auto& data : aRangeData) {
+    TextLeafRange tlr = TextLeafRange(aDoc, data);
+    if (!tlr) {
+      continue;
+    }
+    ranges.AppendElement(std::move(tlr));
+  }
+  return ranges;
 }
 
 }  // namespace mozilla::a11y
