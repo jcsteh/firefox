@@ -1073,7 +1073,7 @@ TextLeafPoint TextLeafPoint::FindParagraphSameAcc(nsDirection aDirection,
   return TextLeafPoint();
 }
 
-already_AddRefed<AccAttributes> TextLeafPoint::GetTextAttributesLocalAcc(
+already_AddRefed<AccAttributes> TextLeafPoint::GetStyleAttributesLocalAcc(
     bool aIncludeDefaults) const {
   LocalAccessible* acc = mAcc->AsLocal();
   MOZ_ASSERT(acc);
@@ -1096,32 +1096,35 @@ already_AddRefed<AccAttributes> TextLeafPoint::GetTextAttributes(
   if (!mAcc->IsText()) {
     return nullptr;
   }
+  RefPtr<AccAttributes> attrs;
   if (mAcc->IsLocal()) {
-    return GetTextAttributesLocalAcc(aIncludeDefaults);
-  }
-  RefPtr<AccAttributes> attrs = new AccAttributes();
-  if (aIncludeDefaults) {
-    Accessible* parent = mAcc->Parent();
-    if (parent && parent->IsRemote() && parent->IsHyperText()) {
-      if (auto defAttrs = parent->AsRemote()->GetCachedTextAttributes()) {
-        defAttrs->CopyTo(attrs);
+    attrs = GetStyleAttributesLocalAcc(aIncludeDefaults);
+  } else {
+    attrs = new AccAttributes();
+    if (aIncludeDefaults) {
+      Accessible* parent = mAcc->Parent();
+      if (parent && parent->IsRemote() && parent->IsHyperText()) {
+        if (auto defAttrs = parent->AsRemote()->GetCachedTextAttributes()) {
+          defAttrs->CopyTo(attrs);
+        }
       }
     }
+    if (auto thisAttrs = mAcc->AsRemote()->GetCachedTextAttributes()) {
+      thisAttrs->CopyTo(attrs);
+    }
   }
-  if (auto thisAttrs = mAcc->AsRemote()->GetCachedTextAttributes()) {
-    thisAttrs->CopyTo(attrs);
+  for (auto& range : TextLeafRange::SpellingErrorRanges(mAcc)) {
+    if (range.Start() <= *this && *this < range.End()) {
+      attrs->SetAttribute(nsGkAtoms::invalid, nsGkAtoms::spelling);
+      break;
+    }
   }
   return attrs.forget();
 }
 
-TextLeafPoint TextLeafPoint::FindTextAttrsStart(
+TextLeafPoint TextLeafPoint::FindStyleAttrsStart(
     nsDirection aDirection, bool aIncludeOrigin,
     const AccAttributes* aOriginAttrs, bool aIncludeDefaults) const {
-  if (IsCaret()) {
-    return ActualizeCaret().FindTextAttrsStart(aDirection, aIncludeOrigin,
-                                               aOriginAttrs, aIncludeDefaults);
-  }
-  // XXX Add support for spelling errors.
   RefPtr<const AccAttributes> lastAttrs;
   const bool isRemote = mAcc->IsRemote();
   if (isRemote) {
@@ -1141,7 +1144,7 @@ TextLeafPoint TextLeafPoint::FindTextAttrsStart(
       // depends on aIncludeDefaults. Defaults are always calculated even if
       // they aren't returned, so calculation cost isn't a concern.
     } else {
-      lastAttrs = GetTextAttributesLocalAcc(aIncludeDefaults);
+      lastAttrs = GetStyleAttributesLocalAcc(aIncludeDefaults);
     }
   }
   if (aIncludeOrigin && aDirection == eDirNext && mOffset == 0) {
@@ -1157,7 +1160,7 @@ TextLeafPoint TextLeafPoint::FindTextAttrsStart(
     // calculation or copying.
     RefPtr<const AccAttributes> attrs =
         isRemote ? point.mAcc->AsRemote()->GetCachedTextAttributes()
-                 : point.GetTextAttributesLocalAcc(aIncludeDefaults);
+                 : point.GetStyleAttributesLocalAcc(aIncludeDefaults);
     if (attrs && lastAttrs && !attrs->Equal(lastAttrs)) {
       return *this;
     }
@@ -1172,7 +1175,7 @@ TextLeafPoint TextLeafPoint::FindTextAttrsStart(
     }
     RefPtr<const AccAttributes> attrs =
         isRemote ? point.mAcc->AsRemote()->GetCachedTextAttributes()
-                 : point.GetTextAttributesLocalAcc(aIncludeDefaults);
+                 : point.GetStyleAttributesLocalAcc(aIncludeDefaults);
     if (attrs && lastAttrs && !attrs->Equal(lastAttrs)) {
       // The attributes change here. If we're moving forward, we want to
       // return this point. If we're moving backward, we've now moved before
@@ -1198,6 +1201,43 @@ TextLeafPoint TextLeafPoint::FindTextAttrsStart(
       aDirection == eDirPrevious
           ? 0
           : static_cast<int32_t>(nsAccUtils::TextLength(lastPoint.mAcc)));
+}
+
+TextLeafPoint TextLeafPoint::FindTextAttrsStart(
+    nsDirection aDirection, bool aIncludeOrigin,
+    const AccAttributes* aOriginAttrs, bool aIncludeDefaults) const {
+  if (IsCaret()) {
+    return ActualizeCaret().FindTextAttrsStart(aDirection, aIncludeOrigin,
+                                               aOriginAttrs, aIncludeDefaults);
+  }
+  TextLeafPoint styleStart = FindStyleAttrsStart(
+      aDirection, aIncludeOrigin, aOriginAttrs, aIncludeDefaults);
+  MOZ_ASSERT(styleStart);
+  if (aIncludeOrigin && styleStart == *this) {
+    return *this;
+  }
+  for (auto& range : TextLeafRange::SpellingErrorRanges(mAcc)) {
+    // If either point of a spelling error range is between this and styleStart,
+    // the attributes change at that point, so return that point of the range.
+    if (aIncludeOrigin && (range.Start() == *this || range.End() == *this)) {
+      return *this;
+    }
+    if (aDirection == eDirNext) {
+      if (*this < range.Start() && range.Start() < styleStart) {
+        return range.Start();
+      }
+      if (*this < range.End() && range.End() < styleStart) {
+        return range.End();
+      }
+    }
+    if (styleStart < range.End() && range.End() < *this) {
+      return range.End();
+    }
+    if (styleStart < range.Start() && range.Start() < *this) {
+      return range.Start();
+    }
+  }
+  return styleStart;
 }
 
 LayoutDeviceIntRect TextLeafPoint::CharBounds() {

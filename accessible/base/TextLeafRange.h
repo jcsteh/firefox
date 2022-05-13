@@ -129,11 +129,11 @@ class TextLeafPoint final {
       bool aIncludeDefaults = true) const;
 
   /**
-   * Get Get the text attributes at this point in a LocalAccessible.
-   * This is used by GetTextAttributes. Most callers will want GetTextAttributes
-   * instead.
+   * Get the text attributes (except spelling errors) at this point in a
+   * LocalAccessible. This is used by GetTextAttributes. Most callers will want
+   * GetTextAttributes instead.
    */
-  already_AddRefed<AccAttributes> GetTextAttributesLocalAcc(
+  already_AddRefed<AccAttributes> GetStyleAttributesLocalAcc(
       bool aIncludeDefaults = true) const;
 
   /**
@@ -188,6 +188,14 @@ class TextLeafPoint final {
 
   TextLeafPoint FindParagraphSameAcc(nsDirection aDirection,
                                      bool aIncludeOrigin) const;
+
+  /**
+   * Searches for text attributes except spelling errors.
+   */
+  TextLeafPoint FindStyleAttrsStart(nsDirection aDirection,
+                                    bool aIncludeOrigin = false,
+                                    const AccAttributes* aOriginAttrs = nullptr,
+                                    bool aIncludeDefaults = true) const;
 };
 
 /**

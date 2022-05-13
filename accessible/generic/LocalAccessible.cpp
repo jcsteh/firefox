@@ -3270,7 +3270,7 @@ already_AddRefed<AccAttributes> LocalAccessible::BundleFieldsForCache(
         AppendTextTo(text);
         fields->SetAttribute(nsGkAtoms::text, std::move(text));
         TextLeafPoint point(this, 0);
-        RefPtr<AccAttributes> attrs = point.GetTextAttributesLocalAcc(
+        RefPtr<AccAttributes> attrs = point.GetStyleAttributesLocalAcc(
             /* aIncludeDefaults */ false);
         fields->SetAttribute(nsGkAtoms::style, std::move(attrs));
       }
