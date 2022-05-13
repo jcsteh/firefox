@@ -76,6 +76,9 @@ void AccAttributes::StringFromValueAndName(nsAtom* aAttrName,
           aValueString.Append(u", ");
         }
         aValueString.AppendInt(val[val.Length() - 1]);
+      },
+      [&aValueString](const nsTArray<TextRangeData>& val) {
+        aValueString.Assign(u"nsTArray<TextRangeData>{...}");
       });
 }
 
@@ -174,6 +177,11 @@ void AccAttributes::CopyTo(AccAttributes* aDest) const {
               "Trying to copy an AccAttributes containing a matrix");
         },
         [](const nsTArray<uint64_t>& val) {
+          // We don't copy arrays.
+          MOZ_ASSERT_UNREACHABLE(
+              "Trying to copy an AccAttributes containing an array");
+        },
+        [](const nsTArray<TextRangeData>& val) {
           // We don't copy arrays.
           MOZ_ASSERT_UNREACHABLE(
               "Trying to copy an AccAttributes containing an array");
