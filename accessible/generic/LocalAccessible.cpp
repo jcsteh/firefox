@@ -3464,6 +3464,22 @@ already_AddRefed<AccAttributes> LocalAccessible::BundleFieldsForCache(
     }
   }
 
+  if (aCacheDomain & CacheDomain::Spelling && (IsDoc() || IsTextField())) {
+    nsTArray<TextRangeData> rangeData;
+    auto ranges = TextLeafRange::SpellingErrorRanges(this);
+    rangeData.SetCapacity(ranges.Length());
+    for (auto& range : ranges) {
+      rangeData.AppendElement(
+          TextRangeData(range.Start().mAcc->ID(), range.End().mAcc->ID(),
+                        range.Start().mOffset, range.End().mOffset));
+    }
+    if (!rangeData.IsEmpty()) {
+      fields->SetAttribute(nsGkAtoms::spelling, std::move(rangeData));
+    } else if (aUpdateType == CacheUpdateType::Update) {
+      fields->SetAttribute(nsGkAtoms::spelling, DeleteEntry());
+    }
+  }
+
   if (aUpdateType == CacheUpdateType::Initial) {
     // Add fields which never change and thus only need to be included in the
     // initial cache push.

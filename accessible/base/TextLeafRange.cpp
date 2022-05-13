@@ -20,6 +20,7 @@
 #include "mozilla/StaticPrefs_layout.h"
 #include "nsAccUtils.h"
 #include "nsContentUtils.h"
+#include "nsFrameSelection.h"
 #include "nsIAccessiblePivot.h"
 #include "nsILineIterator.h"
 #include "nsINode.h"
@@ -1262,6 +1263,47 @@ nsTArray<TextLeafRange> TextLeafRange::RangesFrom(
     ranges.AppendElement(std::move(tlr));
   }
   return ranges;
+}
+
+/* static */
+nsTArray<TextLeafRange> TextLeafRange::SpellingErrorRanges(Accessible* aAcc) {
+  Accessible* acc = nullptr;
+  if (aAcc->IsDoc() || aAcc->IsTextField()) {
+    acc = aAcc;
+  } else if (aAcc->IsTextLeaf()) {
+    Accessible* parent = aAcc->Parent();
+    if (parent->IsTextField()) {
+      // Text fields have independent DOM selection.
+      acc = parent;
+    }
+  }
+  if (!acc) {
+    // Everything else (including contentEditable descendants) uses the document
+    // selection.
+    acc = nsAccUtils::DocumentFor(aAcc);
+  }
+
+  if (LocalAccessible* localAcc = acc->AsLocal()) {
+    nsIFrame* frame = localAcc->GetFrame();
+    RefPtr<nsFrameSelection> frameSel =
+        frame ? frame->GetFrameSelection() : nullptr;
+    dom::Selection* domSel =
+        frameSel ? frameSel->GetSelection(SelectionType::eSpellCheck) : nullptr;
+    if (!domSel) {
+      return {};
+    }
+    return TextLeafRange::RangesFrom(domSel);
+  }
+
+  RemoteAccessible* remoteAcc = acc->AsRemote();
+  if (remoteAcc->mCachedFields) {
+    if (auto ranges =
+            remoteAcc->mCachedFields->GetAttribute<nsTArray<TextRangeData>>(
+                nsGkAtoms::spelling)) {
+      return TextLeafRange::RangesFrom(remoteAcc->Document(), *ranges);
+    }
+  }
+  return {};
 }
 
 }  // namespace mozilla::a11y

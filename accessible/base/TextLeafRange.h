@@ -215,6 +215,7 @@ class TextLeafRange final {
   static nsTArray<TextLeafRange> RangesFrom(dom::Selection* aSelection);
   static nsTArray<TextLeafRange> RangesFrom(
       DocAccessibleParent* aDoc, const nsTArray<TextRangeData>& aRangeData);
+  static nsTArray<TextLeafRange> SpellingErrorRanges(Accessible* aAcc);
 
  private:
   TextLeafPoint mStart;

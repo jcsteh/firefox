@@ -5,6 +5,7 @@
 
 #include "mozilla/a11y/SelectionManager.h"
 
+#include "CacheConstants.h"
 #include "DocAccessible-inl.h"
 #include "HyperTextAccessible.h"
 #include "HyperTextAccessible-inl.h"
@@ -219,6 +220,11 @@ void SelectionManager::ProcessSelectionChanged(SelData* aSelData) {
     text->Document()->FireDelayedEvent(event);
 
   } else if (selection->GetType() == SelectionType::eSpellCheck) {
+    // Text fields have independent DOM selection, so we must cache spelling
+    // error ranges on text fields. Everything else (including contentEditable
+    // descendants) uses the document selection.
+    text->Document()->QueueCacheUpdate(
+        text->IsTextField() ? text : text->Document(), CacheDomain::Spelling);
     // XXX: fire an event for container accessible of the focus/anchor range
     // of the spelcheck selection.
     text->Document()->FireDelayedEvent(
