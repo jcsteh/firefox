@@ -36,6 +36,7 @@ else:
 if CONFIG["ACCESSIBILITY"]:
     IPDL_SOURCES += [
         "DocAccessibleTypes.ipdlh",
+        "TextRangeData.ipdlh",
     ]
 
 EXPORTS.mozilla.a11y += [

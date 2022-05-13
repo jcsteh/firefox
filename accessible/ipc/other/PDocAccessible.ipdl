@@ -9,6 +9,7 @@ include protocol PBrowser;
 include protocol PDocAccessiblePlatformExt;
 
 include DocAccessibleTypes;
+include TextRangeData;
 
 include "mozilla/GfxMessageUtils.h";
 
@@ -70,14 +71,6 @@ struct RelationTargets
 {
   uint32_t Type;
   uint64_t[] Targets;
-};
-
-struct TextRangeData
-{
-  uint64_t StartID;
-  uint64_t EndID;
-  int32_t StartOffset;
-  int32_t EndOffset;
 };
 
 [ManualDealloc, NestedUpTo=inside_sync, ChildImpl=virtual, ParentImpl=virtual]
