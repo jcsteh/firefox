@@ -657,6 +657,10 @@ Relation RemoteAccessibleBase<Derived>::RelationByType(
     return Relation();
   }
 
+  if (aType == RelationType::CONTAINING_DOCUMENT) {
+    return Relation(mDoc);
+  }
+
   Relation rel;
   if (!mCachedFields) {
     return rel;
