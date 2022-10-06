@@ -9,6 +9,7 @@
 #include "mozilla/a11y/RemoteAccessible.h"
 #include "mozilla/ipc/ProcessChild.h"
 #include "mozilla/StaticPrefs_accessibility.h"
+#include "nsLayoutUtils.h"
 
 #include "LocalAccessible-inl.h"
 #ifdef A11Y_LOG
@@ -144,7 +145,8 @@ mozilla::ipc::IPCResult DocAccessibleChildBase::RecvTakeSelection(
     const uint64_t& aID) {
   LocalAccessible* acc = IdToAccessible(aID);
   if (acc) {
-    acc->TakeSelection();
+    //acc->TakeSelection();
+    nsLayoutUtils::PostRestyleEvent(acc->Elm(), RestyleHint{0}, nsChangeHint_ReconstructFrame);
   }
 
   return IPC_OK();
