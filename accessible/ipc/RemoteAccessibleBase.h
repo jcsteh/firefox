@@ -275,6 +275,11 @@ class RemoteAccessibleBase : public Accessible, public HyperTextAccessibleBase {
 
     if (aUpdateType == CacheUpdateType::Initial) {
       mCachedFields = aFields;
+      if (auto state = mCachedFields->GetAttribute<uint64_t>(nsGkAtoms::state)) {
+        mState = *state;
+        mCachedFields->Remove(nsGkAtoms::state);
+      }
+      
     } else {
       if (!mCachedFields) {
         // The fields cache can be uninitialized if there were no cache-worthy
@@ -300,21 +305,11 @@ class RemoteAccessibleBase : public Accessible, public HyperTextAccessibleBase {
     if (aState & kRemoteCalculatedStates) {
       return;
     }
-    uint64_t state = 0;
-    if (mCachedFields) {
-      if (auto oldState =
-              mCachedFields->GetAttribute<uint64_t>(nsGkAtoms::state)) {
-        state = *oldState;
-      }
-    } else {
-      mCachedFields = new AccAttributes();
-    }
     if (aEnabled) {
-      state |= aState;
+      mState |= aState;
     } else {
-      state &= ~aState;
+      mState &= ~aState;
     }
-    mCachedFields->SetAttribute(nsGkAtoms::state, state);
   }
 
   void InvalidateGroupInfo();
@@ -448,6 +443,7 @@ class RemoteAccessibleBase : public Accessible, public HyperTextAccessibleBase {
   // XXX DocAccessibleParent gets to change this to change the role of
   // documents.
   role mRole : 27;
+  uint64_t mState = 0;
 };
 
 extern template class RemoteAccessibleBase<RemoteAccessible>;
