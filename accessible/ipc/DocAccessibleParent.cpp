@@ -15,6 +15,7 @@
 #include "xpcAccessibleDocument.h"
 #include "xpcAccEvents.h"
 #include "nsAccUtils.h"
+#include "nsFocusManager.h"
 #include "nsIIOService.h"
 #include "TextRange.h"
 #include "Relation.h"
@@ -356,12 +357,20 @@ mozilla::ipc::IPCResult DocAccessibleParent::RecvEvent(
 void DocAccessibleParent::FireEvent(RemoteAccessible* aAcc,
                                     const uint32_t& aEventType) {
   if (aEventType == nsIAccessibleEvent::EVENT_FOCUS) {
+    mFocus = aAcc->ID();
+    if (nsFocusManager* domFocusMgr = nsFocusManager::GetFocusManager()) {
+      if (domFocusMgr->GetFocusedBrowsingContextInChrome() !=
+          mBrowsingContext) {
+        // This document isn't focused any more, so don't fire a focus event
+        // inside it.
+        return;
+      }
+    }
 #ifdef ANDROID
     if (FocusMgr()) {
       FocusMgr()->SetFocusedRemoteDoc(this);
     }
 #endif
-    mFocus = aAcc->ID();
   }
 
   if (StaticPrefs::accessibility_cache_enabled_AtStartup()) {
@@ -1229,6 +1238,13 @@ mozilla::ipc::IPCResult DocAccessibleParent::RecvFocusEvent(
   }
 
   mFocus = aID;
+  if (nsFocusManager* domFocusMgr = nsFocusManager::GetFocusManager()) {
+    if (domFocusMgr->GetFocusedBrowsingContextInChrome() != mBrowsingContext) {
+      // This document isn't focused any more, so don't fire a focus event
+      // inside it.
+      return IPC_OK();
+    }
+  }
   ProxyFocusEvent(proxy, aCaretRect);
 
   if (!nsCoreUtils::AccEventObserversExist()) {
