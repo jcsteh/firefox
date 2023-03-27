@@ -1033,13 +1033,8 @@ nsresult LocalAccessible::HandleAccEvent(AccEvent* aEvent) {
           AutoTArray<TextRange, 1> ranges;
           textSelChangeEvent->SelectionRanges(&ranges);
           nsTArray<TextRangeData> textRangeData(ranges.Length());
-          for (size_t i = 0; i < ranges.Length(); i++) {
-            const TextRange& range = ranges.ElementAt(i);
-            LocalAccessible* start = range.StartContainer()->AsLocal();
-            LocalAccessible* end = range.EndContainer()->AsLocal();
-            textRangeData.AppendElement(TextRangeData(start->ID(), end->ID(),
-                                                      range.StartOffset(),
-                                                      range.EndOffset()));
+          for (const auto& range : ranges) {
+            textRangeData.AppendElement(range.Serialize());
           }
           ipcDoc->SendTextSelectionChangeEvent(id, textRangeData);
           break;

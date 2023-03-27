@@ -21,6 +21,7 @@ namespace a11y {
 
 class Accessible;
 class LocalAccessible;
+class TextRangeData;
 
 /**
  * A text point (HyperText + offset), represents a boundary of text range.
@@ -144,6 +145,11 @@ class TextRange final {
     mStartContainer = aContainer;
     mStartOffset = aOffset;
   }
+
+  TextRangeData Serialize() const;
+
+  static TextRange Deserialize(DocAccessibleParent* aDoc,
+                               const TextRangeData& aData);
 
   static void TextRangesFromSelection(dom::Selection* aSelection,
                                       nsTArray<TextRange>* aRanges);

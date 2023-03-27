@@ -1300,29 +1300,10 @@ DocAccessiblePlatformExtParent* DocAccessibleParent::GetPlatformExtension() {
 #endif  // !defined(XP_WIN)
 
 void DocAccessibleParent::SelectionRanges(nsTArray<TextRange>* aRanges) const {
+  aRanges->SetCapacity(mTextSelections.Length());
   for (const auto& data : mTextSelections) {
-    // Selection ranges should usually be in sync with the tree. However, tree
-    // and selection updates happen using separate IPDL calls, so it's possible
-    // for a client selection query to arrive between them. Thus, we validate
-    // the Accessibles and offsets here.
-    auto* startAcc =
-        const_cast<RemoteAccessible*>(GetAccessible(data.StartID()));
-    auto* endAcc = const_cast<RemoteAccessible*>(GetAccessible(data.EndID()));
-    if (!startAcc || !endAcc) {
-      continue;
-    }
-    uint32_t startCount = startAcc->CharacterCount();
-    if (startCount == 0 ||
-        data.StartOffset() > static_cast<int32_t>(startCount)) {
-      continue;
-    }
-    uint32_t endCount = endAcc->CharacterCount();
-    if (endCount == 0 || data.EndOffset() > static_cast<int32_t>(endCount)) {
-      continue;
-    }
-    aRanges->AppendElement(TextRange(const_cast<DocAccessibleParent*>(this),
-                                     startAcc, data.StartOffset(), endAcc,
-                                     data.EndOffset()));
+    aRanges->AppendElement(
+        TextRange::Deserialize(const_cast<DocAccessibleParent*>(this), data));
   }
 }
 

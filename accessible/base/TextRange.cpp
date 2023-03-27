@@ -9,6 +9,7 @@
 #include "LocalAccessible-inl.h"
 #include "HyperTextAccessible-inl.h"
 #include "mozilla/IntegerRange.h"
+#include "mozilla/a11y/DocAccessibleParent.h"
 #include "mozilla/dom/Selection.h"
 #include "nsAccUtils.h"
 
@@ -370,6 +371,38 @@ bool TextRange::AssignDOMRange(nsRange* aRange, bool* aReversed) const {
       ClosestNotGeneratedDOMPoint(endPoint, container);
   aRange->SetEnd(endPointForDOMRange.node, endPointForDOMRange.idx);
   return true;
+}
+
+TextRangeData TextRange::Serialize() const {
+  return TextRangeData(mStartContainer->ID(), mEndContainer->ID(), mStartOffset,
+                       mEndOffset);
+}
+
+/* static */
+TextRange TextRange::Deserialize(DocAccessibleParent* aDoc,
+                                 const TextRangeData& aData) {
+  // Ranges should usually be in sync with the tree. However, tree and text
+  // range updates (e.g. selection) happen using separate IPDL calls, so it's
+  // possible for a client query to arrive between them. Thus, we validate the
+  // Accessibles and offsets here.
+  auto* startAcc =
+      const_cast<RemoteAccessible*>(aDoc->GetAccessible(aData.StartID()));
+  auto* endAcc =
+      const_cast<RemoteAccessible*>(aDoc->GetAccessible(aData.EndID()));
+  if (!startAcc || !endAcc) {
+    return TextRange();
+  }
+  uint32_t startCount = startAcc->CharacterCount();
+  if (startCount == 0 ||
+      aData.StartOffset() > static_cast<int32_t>(startCount)) {
+    return TextRange();
+  }
+  uint32_t endCount = endAcc->CharacterCount();
+  if (endCount == 0 || aData.EndOffset() > static_cast<int32_t>(endCount)) {
+    return TextRange();
+  }
+  return TextRange(aDoc, startAcc, aData.StartOffset(), endAcc,
+                   aData.EndOffset());
 }
 
 void TextRange::TextRangesFromSelection(dom::Selection* aSelection,
