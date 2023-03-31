@@ -7,7 +7,11 @@
 #include "AppleVTDecoder.h"
 
 #include <CoreVideo/CVPixelBufferIOSurface.h>
-#include <IOSurface/IOSurface.h>
+#ifdef XP_MACOSX
+#  include <IOSurface/IOSurface.h>
+#else
+#  include <IOSurface/IOSurfaceRef.h>
+#endif
 #include <limits>
 
 #include "AppleDecoderModule.h"
@@ -620,6 +624,7 @@ MediaResult AppleVTDecoder::InitializeSession() {
                        RESULT_DETAIL("Couldn't create decompression session!"));
   }
 
+#if XP_MACOSX
   CFBooleanRef isUsingHW = nullptr;
   rv = VTSessionCopyProperty(
       mSession,
@@ -636,6 +641,7 @@ MediaResult AppleVTDecoder::InitializeSession() {
   if (isUsingHW) {
     CFRelease(isUsingHW);
   }
+#endif
 
   return NS_OK;
 }
@@ -671,6 +677,7 @@ CFDictionaryRef AppleVTDecoder::CreateDecoderExtensions() {
 }
 
 CFDictionaryRef AppleVTDecoder::CreateDecoderSpecification() {
+#if XP_MACOSX
   const void* specKeys[] = {
       kVTVideoDecoderSpecification_EnableHardwareAcceleratedVideoDecoder};
   const void* specValues[1];
@@ -686,6 +693,11 @@ CFDictionaryRef AppleVTDecoder::CreateDecoderSpecification() {
   return CFDictionaryCreate(
       kCFAllocatorDefault, specKeys, specValues, ArrayLength(specKeys),
       &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
+#else
+  return CFDictionaryCreate(kCFAllocatorDefault, nullptr, nullptr, 0,
+                            &kCFTypeDictionaryKeyCallBacks,
+                            &kCFTypeDictionaryValueCallBacks);
+#endif
 }
 
 CFDictionaryRef AppleVTDecoder::CreateOutputConfiguration() {
