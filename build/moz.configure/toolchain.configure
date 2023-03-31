@@ -41,7 +41,13 @@ def compiling_android(compile_env, target):
     return compile_env and target.os == "Android"
 
 
+@depends("--disable-compile-environment", target)
+def compiling_ios(compile_env, target):
+    return compile_env and target.os == "iOS"
+
+
 include("android-ndk.configure", when=compiling_android)
+include("ios.configure", when=compiling_ios)
 
 with only_when(target_is_osx):
     # MacOS deployment target version
@@ -1035,18 +1041,21 @@ def sysroot(host_or_target, target_sysroot=None):
         sysroot_input,
         host_or_target,
         macos_sdk,
+        ios_sdk,
         bootstrap_path(
             depends(host_or_target)(lambda t: "sysroot-{}".format(t.toolchain)),
             when=bootstrap_sysroot,
         ),
     )
     @imports("os")
-    def sysroot(sysroot_input, host_or_target, macos_sdk, path):
+    def sysroot(sysroot_input, host_or_target, macos_sdk, ios_sdk, path):
         version = None
         if sysroot_input:
             path = sysroot_input[0]
-        elif host_or_target.kernel == "Darwin" and macos_sdk:
+        elif host_or_target.os == "OSX" and macos_sdk:
             path = macos_sdk
+        elif host_or_target.os == "iOS" and ios_sdk:
+            path = ios_sdk
         if path:
             # Find the version of libstdc++ headears in the sysroot
             include = os.path.join(path, "usr/include/c++")
@@ -1199,6 +1208,7 @@ def compiler(
         host_or_target,
         sysroot,
         macos_target,
+        ios_target_flag,
         multiarch_dir,
         winsysroot,
         host,
@@ -1214,6 +1224,7 @@ def compiler(
         host_or_target,
         sysroot,
         macos_target,
+        ios_target_flag,
         multiarch_dir,
         winsysroot,
         host,
@@ -1230,6 +1241,8 @@ def compiler(
                 flags.extend(("--sysroot", sysroot.path))
         if host_or_target.os == "OSX" and macos_target:
             flags.append("-mmacosx-version-min=%s" % macos_target)
+        if host_or_target.os == "iOS" and ios_target_flag:
+            flags.append(ios_target_flag)
         if provided_compiler:
             wrapper.extend(provided_compiler.wrapper)
             flags.extend(provided_compiler.flags)

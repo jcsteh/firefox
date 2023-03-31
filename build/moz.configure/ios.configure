@@ -1,0 +1,120 @@
+# -*- Mode: python; indent-tabs-mode: nil; tab-width: 40 -*-
+# vim: set filetype=python:
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+# iOS deployment target version
+# ==============================================================
+# This needs to happen before any compilation test is done.
+
+option(
+    "--with-ios-platform",
+    nargs=1,
+    default="iphoneos",
+    choices=("iphoneos", "iphonesimulator"),
+    help="Set the target iOS platform{|}"
+)
+
+@depends_if("--with-ios-platform", developer_options)
+def ios_platform(value, _):
+    return value[0]
+
+@depends(target)
+def min_ios_version(target):
+    return "16"
+
+option(
+    "--enable-ios-target",
+    env="IOS_DEPLOYMENT_TARGET",
+    nargs=1,
+    help="Set the minimum iOS version needed at runtime{|}",
+    default=min_ios_version,
+)
+
+set_config("IOS_DEPLOYMENT_TARGET", depends("--enable-ios-target")(lambda target: target[0]))
+
+@depends(ios_platform, "--enable-ios-target")
+def ios_target_flag(ios_platform, ios_target):
+    return "-m%s-version-min=%s" % (ios_platform, ios_target[0])
+
+option(
+    "--with-ios-sdk",
+    env="IOS_SDK_DIR",
+    nargs=1,
+    help="Location of iOS SDK to use",
+)
+
+#TODO: share this with ios
+@imports("plistlib")
+@imports(_from="__builtin__", _import="open")
+@imports(_from="__builtin__", _import="Exception")
+def get_sdk_version(sdk):
+    with open(os.path.join(sdk, "SDKSettings.plist"), "rb") as plist:
+        obj = plistlib.load(plist)
+    if not obj:
+        raise Exception(
+             "Error parsing SDKSettings.plist in the SDK directory: %s" % sdk
+        )
+    if "Version" not in obj:
+        raise Exception(
+            "Error finding Version information in SDKSettings.plist from the SDK: %s"
+            % sdk
+        )
+    return Version(obj["Version"])
+
+@depends("--with-ios-sdk", ios_platform, host)
+@imports(_from="__builtin__", _import="Exception")
+@imports(_from="os.path", _import="isdir")
+@imports(_from="os", _import="listdir")
+def ios_sdk(sdk, ios_platform, host):
+    sdk_min_version = Version("16")
+    if sdk:
+        sdk = sdk[0]
+        try:
+            version = get_sdk_version(sdk)
+        except Exception as e:
+            die(e)
+    elif host.os == "OSX":
+        sdk = check_cmd_output(
+            "xcrun", "--sdk", ios_platform, "--show-sdk-path", onerror=lambda: ""
+        ).rstrip()
+        if not sdk:
+            die(
+                "Could not find the iOS SDK. Please use --with-ios-sdk to give "
+                "the path to an iOS SDK."
+            )
+        # Scan the parent directory xcrun returns for the most recent SDK.
+        sdk_dir = os.path.dirname(sdk)
+        versions = []
+        for d in listdir(sdk_dir):
+            if d.lower().startswith("iphone"):
+                try:
+                    sdk = os.path.join(sdk_dir, d)
+                    versions.append((get_sdk_version(sdk), sdk))
+                except Exception:
+                    pass
+        version, sdk = max(versions)
+    else:
+        die(
+            "Need an iOS SDK when targeting ios. Please use --with-ios-sdk "
+            "to give the path to a ios SDK."
+        )
+    if not isdir(sdk):
+        die(
+            "SDK not found in %s. When using --with-ios-sdk, you must specify a "
+            "valid SDK. SDKs are installed when the optional cross-development "
+            "tools are selected during the Xcode/Developer Tools installation."
+            % sdk
+        )
+    sdk_installation_docs_url = "https://firefox-source-docs.mozilla.org/setup/macos_build.html#macos-sdk-is-unsupported"
+    if version < sdk_min_version:
+        die(
+            'SDK version "%s" is too old. Please upgrade to at least %s. Try '
+            "updating your system Xcode. If that's not sufficient, see the manual "
+            "SDK installation docs: %s"
+            % (version, sdk_min_version, sdk_installation_docs_url)
+        )
+    return sdk
+
+set_config("IOS_SDK_DIR", ios_sdk)
