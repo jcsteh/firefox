@@ -28,6 +28,7 @@ extern LazyLogModule sPEMLog;
           ("[AppleVTEncoder] %s: " fmt, __func__, ##__VA_ARGS__))
 
 static CFDictionaryRef BuildEncoderSpec(const bool aHardwareNotAllowed) {
+#if XP_MACOSX
   const void* keys[] = {
       kVTVideoEncoderSpecification_EnableHardwareAcceleratedVideoEncoder};
   const void* values[] = {aHardwareNotAllowed ? kCFBooleanFalse
@@ -38,6 +39,11 @@ static CFDictionaryRef BuildEncoderSpec(const bool aHardwareNotAllowed) {
   return CFDictionaryCreate(kCFAllocatorDefault, keys, values,
                             ArrayLength(keys), &kCFTypeDictionaryKeyCallBacks,
                             &kCFTypeDictionaryValueCallBacks);
+#else
+  return CFDictionaryCreate(kCFAllocatorDefault, nullptr, nullptr, 0,
+                            &kCFTypeDictionaryKeyCallBacks,
+                            &kCFTypeDictionaryValueCallBacks);
+#endif
 }
 
 static void FrameCallback(void* aEncoder, void* aFrameRefCon, OSStatus aStatus,
@@ -162,6 +168,7 @@ RefPtr<MediaDataEncoder::InitPromise> AppleVTEncoder::Init() {
     }
   }
 
+#if XP_MACOSX
   CFBooleanRef isUsingHW = nullptr;
   status = VTSessionCopyProperty(
       mSession, kVTCompressionPropertyKey_UsingHardwareAcceleratedVideoEncoder,
@@ -170,6 +177,7 @@ RefPtr<MediaDataEncoder::InitPromise> AppleVTEncoder::Init() {
   if (isUsingHW) {
     CFRelease(isUsingHW);
   }
+#endif
 
   mError = NS_OK;
   return InitPromise::CreateAndResolve(TrackInfo::TrackType::kVideoTrack,

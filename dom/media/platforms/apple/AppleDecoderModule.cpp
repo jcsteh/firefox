@@ -207,19 +207,23 @@ bool AppleDecoderModule::CanCreateHWDecoder(media::MediaCodec aCodec) {
 
 /* static */
 bool AppleDecoderModule::RegisterSupplementalVP9Decoder() {
+#ifdef XP_MACOSX
   static bool sRegisterIfAvailable = []() {
-#if !defined(MAC_OS_VERSION_11_0) || \
-    MAC_OS_X_VERSION_MAX_ALLOWED < MAC_OS_VERSION_11_0
+#  if !defined(MAC_OS_VERSION_11_0) || \
+      MAC_OS_X_VERSION_MAX_ALLOWED < MAC_OS_VERSION_11_0
     if (nsCocoaFeatures::OnBigSurOrLater()) {
-#else
+#  else
     if (__builtin_available(macos 11.0, *)) {
-#endif
+#  endif
       VTRegisterSupplementalVideoDecoderIfAvailable(kCMVideoCodecType_VP9);
       return true;
     }
     return false;
   }();
   return sRegisterIfAvailable;
+#else  // iOS
+  return false;
+#endif
 }
 
 /* static */
