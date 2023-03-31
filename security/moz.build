@@ -133,6 +133,9 @@ if CONFIG["CC_TYPE"] in ("clang", "clang-cl"):
 if CONFIG["GCC_USE_GNU_LD"]:
     gyp_vars["cc_use_gnu_ld"] = 1
 
+if CONFIG['IOS_DEPLOYMENT_TARGET']:
+    gyp_vars['iphone_deployment_target'] = CONFIG['IOS_DEPLOYMENT_TARGET']
+
 GYP_DIRS += ["nss"]
 GYP_DIRS["nss"].input = "nss/nss.gyp"
 GYP_DIRS["nss"].variables = gyp_vars
@@ -169,6 +172,7 @@ if CONFIG["OS_TARGET"] == "Android":
     ]
     if CONFIG["ANDROID_VERSION"]:
         sandbox_vars["CFLAGS"] += ["-DANDROID_VERSION=" + CONFIG["ANDROID_VERSION"]]
+
 if CONFIG["MOZ_SYSTEM_NSS"]:
     sandbox_vars["CXXFLAGS"] = CONFIG["NSS_CFLAGS"]
 GYP_DIRS["nss"].sandbox_vars = sandbox_vars
