@@ -254,13 +254,15 @@ if CONFIG["MOZ_WIDGET_TOOLKIT"] == "cocoa":
         "NativeLayerCA.h",
         "SurfacePoolCA.h",
     ]
-    EXPORTS += [
-        "MacIOSurfaceHelpers.h",
-        "MacIOSurfaceImage.h",
-    ]
     UNIFIED_SOURCES += [
         "NativeLayerCA.mm",
         "SurfacePoolCA.mm",
+    ]
+
+if CONFIG["MOZ_WIDGET_TOOLKIT"] in ("cocoa", "uikit"):
+    EXPORTS += [
+        "MacIOSurfaceHelpers.h",
+        "MacIOSurfaceImage.h",
     ]
     SOURCES += [
         "MacIOSurfaceHelpers.cpp",

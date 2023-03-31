@@ -79,6 +79,11 @@ EXPORTS.mozilla.gfx += [
 
 EXPORTS.mozilla.gfx += ["SkMemoryReporter.h"]
 
+if CONFIG["MOZ_WIDGET_TOOLKIT"] in ("cocoa", "uikit"):
+    EXPORTS += [
+        "gfxMacUtils.h",
+    ]
+
 if CONFIG["MOZ_WIDGET_TOOLKIT"] == "android":
     EXPORTS += [
         "gfxAndroidPlatform.h",
@@ -98,7 +103,6 @@ if CONFIG["MOZ_WIDGET_TOOLKIT"] == "android":
     ]
 elif CONFIG["MOZ_WIDGET_TOOLKIT"] == "cocoa":
     EXPORTS += [
-        "gfxMacUtils.h",
         "gfxPlatformMac.h",
         "gfxQuartzNativeDrawing.h",
         "gfxQuartzSurface.h",

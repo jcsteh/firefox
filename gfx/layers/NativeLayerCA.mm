@@ -5,10 +5,12 @@
 
 #include "mozilla/layers/NativeLayerCA.h"
 
-#import <AppKit/NSAnimationContext.h>
-#import <AppKit/NSColor.h>
+#ifdef MOZ_WIDGET_COCOA
+#  import <AppKit/NSAnimationContext.h>
+#  import <AppKit/NSColor.h>
+#  import <OpenGL/gl.h>
+#endif
 #import <AVFoundation/AVFoundation.h>
-#import <OpenGL/gl.h>
 #import <QuartzCore/QuartzCore.h>
 
 #include <algorithm>
@@ -19,7 +21,11 @@
 
 #include "gfxUtils.h"
 #include "GLBlitHelper.h"
-#include "GLContextCGL.h"
+#ifdef MOZ_WIDGET_COCOA
+#  include "GLContextCGL.h"
+#else
+#  include "GLContextEGL.h"
+#endif
 #include "GLContextProvider.h"
 #include "MozFramebuffer.h"
 #include "mozilla/gfx/Swizzle.h"
@@ -28,7 +34,9 @@
 #include "mozilla/StaticPrefs_gfx.h"
 #include "mozilla/Telemetry.h"
 #include "mozilla/webrender/RenderMacIOSurfaceTextureHost.h"
-#include "nsCocoaFeatures.h"
+#ifdef MOZ_WIDGET_COCOA
+#  include "nsCocoaFeatures.h"
+#endif
 #include "ScopedGLHelpers.h"
 #include "SDKDeclarations.h"
 
@@ -47,7 +55,9 @@ using gfx::IntSize;
 using gfx::Matrix4x4;
 using gfx::SurfaceFormat;
 using gl::GLContext;
+#ifdef MOZ_WIDGET_COCOA
 using gl::GLContextCGL;
+#endif
 
 static Maybe<Telemetry::LABELS_GFX_MACOS_VIDEO_LOW_POWER> VideoLowPowerTypeToTelemetryType(
     VideoLowPowerType aVideoLowPower) {
@@ -141,12 +151,18 @@ class AsyncReadbackBufferNLRS : public profiler_screenshots::AsyncReadbackBuffer
 // see bug 1585523.
 struct MOZ_STACK_CLASS AutoCATransaction final {
   AutoCATransaction() {
+#ifdef MOZ_WIDGET_COCOA
     [NSAnimationContext beginGrouping];
+#endif
     // By default, mutating a CALayer property triggers an animation which smoothly transitions the
     // property to the new value. We don't need these animations, and this call turns them off:
     [CATransaction setDisableActions:YES];
   }
-  ~AutoCATransaction() { [NSAnimationContext endGrouping]; }
+  ~AutoCATransaction() {
+#ifdef MOZ_WIDGET_COCOA
+    [NSAnimationContext endGrouping];
+#endif
+  }
 };
 
 /* static */ already_AddRefed<NativeLayerRootCA> NativeLayerRootCA::CreateForCALayer(
