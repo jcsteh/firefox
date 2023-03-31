@@ -198,7 +198,7 @@ def audio_backends_default(target):
         return ("oss",)
     elif target.os == "OpenBSD":
         return ("sndio",)
-    elif target.os == "OSX":
+    elif target.os in ("OSX", "iOS"):
         return ("audiounit",)
     elif target.os == "NetBSD":
         return ("sunaudio",)
@@ -428,6 +428,8 @@ def toolkit_choices(target):
         return ("cairo-windows",)
     elif target.os == "OSX":
         return ("cairo-cocoa",)
+    elif target.os == "iOS":
+        return ("cairo-uikit",)
     elif target.os == "Android":
         return ("cairo-android",)
     else:
@@ -1083,6 +1085,13 @@ set_define("MOZ_APP_SYSTEM_HEADERS", app_system_headers)
 
 # Printing
 # ==============================================================
+@depends(target)
+def ios_disable_printing(target):
+    if target.os == "iOS":
+        return False
+
+imply_option("--enable-printing", ios_disable_printing, reason="--target")
+
 option("--disable-printing", help="Disable printing support")
 
 
@@ -2885,7 +2894,7 @@ with only_when(compile_environment):
 @depends(target, developer_options, artifact_builds)
 def crashreporter_default(target, developer_options, artifacts):
     if target.kernel in ("WINNT", "Darwin"):
-        return True
+        return target.os != "iOS"
     if target.kernel == "Linux" and target.cpu in ("x86", "x86_64", "arm", "aarch64"):
         # The crash reporter prevents crash stacktraces to be logged in the
         # logs on Android, so we leave it out by default in developer builds.
