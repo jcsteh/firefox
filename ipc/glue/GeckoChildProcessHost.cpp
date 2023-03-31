@@ -12,13 +12,15 @@
 #include "base/task.h"
 #include "chrome/common/chrome_switches.h"
 #include "chrome/common/process_watcher.h"
-#ifdef MOZ_WIDGET_COCOA
-#  include <bsm/libbsm.h>
+#ifdef XP_DARWIN
 #  include <mach/mach_traps.h>
-#  include <servers/bootstrap.h>
 #  include "SharedMemoryBasic.h"
 #  include "base/rand_util.h"
 #  include "chrome/common/mach_ipc_mac.h"
+#endif
+#ifdef MOZ_WIDGET_COCOA
+#  include <bsm/libbsm.h>
+#  include <servers/bootstrap.h>
 #  include "nsILocalFileMac.h"
 #endif
 
@@ -320,7 +322,7 @@ class PosixProcessLauncher : public BaseProcessLauncher {
   int mChannelDstFd;
 };
 
-#  if defined(XP_MACOSX)
+#  if defined(XP_DARWIN)
 class MacProcessLauncher : public PosixProcessLauncher {
  public:
   MacProcessLauncher(GeckoChildProcessHost* aHost,
@@ -375,7 +377,7 @@ class LinuxProcessLauncher : public PosixProcessLauncher {
   virtual Result<Ok, LaunchError> DoSetup() override;
 };
 typedef LinuxProcessLauncher ProcessLauncher;
-#  elif
+#  else
 #    error "Unknown platform"
 #  endif
 #endif  // OS_POSIX

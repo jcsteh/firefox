@@ -4,12 +4,13 @@
 
 #include "ProcessUtils.h"
 
-#include "nsObjCExceptions.h"
-#include "nsCocoaUtils.h"
-#include "nsString.h"
-#include "mozilla/Sprintf.h"
+#ifdef MOZ_WIDGET_COCOA
+#  include "nsObjCExceptions.h"
+#  include "nsCocoaUtils.h"
+#  include "nsString.h"
+#  include "mozilla/Sprintf.h"
 
-#define UNDOCUMENTED_SESSION_CONSTANT ((int)-2)
+#  define UNDOCUMENTED_SESSION_CONSTANT ((int)-2)
 
 namespace mozilla {
 namespace ipc {
@@ -107,3 +108,10 @@ void SetThisProcessName(const char* aProcessName) {
 
 }  // namespace ipc
 }  // namespace mozilla
+#else
+namespace mozilla {
+namespace ipc {
+void SetThisProcessName(const char* aProcessName) {}
+}  // namespace ipc
+}  // namespace mozilla
+#endif

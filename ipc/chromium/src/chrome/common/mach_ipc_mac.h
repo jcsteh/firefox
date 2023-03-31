@@ -9,8 +9,13 @@
 
 #include <mach/mach.h>
 #include <mach/message.h>
-#include <servers/bootstrap.h>
 #include <sys/types.h>
+#include <build/build_config.h>
+
+#if !defined(OS_IOS)
+#  include <CoreServices/CoreServices.h>
+#  include <servers/bootstrap.h>
+#endif
 
 #include "mozilla/Maybe.h"
 #include "mozilla/Result.h"

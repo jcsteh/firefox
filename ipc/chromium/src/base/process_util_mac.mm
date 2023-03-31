@@ -93,13 +93,17 @@ Result<Ok, LaunchError> LaunchApp(const std::vector<std::string>& argv,
   // disturbing other threads, and then restore it afterwards.
   int old_cwd_fd = -1;
   if (!options.workdir.empty()) {
-    if (@available(macOS 10.15, *)) {
+#if !OS_IOS
+    if (@available(macOS 10.15, iOS 15, *)) {
       int rv = posix_spawn_file_actions_addchdir_np(&file_actions, options.workdir.c_str());
       if (rv != 0) {
         DLOG(WARNING) << "posix_spawn_file_actions_addchdir_np failed";
         return Err(LaunchError("posix_spawn_file_actions_addchdir", rv));
       }
     } else {
+#else
+    {
+#endif
       old_cwd_fd = open(".", O_RDONLY | O_CLOEXEC | O_DIRECTORY);
       if (old_cwd_fd < 0) {
         DLOG(WARNING) << "open(\".\") failed";
