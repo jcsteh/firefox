@@ -15,10 +15,11 @@
 
 #ifdef MOZ_WIDGET_UIKIT
 #  include <CoreFoundation/CoreFoundation.h>
+#else
+#  include "nsCocoaFeatures.h"
 #endif
 
 #include "nsIMemoryReporter.h"
-#include "nsCocoaFeatures.h"
 
 namespace mozilla {
 namespace gfx {

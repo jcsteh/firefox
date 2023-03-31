@@ -39,8 +39,13 @@
 #include "cairo.h"
 
 #if CAIRO_HAS_QUARTZ_SURFACE
+#include "TargetConditionals.h"
 
+#if !TARGET_OS_IPHONE
 #include <ApplicationServices/ApplicationServices.h>
+#else
+#include <CoreGraphics/CoreGraphics.h>
+#endif
 
 CAIRO_BEGIN_DECLS
 
@@ -75,8 +80,10 @@ cairo_quartz_surface_get_image (cairo_surface_t *surface);
 cairo_public cairo_font_face_t *
 cairo_quartz_font_face_create_for_cgfont (CGFontRef font);
 
+#if !TARGET_OS_IPHONE
 cairo_public cairo_font_face_t *
 cairo_quartz_font_face_create_for_atsu_font_id (ATSUFontID font_id);
+#endif
 
 #endif /* CAIRO_HAS_QUARTZ_FONT */
 

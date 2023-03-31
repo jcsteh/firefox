@@ -8,7 +8,11 @@
 #define MacIOSurface_h__
 #ifdef XP_DARWIN
 #  include <CoreVideo/CoreVideo.h>
-#  include <IOSurface/IOSurface.h>
+#  ifdef XP_MACOSX
+#    include <IOSurface/IOSurface.h>
+#  else
+#    include <IOSurface/IOSurfaceRef.h>
+#  endif
 #  include <QuartzCore/QuartzCore.h>
 #  include <dlfcn.h>
 
@@ -34,7 +38,9 @@ typedef int CGLError;
 #  ifdef XP_MACOSX
 #    import <OpenGL/OpenGL.h>
 #  else
-#    import <OpenGLES/ES2/gl.h>
+#    include "GLTypes.h"
+typedef realGLboolean GLboolean;
+#    include <OpenGLES/ES2/gl.h>
 #  endif
 
 #  include "2D.h"

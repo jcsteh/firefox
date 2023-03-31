@@ -5,10 +5,12 @@
 
 #include "GLContextProvider.h"
 #include "GLContextEAGL.h"
+#include "GLLibraryLoader.h"
 #include "nsDebug.h"
 #include "nsIWidget.h"
 #include "gfxFailure.h"
 #include "prenv.h"
+#include "prlink.h"
 #include "mozilla/Preferences.h"
 #include "mozilla/ProfilerLabels.h"
 #include "mozilla/layers/CompositorOptions.h"
@@ -101,7 +103,7 @@ bool GLContextEAGL::IsCurrentImpl() const { return [EAGLContext currentContext] 
 
 static PRFuncPtr GLAPIENTRY GetLoadedProcAddress(const char* const name) {
   PRLibrary* lib = nullptr;
-  const auto& ret = PR_FindFunctionSymbolAndLibrary(name, &leakedLibRef);
+  const auto& ret = PR_FindFunctionSymbolAndLibrary(name, &lib);
   if (lib) {
     PR_UnloadLibrary(lib);
   }
@@ -182,7 +184,6 @@ already_AddRefed<GLContext> GLContextProviderEAGL::CreateForCompositorWidget(
 already_AddRefed<GLContext> GLContextProviderEAGL::CreateHeadless(
     const GLContextCreateDesc& createDesc, nsACString* const out_failureId) {
   auto desc = GLContextDesc{createDesc};
-  desc.isOffcreen = true;
   return CreateEAGLContext(desc, GetGlobalContextEAGL()).forget();
 }
 
@@ -194,7 +195,8 @@ GLContext* GLContextProviderEAGL::GetGlobalContext() {
     triedToCreateContext = true;
 
     MOZ_RELEASE_ASSERT(!gGlobalContext, "GFX: Global GL context already initialized.");
-    RefPtr<GLContext> temp = CreateHeadless(CreateContextFlags::NONE);
+    nsCString discardFailureId;
+    RefPtr<GLContext> temp = CreateHeadless({}, &discardFailureId);
     gGlobalContext = temp;
 
     if (!gGlobalContext) {

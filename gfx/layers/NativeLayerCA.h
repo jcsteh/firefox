@@ -6,7 +6,11 @@
 #ifndef mozilla_layers_NativeLayerCA_h
 #define mozilla_layers_NativeLayerCA_h
 
-#include <IOSurface/IOSurface.h>
+#ifdef XP_MACOSX
+#  include <IOSurface/IOSurface.h>
+#else
+#  include <IOSurface/IOSurfaceRef.h>
+#endif
 
 #include <deque>
 #include <unordered_map>
