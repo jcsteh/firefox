@@ -73,9 +73,9 @@ ParentObject AccessibleNode::GetParentObject() const {
 
 void AccessibleNode::GetComputedRole(nsAString& aRole) {
   if (mIntl) {
-    nsAccessibilityService* accService = GetOrCreateAccService();
-    if (accService) {
-      accService->GetStringRole(mIntl->Role(), aRole);
+    nsStaticAtom* ariaRole = mIntl->ComputedARIARole();
+    if (ariaRole) {
+      ariaRole->ToString(aRole);
       return;
     }
   }
