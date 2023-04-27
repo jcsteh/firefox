@@ -15,7 +15,7 @@ FORCE_STATIC_LIB = True
 
 if CONFIG["OS_ARCH"] == "WINNT":
     USE_STATIC_LIBS = True
-elif CONFIG["OS_ARCH"] == "Darwin":
+elif CONFIG["TARGET_OS"] == "OSX":
     UNIFIED_SOURCES += [
         "MacVerifyCrypto.cpp",
     ]
