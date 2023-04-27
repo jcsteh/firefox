@@ -19,7 +19,7 @@ class nsMIMEInfoUIKit final : public nsMIMEInfoImpl {
   NS_IMETHOD LaunchWithFile(nsIFile* aFile) override;
 
  protected:
-  virtual nsresult LoadUriInternal(nsIURI* aURI);
+  [[nodiscard]] virtual nsresult LoadUriInternal(nsIURI* aURI) override;
 #ifdef DEBUG
   virtual nsresult LaunchDefaultWithFile(nsIFile* aFile) {
     MOZ_ASSERT_UNREACHABLE("do not call this method, use LaunchWithFile");
