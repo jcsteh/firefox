@@ -13,6 +13,8 @@
 #include "gfxFont.h"
 #include "gfxFontConstants.h"
 
+using namespace mozilla;
+
 nsLookAndFeel::nsLookAndFeel() : mInitialized(false) {}
 
 nsLookAndFeel::~nsLookAndFeel() {}
@@ -32,15 +34,7 @@ static nscolor GetColorFromUIColor(UIColor* aColor) {
   return 0;
 }
 
-void nsLookAndFeel::NativeInit() { EnsureInit(); }
-
-void nsLookAndFeel::RefreshImpl() {
-  nsXPLookAndFeel::RefreshImpl();
-
-  mInitialized = false;
-}
-
-nsresult nsLookAndFeel::NativeGetColor(ColorID, ColorScheme, nscolor& aResult) {
+nsresult nsLookAndFeel::NativeGetColor(ColorID aID, ColorScheme aScheme, nscolor& aResult) {
   EnsureInit();
 
   nsresult res = NS_OK;
@@ -154,11 +148,11 @@ nsresult nsLookAndFeel::NativeGetColor(ColorID, ColorScheme, nscolor& aResult) {
       aResult = NS_RGB(0xaa, 0xaa, 0xaa);
       break;
     case ColorID::Window:
-    case ColorID::MozField:
+    case ColorID::Field:
     case ColorID::MozCombobox:
       aResult = NS_RGB(0xff, 0xff, 0xff);
       break;
-    case ColorID::MozFieldtext:
+    case ColorID::Fieldtext:
     case ColorID::MozComboboxtext:
       aResult = mColorDarkText;
       break;
@@ -348,10 +342,10 @@ nsLookAndFeel::NativeGetFloat(FloatID aID, float& aResult) {
 
 bool nsLookAndFeel::NativeGetFont(FontID aID, nsString& aFontName, gfxFontStyle& aFontStyle) {
   // hack for now
-  if (aID == FontID::Window || aID == FontID::Document) {
-    aFontStyle.style = FontSlantStyle::Normal();
-    aFontStyle.weight = FontWeight::Normal();
-    aFontStyle.stretch = FontStretch::Normal();
+  if (aID == FontID::Caption || aID == FontID::Menu) {
+    aFontStyle.style = FontSlantStyle::NORMAL;
+    aFontStyle.weight = FontWeight::NORMAL;
+    aFontStyle.stretch = FontStretch::NORMAL;
     aFontStyle.size = 14;
     aFontStyle.systemFont = true;
 
@@ -369,14 +363,7 @@ void nsLookAndFeel::EnsureInit() {
   }
   mInitialized = true;
 
-  nscolor color;
-  GetColor(ColorID::TextSelectBackground, color);
-  if (color == 0x000000) {
-    mColorTextSelectForeground = NS_RGB(0xff, 0xff, 0xff);
-  } else {
-    mColorTextSelectForeground = NS_SAME_AS_FOREGROUND_COLOR;
-  }
-
+  mColorTextSelectForeground = NS_SAME_AS_FOREGROUND_COLOR;
   mColorDarkText = GetColorFromUIColor([UIColor darkTextColor]);
 
   RecordTelemetry();

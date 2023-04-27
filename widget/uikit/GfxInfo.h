@@ -64,9 +64,9 @@ class GfxInfo : public GfxInfoBase {
  protected:
   virtual nsresult GetFeatureStatusImpl(
       int32_t aFeature, int32_t* aStatus, nsAString& aSuggestedDriverVersion,
-      const nsTArray<GfxDriverInfo>& aDriverInfo,
-      OperatingSystem* aOS = nullptr);
-  virtual const nsTArray<GfxDriverInfo>& GetGfxDriverInfo();
+      const nsTArray<GfxDriverInfo>& aDriverInfo, nsACString& aFailureId,
+      OperatingSystem* aOS = nullptr) override;
+  virtual const nsTArray<GfxDriverInfo>& GetGfxDriverInfo() override;
 };
 
 }  // namespace widget
