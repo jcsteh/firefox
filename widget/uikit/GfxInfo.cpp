@@ -116,7 +116,8 @@ const nsTArray<GfxDriverInfo>& GfxInfo::GetGfxDriverInfo() {
     APPEND_TO_DRIVER_BLOCKLIST2(
         OperatingSystem::Ios, DeviceFamily::All,
         nsIGfxInfo::FEATURE_OPENGL_LAYERS, nsIGfxInfo::FEATURE_STATUS_OK,
-        DRIVER_COMPARISON_IGNORED, GfxDriverInfo::allDriverVersions);
+        DRIVER_COMPARISON_IGNORED, GfxDriverInfo::allDriverVersions,
+        "FEATURE_OK_FORCE_OPENGL");
   }
 
   return *sDriverInfo;
@@ -124,7 +125,7 @@ const nsTArray<GfxDriverInfo>& GfxInfo::GetGfxDriverInfo() {
 
 nsresult GfxInfo::GetFeatureStatusImpl(
     int32_t aFeature, int32_t* aStatus, nsAString& aSuggestedDriverVersion,
-    const nsTArray<GfxDriverInfo>& aDriverInfo,
+    const nsTArray<GfxDriverInfo>& aDriverInfo, nsACString& aFailureId,
     OperatingSystem* aOS /* = nullptr */) {
   NS_ENSURE_ARG_POINTER(aStatus);
   aSuggestedDriverVersion.SetIsVoid(true);
@@ -145,7 +146,7 @@ nsresult GfxInfo::GetFeatureStatusImpl(
   }
 
   return GfxInfoBase::GetFeatureStatusImpl(
-      aFeature, aStatus, aSuggestedDriverVersion, aDriverInfo, aOS);
+      aFeature, aStatus, aSuggestedDriverVersion, aDriverInfo, aFailureId, aOS);
 }
 
 #ifdef DEBUG

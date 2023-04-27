@@ -73,8 +73,9 @@ class nsWindow final : public nsBaseWidget {
 
   // virtual nsresult
   // NotifyIME(const IMENotification& aIMENotification) override;
-  virtual void SetInputContext(const InputContext& aContext, const InputContextAction& aAction);
-  virtual InputContext GetInputContext();
+  virtual void SetInputContext(const InputContext& aContext,
+                               const InputContextAction& aAction) override;
+  virtual InputContext GetInputContext() override;
   /*
   virtual bool ExecuteNativeKeyBinding(
                       NativeKeyBindingsType aType,

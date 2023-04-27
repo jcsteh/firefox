@@ -15,7 +15,7 @@ class nsISupports;
 
 nsresult nsAppShellConstructor(const nsIID& iid, void** result);
 
-nsresult nsWidgetUIKitModuleCtor();
+void nsWidgetUIKitModuleCtor();
 void nsWidgetUIKitModuleDtor();
 
 #endif  // defined widget_uikit_nsWidgetFactory_h

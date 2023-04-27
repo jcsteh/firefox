@@ -14,6 +14,7 @@
 #include "nsBaseAppShell.h"
 #include "nsTArray.h"
 
+#include <dispatch/dispatch.h>
 #include <Foundation/NSAutoreleasePool.h>
 #include <CoreFoundation/CFRunLoop.h>
 #include <UIKit/UIWindow.h>
@@ -33,6 +34,8 @@ class nsAppShell : public nsBaseAppShell {
   // Called by the application delegate
   void WillTerminate(void);
 
+  static void OnMemoryPressureChanged(dispatch_source_memorypressure_flags_t aPressureLevel);
+
   static nsAppShell* gAppShell;
   static UIWindow* gWindow;
   static NSMutableArray* gTopLevelViews;
@@ -41,13 +44,18 @@ class nsAppShell : public nsBaseAppShell {
   virtual ~nsAppShell();
 
   static void ProcessGeckoEvents(void* aInfo);
-  virtual void ScheduleNativeEventCallback();
-  virtual bool ProcessNextNativeEvent(bool aMayWait);
+  virtual void ScheduleNativeEventCallback() override;
+  virtual bool ProcessNextNativeEvent(bool aMayWait) override;
+
+  void InitMemoryPressureObserver();
 
   NSAutoreleasePool* mAutoreleasePool;
   AppShellDelegate* mDelegate;
   CFRunLoopRef mCFRunLoop;
   CFRunLoopSourceRef mCFRunLoopSource;
+
+  // For getting notifications from the OS about memory pressure state changes.
+  dispatch_source_t mMemoryPressureSource = nullptr;
 
   bool mTerminated;
   bool mNotifiedWillTerminate;

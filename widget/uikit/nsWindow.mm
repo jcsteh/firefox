@@ -17,7 +17,7 @@
 #include <algorithm>
 
 #include "nsWindow.h"
-#include "nsScreenManager.h"
+#include "ScreenHelperUIKit.h"
 #include "nsAppShell.h"
 
 #include "nsWidgetsCID.h"
@@ -653,12 +653,13 @@ nsresult nsWindow::DispatchEvent(mozilla::WidgetGUIEvent* aEvent, nsEventStatus&
   return NS_OK;
 }
 
-void nsWindow::SetInputContext(const InputContext& aContext, const InputContextAction& aAction) {
+void nsWindow::SetInputContext(const InputContext& aContext,
+                               const InputContextAction& aAction) override {
   // TODO: actually show VKB
   mInputContext = aContext;
 }
 
-mozilla::widget::InputContext nsWindow::GetInputContext() { return mInputContext; }
+mozilla::widget::InputContext nsWindow::GetInputContext() override { return mInputContext; }
 
 void nsWindow::SetBackgroundColor(const nscolor& aColor) {
   mNativeView.backgroundColor = [UIColor colorWithRed:NS_GET_R(aColor)
