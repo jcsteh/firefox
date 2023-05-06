@@ -8,7 +8,7 @@
 # ==============================================================
 @depends(build_project)
 def updater_default(build_project):
-    return build_project != "mobile/android"
+    return build_project not in ("mobile/android", "mobile/ios")
 
 
 option(
