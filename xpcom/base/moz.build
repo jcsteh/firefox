@@ -28,9 +28,6 @@ if CONFIG["MOZ_WIDGET_TOOLKIT"] == "cocoa":
     XPIDL_SOURCES += [
         "nsIMacPreferencesReader.idl",
     ]
-    EXPORTS += [
-        "nsObjCExceptions.h",
-    ]
     EXPORTS.mozilla += [
         "MacHelpers.h",
         "MacStringHelpers.h",
@@ -41,6 +38,10 @@ if CONFIG["MOZ_WIDGET_TOOLKIT"] == "cocoa":
         "MacStringHelpers.mm",
         "nsMacPreferencesReader.mm",
         "nsObjCExceptions.mm",
+    ]
+if CONFIG["OS_ARCH"] == "Darwin":
+    EXPORTS += [
+        "nsObjCExceptions.h",
     ]
 
 XPIDL_MODULE = "xpcom_base"
