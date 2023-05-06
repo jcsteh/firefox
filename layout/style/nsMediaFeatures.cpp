@@ -268,6 +268,9 @@ bool Gecko_MediaFeatures_MatchesPlatform(StylePlatform aPlatform) {
 #elif defined(XP_MACOSX)
     case StylePlatform::Macos:
       return true;
+#elif defined(XP_IOS)
+    case StylePlatform::iOS:
+      return true;
 #else
 #  error "Unknown platform?"
 #endif

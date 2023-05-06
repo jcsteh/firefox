@@ -517,6 +517,9 @@ pub enum Platform {
     /// platforms and they already use the "linux" string elsewhere (e.g.,
     /// toolkit/themes/linux).
     Linux,
+    /// Matches any iOS version.
+    #[allow(non_camel_case_types)]
+    iOS,
     /// Matches any macOS version.
     Macos,
     /// Matches any Windows version.
