@@ -6156,7 +6156,7 @@
   value: false
   mirror: always
 
-#if defined(XP_MACOSX)
+#if defined(XP_DARWIN)
   # Set to true to revert from HarfBuzz AAT shaping to the old Core Text
   # backend.
 -   name: gfx.font_rendering.coretext.enabled
