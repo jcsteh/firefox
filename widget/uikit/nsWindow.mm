@@ -23,12 +23,12 @@
 #include "nsWidgetsCID.h"
 #include "nsGfxCIID.h"
 
+#include "gfxPlatform.h"
 #include "gfxQuartzSurface.h"
 #include "gfxUtils.h"
 #include "gfxImageSurface.h"
 #include "gfxContext.h"
 #include "nsRegion.h"
-#include "Layers.h"
 #include "nsTArray.h"
 
 #include "mozilla/BasicEvents.h"
@@ -36,10 +36,13 @@
 #include "mozilla/TouchEvents.h"
 #include "mozilla/Unused.h"
 #include "mozilla/dom/MouseEventBinding.h"
+#include "mozilla/widget/ScreenManager.h"
+#include "mozilla/gfx/Logging.h"
 
 using namespace mozilla;
-using namespace mozilla::dom;
+using namespace mozilla::gfx;
 using namespace mozilla::layers;
+using mozilla::dom::Touch;
 
 #define ALOG(args...)    \
   fprintf(stderr, args); \
@@ -69,7 +72,7 @@ class nsAutoRetainUIKitObject {
  @public
   nsWindow* mGeckoChild;  // weak ref
   BOOL mWaitingForPaint;
-  CFMutableDictionaryRef mTouches;
+  NSMutableDictionary<UITouch*, NSNumber*>* mTouches;
   int mNextTouchID;
 }
 // sets up our view, attaching it to its owning gecko view
@@ -87,10 +90,10 @@ class nsAutoRetainUIKitObject {
 - (void)drawUsingOpenGLCallback;
 - (void)sendTouchEvent:(EventMessage)aType touches:(NSSet*)aTouches widget:(nsWindow*)aWindow;
 // Event handling (UIResponder)
-- (void)touchesBegan:(NSSet*)touches withEvent:(UIEvent*)event;
-- (void)touchesCancelled:(NSSet*)touches withEvent:(UIEvent*)event;
-- (void)touchesEnded:(NSSet*)touches withEvent:(UIEvent*)event;
-- (void)touchesMoved:(NSSet*)touches withEvent:(UIEvent*)event;
+- (void)touchesBegan:(NSSet<UITouch*>*)touches withEvent:(UIEvent*)event;
+- (void)touchesCancelled:(NSSet<UITouch*>*)touches withEvent:(UIEvent*)event;
+- (void)touchesEnded:(NSSet<UITouch*>*)touches withEvent:(UIEvent*)event;
+- (void)touchesMoved:(NSSet<UITouch*>*)touches withEvent:(UIEvent*)event;
 @end
 
 @implementation ChildView
@@ -112,14 +115,14 @@ class nsAutoRetainUIKitObject {
   tapRecognizer.numberOfTapsRequired = 1;
   [self addGestureRecognizer:tapRecognizer];
 
-  mTouches = CFDictionaryCreateMutable(kCFAllocatorDefault, 0, nullptr, nullptr);
+  mTouches = [NSMutableDictionary init];
   mNextTouchID = 0;
   return self;
 }
 
 - (void)widgetDestroyed {
   mGeckoChild = nullptr;
-  CFRelease(mTouches);
+  //[mTouches release];
 }
 
 - (void)delayedTearDown {
@@ -134,9 +137,9 @@ class nsAutoRetainUIKitObject {
 
   event.mRefPoint = aPoint;
   event.mClickCount = 1;
-  event.button = MouseButton::ePrimary;
+  event.mButton = MouseButton::ePrimary;
   event.mTime = PR_IntervalNow();
-  event.inputSource = MouseEvent_Binding::MOZ_SOURCE_UNKNOWN;
+  event.mInputSource = mozilla::dom::MouseEvent_Binding::MOZ_SOURCE_UNKNOWN;
 
   nsEventStatus status;
   aWindow->DispatchEvent(&event, status);
@@ -162,14 +165,15 @@ class nsAutoRetainUIKitObject {
   for (UITouch* touch in aTouches) {
     LayoutDeviceIntPoint loc =
         UIKitPointsToDevPixels([touch locationInView:self], [self contentScaleFactor]);
-    LayoutDeviceIntPoint radius = UIKitPointsToDevPixels([touch majorRadius], [touch majorRadius]);
-    void* value;
-    if (!CFDictionaryGetValueIfPresent(mTouches, touch, (const void**)&value)) {
+    LayoutDeviceIntPoint radius = UIKitPointsToDevPixels(
+        CGPointMake([touch majorRadius], [touch majorRadius]), [self contentScaleFactor]);
+    NSNumber* value = mTouches[touch];
+    if (value == nil) {
       // This shouldn't happen.
       NS_ASSERTION(false, "Got a touch that we didn't know about");
       continue;
     }
-    int id = reinterpret_cast<int>(value);
+    int id = [value intValue];
     RefPtr<Touch> t = new Touch(id, loc, radius, 0.0f, 1.0f);
     event.mRefPoint = loc;
     event.mTouches.AppendElement(t);
@@ -177,42 +181,38 @@ class nsAutoRetainUIKitObject {
   aWindow->DispatchInputEvent(&event);
 }
 
-- (void)touchesBegan:(NSSet*)touches withEvent:(UIEvent*)event {
+- (void)touchesBegan:(NSSet<UITouch*>*)touches withEvent:(UIEvent*)event {
   ALOG("[ChildView[%p] touchesBegan", self);
   if (!mGeckoChild) return;
 
   for (UITouch* touch : touches) {
-    CFDictionaryAddValue(mTouches, touch, (void*)mNextTouchID);
+    mTouches[touch] = [NSNumber numberWithInt:mNextTouchID];
     mNextTouchID++;
   }
   [self sendTouchEvent:eTouchStart touches:[event allTouches] widget:mGeckoChild];
 }
 
-- (void)touchesCancelled:(NSSet*)touches withEvent:(UIEvent*)event {
+- (void)touchesCancelled:(NSSet<UITouch*>*)touches withEvent:(UIEvent*)event {
   ALOG("[ChildView[%p] touchesCancelled", self);
   [self sendTouchEvent:eTouchCancel touches:touches widget:mGeckoChild];
-  for (UITouch* touch : touches) {
-    CFDictionaryRemoveValue(mTouches, touch);
-  }
-  if (CFDictionaryGetCount(mTouches) == 0) {
+  [mTouches removeObjectsForKeys:touches.allObjects];
+  if (mTouches.count == 0) {
     mNextTouchID = 0;
   }
 }
 
-- (void)touchesEnded:(NSSet*)touches withEvent:(UIEvent*)event {
+- (void)touchesEnded:(NSSet<UITouch*>*)touches withEvent:(UIEvent*)event {
   ALOG("[ChildView[%p] touchesEnded", self);
   if (!mGeckoChild) return;
 
   [self sendTouchEvent:eTouchEnd touches:touches widget:mGeckoChild];
-  for (UITouch* touch : touches) {
-    CFDictionaryRemoveValue(mTouches, touch);
-  }
-  if (CFDictionaryGetCount(mTouches) == 0) {
+  [mTouches removeObjectsForKeys:touches.allObjects];
+  if (mTouches.count == 0) {
     mNextTouchID = 0;
   }
 }
 
-- (void)touchesMoved:(NSSet*)touches withEvent:(UIEvent*)event {
+- (void)touchesMoved:(NSSet<UITouch*>*)touches withEvent:(UIEvent*)event {
   ALOG("[ChildView[%p] touchesMoved", self);
   if (!mGeckoChild) return;
 
@@ -306,7 +306,8 @@ class nsAutoRetainUIKitObject {
   CGContextScaleCTM(aContext, 1.0 / scale, 1.0 / scale);
 
   CGSize viewSize = [self bounds].size;
-  gfx::IntSize backingSize(viewSize.width * scale, viewSize.height * scale);
+  gfx::IntSize backingSize(NSToIntRound(viewSize.width * scale),
+                           NSToIntRound(viewSize.height * scale));
 
   CGContextSaveGState(aContext);
 
@@ -322,12 +323,10 @@ class nsAutoRetainUIKitObject {
     // This is dead code unless you mess with prefs, but keep it around for
     // debugging.
     targetSurface = new gfxQuartzSurface(aContext, backingSize);
-    targetSurface->SetAllowUseAsSource(false);
     RefPtr<gfx::DrawTarget> dt =
         gfxPlatform::CreateDrawTargetForSurface(targetSurface, backingSize);
     if (!dt || !dt->IsValid()) {
-      gfxDevCrash(mozilla::gfx::LogReason::InvalidContext)
-          << "Window context problem 2 " << backingSize;
+      gfxDevCrash(LogReason::InvalidContext) << "Window context problem 2 " << backingSize;
       return;
     }
     targetContext = gfxContext::CreateOrNull(dt);
@@ -417,7 +416,8 @@ nsresult nsWindow::Create(nsIWidget* aParent, nsNativeWidget aNativeParent,
   // for toplevel windows, bounds are fixed to full screen size
   if (parent == nullptr) {
     if (nsAppShell::gWindow == nil) {
-      mBounds = UIKitScreenManager::GetBounds();
+      RefPtr<widget::Screen> screen = widget::ScreenManager::GetSingleton().GetPrimaryScreen();
+      mBounds = screen->GetRect();
     } else {
       CGRect cgRect = [nsAppShell::gWindow bounds];
       mBounds.x = cgRect.origin.x;
@@ -478,8 +478,6 @@ void nsWindow::Destroy() {
   TearDownView();
 
   nsBaseWidget::OnDestroy();
-
-  return NS_OK;
 }
 
 void nsWindow::Show(bool aState) {
@@ -563,14 +561,11 @@ void nsWindow::SetSizeMode(nsSizeMode aMode) {
 void nsWindow::Invalidate(const LayoutDeviceIntRect& aRect) {
   if (!mNativeView || !mVisible) return;
 
-  MOZ_RELEASE_ASSERT(GetLayerManager()->GetBackendType() != LayersBackend::LAYERS_WR,
-                     "Shouldn't need to invalidate with accelerated OMTC layers!");
-
   [mNativeView setNeedsLayout];
   [mNativeView setNeedsDisplayInRect:DevPixelsToUIKitPoints(mBounds, BackingScaleFactor())];
 }
 
-void nsWindow::SetFocus(Raise) {
+void nsWindow::SetFocus(Raise aRaise, mozilla::dom::CallerType aCallerType) {
   [[mNativeView window] makeKeyWindow];
   [mNativeView becomeFirstResponder];
 }
@@ -653,13 +648,12 @@ nsresult nsWindow::DispatchEvent(mozilla::WidgetGUIEvent* aEvent, nsEventStatus&
   return NS_OK;
 }
 
-void nsWindow::SetInputContext(const InputContext& aContext,
-                               const InputContextAction& aAction) override {
+void nsWindow::SetInputContext(const InputContext& aContext, const InputContextAction& aAction) {
   // TODO: actually show VKB
   mInputContext = aContext;
 }
 
-mozilla::widget::InputContext nsWindow::GetInputContext() override { return mInputContext; }
+mozilla::widget::InputContext nsWindow::GetInputContext() { return mInputContext; }
 
 void nsWindow::SetBackgroundColor(const nscolor& aColor) {
   mNativeView.backgroundColor = [UIColor colorWithRed:NS_GET_R(aColor)
