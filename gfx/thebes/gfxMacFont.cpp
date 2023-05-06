@@ -19,7 +19,9 @@
 #include "gfxFontConstants.h"
 #include "gfxTextRun.h"
 #include "gfxUtils.h"
-#include "nsCocoaFeatures.h"
+#ifdef MOZ_WIDGET_COCOA
+#  include "nsCocoaFeatures.h"
+#endif
 #include "AppleUtils.h"
 #include "cairo-quartz.h"
 
@@ -465,6 +467,7 @@ CTFontRef gfxMacFont::CreateCTFontFromCGFontWithVariations(
   //    ctfont_create_exact_copy in SkFontHost_mac.cpp
 
   CTFontRef ctFont;
+#ifdef MOZ_WIDGET_COCOA
   if (nsCocoaFeatures::OnSierraExactly() ||
       (aInstalledFont && nsCocoaFeatures::OnHighSierraOrLater())) {
     AutoCFRelease<CFDictionaryRef> variations = ::CGFontCopyVariations(aCGFont);
@@ -487,6 +490,9 @@ CTFontRef gfxMacFont::CreateCTFontFromCGFontWithVariations(
   } else {
     ctFont = ::CTFontCreateWithGraphicsFont(aCGFont, aSize, nullptr, aFontDesc);
   }
+#else
+  ctFont = ::CTFontCreateWithGraphicsFont(aCGFont, aSize, nullptr, aFontDesc);
+#endif
 
   return ctFont;
 }
