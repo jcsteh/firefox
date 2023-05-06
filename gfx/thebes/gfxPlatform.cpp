@@ -80,10 +80,12 @@
 #if defined(XP_WIN)
 #  include "gfxWindowsPlatform.h"
 #  include "mozilla/widget/WinWindowOcclusionTracker.h"
-#elif defined(XP_MACOSX)
+#elif defined(XP_DARWIN)
 #  include "gfxPlatformMac.h"
 #  include "gfxQuartzSurface.h"
-#  include "nsCocoaFeatures.h"
+#  ifdef XP_MACOSX
+#    include "nsCocoaFeatures.h"
+#  endif
 #elif defined(MOZ_WIDGET_GTK)
 #  include "gfxPlatformGtk.h"
 #elif defined(ANDROID)
@@ -411,7 +413,7 @@ void CrashStatsLogForwarder::CrashAction(LogReason aReason) {
 #define GFX_PREF_WORD_CACHE_MAXENTRIES "gfx.font_rendering.wordcache.maxentries"
 
 #define GFX_PREF_GRAPHITE_SHAPING "gfx.font_rendering.graphite.enabled"
-#if defined(XP_MACOSX)
+#if defined(XP_DARWIN)
 #  define GFX_PREF_CORETEXT_SHAPING "gfx.font_rendering.coretext.enabled"
 #endif
 
@@ -788,7 +790,7 @@ bool gfxPlatform::HasVariationFontSupport() {
     // as any thread will set it to the same value.
 #if defined(XP_WIN)
     sHasVariationFontSupport = gfxWindowsPlatform::CheckVariationFontSupport();
-#elif defined(XP_MACOSX)
+#elif defined(XP_DARWIN)
     sHasVariationFontSupport = gfxPlatformMac::CheckVariationFontSupport();
 #elif defined(MOZ_WIDGET_GTK)
     sHasVariationFontSupport = gfxPlatformGtk::CheckVariationFontSupport();
@@ -906,7 +908,7 @@ void gfxPlatform::Init() {
 
 #if defined(XP_WIN)
   gPlatform = new gfxWindowsPlatform;
-#elif defined(XP_MACOSX)
+#elif defined(XP_DARWIN)
   gPlatform = new gfxPlatformMac;
 #elif defined(MOZ_WIDGET_GTK)
   gPlatform = new gfxPlatformGtk;
@@ -2266,7 +2268,7 @@ void gfxPlatform::FontsPrefsChanged(const char* aPref) {
              !strcmp(GFX_PREF_GRAPHITE_SHAPING, aPref)) {
     FlushFontAndWordCaches();
   } else if (
-#if defined(XP_MACOSX)
+#if defined(XP_DARWIN)
       !strcmp(GFX_PREF_CORETEXT_SHAPING, aPref) ||
 #endif
       !strcmp("gfx.font_rendering.ahem_antialias_none", aPref)) {
