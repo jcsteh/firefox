@@ -1221,7 +1221,7 @@ Result<Ok, LaunchError> PosixProcessLauncher::DoSetup() {
     // Prevent connection attempts to diagnosticd(8) to save cycles. Log
     // messages can trigger these connection attempts, but access to
     // diagnosticd is blocked in sandboxed child processes.
-#    ifdef MOZ_SANDBOX
+#    if defined(MOZ_SANDBOX) && !defined(OS_IOS)
     if (mDisableOSActivityMode) {
       mLaunchOptions->env_map["OS_ACTIVITY_MODE"] = "disable";
     }
