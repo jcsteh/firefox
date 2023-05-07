@@ -8,8 +8,8 @@
 # osclientcerts transitively depends on winapi 0.2.8, which doesn't work with
 # AArch64
 if (CONFIG["OS_ARCH"] == "WINNT" and CONFIG["CPU_ARCH"] != "aarch64") or CONFIG[
-    "OS_ARCH"
-] == "Darwin":
+    "TARGET_OS"
+] == "OSX":
     DIRS += ["osclientcerts"]
 
 DIRS += ["ipcclientcerts"]
