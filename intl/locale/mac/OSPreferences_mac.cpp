@@ -6,7 +6,11 @@
 
 #include "OSPreferences.h"
 #include "mozilla/intl/LocaleService.h"
-#include <Carbon/Carbon.h>
+#ifdef MOZ_WIDGET_COCOA
+#  include <Carbon/Carbon.h>
+#else
+#  include <CoreFoundation/CoreFoundation.h>
+#endif
 
 using namespace mozilla::intl;
 
