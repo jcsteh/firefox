@@ -10,6 +10,7 @@
 #  include <Carbon/Carbon.h>
 #else
 #  include <CoreFoundation/CoreFoundation.h>
+#  include <CoreText/CoreText.h>
 #endif
 
 using namespace mozilla::intl;
