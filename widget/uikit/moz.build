@@ -15,6 +15,7 @@ SOURCES += [
     "GfxInfo.cpp",
     "nsAppShell.mm",
     "nsLookAndFeel.mm",
+    "nsUserIdleServiceUIKit.cpp",
     "nsWidgetFactory.mm",
     "nsWindow.mm",
     "ScreenHelperUIKit.mm",
