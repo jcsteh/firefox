@@ -18,6 +18,9 @@
 #  include "base/rand_util.h"
 #  include "chrome/common/mach_ipc_mac.h"
 #endif
+#ifdef MOZ_WIDGET_UIKIT
+#  include "base/ios_sim_header_shims.h"
+#endif
 #ifdef MOZ_WIDGET_COCOA
 #  include <bsm/libbsm.h>
 #  include <servers/bootstrap.h>
@@ -135,7 +138,7 @@ namespace ipc {
 
 struct LaunchResults {
   base::ProcessHandle mHandle = 0;
-#ifdef XP_MACOSX
+#ifdef XP_DARWIN
   task_t mChildTask = MACH_PORT_NULL;
 #endif
 #if defined(XP_WIN) && defined(MOZ_SANDBOX)
@@ -776,7 +779,7 @@ bool GeckoChildProcessHost::AsyncLaunch(std::vector<std::string> aExtraOpts) {
                     // "safe" invalid value to use in places like this.
                     aResults.mHandle = 0;
 
-#ifdef XP_MACOSX
+#ifdef XP_DARWIN
                     this->mChildTask = aResults.mChildTask;
                     if (mNodeChannel) {
                       mNodeChannel->SetMachTaskPort(this->mChildTask);
@@ -1364,7 +1367,7 @@ Result<Ok, LaunchError> PosixProcessLauncher::DoFinishLaunch() {
 }
 #endif  // OS_POSIX
 
-#ifdef XP_MACOSX
+#ifdef XP_DARWIN
 Result<Ok, LaunchError> MacProcessLauncher::DoFinishLaunch() {
   Result<Ok, LaunchError> aError = PosixProcessLauncher::DoFinishLaunch();
   if (aError.isErr()) {
@@ -1409,7 +1412,7 @@ Result<Ok, LaunchError> MacProcessLauncher::DoFinishLaunch() {
 
   return Ok();
 }
-#endif  // XP_MACOSX
+#endif  // XP_DARWIN
 
 #ifdef XP_WIN
 Result<Ok, LaunchError> WindowsProcessLauncher::DoSetup() {

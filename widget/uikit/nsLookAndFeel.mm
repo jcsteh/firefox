@@ -19,6 +19,8 @@ nsLookAndFeel::nsLookAndFeel() : mInitialized(false) {}
 
 nsLookAndFeel::~nsLookAndFeel() {}
 
+void nsLookAndFeel::NativeInit() {}
+
 static nscolor GetColorFromUIColor(UIColor* aColor) {
   CGColorRef cgColor = [aColor CGColor];
   CGColorSpaceModel model = CGColorSpaceGetModel(CGColorGetColorSpace(cgColor));

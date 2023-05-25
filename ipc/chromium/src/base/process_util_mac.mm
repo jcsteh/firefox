@@ -147,6 +147,7 @@ Result<Ok, LaunchError> LaunchApp(const std::vector<std::string>& argv,
   }
 #endif
 
+#if defined(XP_MACOSX)
   if (options.disclaim) {
     if (@available(macOS 10.14, *)) {
       int err = responsibility_spawnattrs_setdisclaim(&spawnattr, 1);
@@ -156,6 +157,7 @@ Result<Ok, LaunchError> LaunchApp(const std::vector<std::string>& argv,
       }
     }
   }
+#endif
 
   // Prevent the child process from inheriting any file descriptors
   // that aren't named in `file_actions`.  (This is an Apple-specific

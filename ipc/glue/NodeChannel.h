@@ -112,7 +112,7 @@ class NodeChannel final : public IPC::Channel::Listener {
   const NodeName& GetName() { return mName; }
 #endif
 
-#ifdef XP_MACOSX
+#ifdef XP_DARWIN
   // Called by the GeckoChildProcessHost to provide the task_t for the peer
   // process. MUST BE CALLED FROM THE IO THREAD.
   void SetMachTaskPort(task_t aTask);

@@ -138,7 +138,6 @@ class nsAutoRetainUIKitObject {
   event.mRefPoint = aPoint;
   event.mClickCount = 1;
   event.mButton = MouseButton::ePrimary;
-  event.mTime = PR_IntervalNow();
   event.mInputSource = mozilla::dom::MouseEvent_Binding::MOZ_SOURCE_UNKNOWN;
 
   nsEventStatus status;
@@ -160,7 +159,6 @@ class nsAutoRetainUIKitObject {
   WidgetTouchEvent event(true, aType, aWindow);
   // XXX: I think nativeEvent.timestamp * 1000 is probably usable here but
   // I don't care that much right now.
-  event.mTime = PR_IntervalNow();
   event.mTouches.SetCapacity(aTouches.count);
   for (UITouch* touch in aTouches) {
     LayoutDeviceIntPoint loc =
@@ -318,7 +316,7 @@ class nsAutoRetainUIKitObject {
   // Create Cairo objects.
   RefPtr<gfxQuartzSurface> targetSurface;
 
-  UniquePtrPtr<gfxContext> targetContext;
+  UniquePtr<gfxContext> targetContext;
   if (gfxPlatform::GetPlatform()->SupportsAzureContentForType(gfx::BackendType::CAIRO)) {
     // This is dead code unless you mess with prefs, but keep it around for
     // debugging.

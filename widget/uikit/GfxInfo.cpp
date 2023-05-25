@@ -36,12 +36,13 @@ GfxInfo::GetCleartypeParameters(nsAString& aCleartypeParams) {
 }
 
 NS_IMETHODIMP
-GfxInfo::GetWindowProtocol(nsAString& aWindowProtocol) {
-  return NS_ERROR_NOT_IMPLEMENTED;
+GfxInfo::GetEmbeddedInFirefoxReality(bool* aEmbeddedInFirefoxReality) {
+  *aEmbeddedInFirefoxReality = false;
+  return NS_OK;
 }
 
 NS_IMETHODIMP
-GfxInfo::GetDesktopEnvironment(nsAString& aDesktopEnvironment) {
+GfxInfo::GetWindowProtocol(nsAString& aWindowProtocol) {
   return NS_ERROR_NOT_IMPLEMENTED;
 }
 
@@ -118,7 +119,6 @@ GfxInfo::GetAdapterVendorID2(nsAString& aAdapterVendorID) {
 NS_IMETHODIMP
 GfxInfo::GetAdapterDeviceID(nsAString& aAdapterDeviceID) {
   return NS_ERROR_FAILURE;
-  return NS_OK;
 }
 
 NS_IMETHODIMP

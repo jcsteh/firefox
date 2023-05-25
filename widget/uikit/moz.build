@@ -14,7 +14,9 @@ EXPORTS += [
 SOURCES += [
     "GfxInfo.cpp",
     "nsAppShell.mm",
+    "nsBidiKeyboard.mm",
     "nsLookAndFeel.mm",
+    "nsNativeThemeUIKit.mm",
     "nsUserIdleServiceUIKit.cpp",
     "nsWidgetFactory.mm",
     "nsWindow.mm",
@@ -31,4 +33,8 @@ LOCAL_INCLUDES += [
 
 XPCOM_MANIFESTS += [
     "components.conf",
+]
+
+OS_LIBS += [
+    "-framework UIKit",
 ]

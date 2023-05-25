@@ -14,9 +14,6 @@
 #include <cstring>
 #include <unistd.h>
 
-#ifdef MOZ_WIDGET_COCOA
-#  include <libproc.h>
-#endif
 #include <sys/sysctl.h>
 #include <mach/mach.h>
 #include <mach/mach_time.h>
@@ -32,39 +29,11 @@ static void GetTimeBase(mach_timebase_info_data_t* timebase) {
 namespace mozilla {
 
 nsresult GetCpuTimeSinceProcessStartInMs(uint64_t* aResult) {
-#ifdef MOZ_WIDGET_COCOA
-  struct proc_taskinfo pti;
-  if ((unsigned long)proc_pidinfo(getpid(), PROC_PIDTASKINFO, 0, &pti, PROC_PIDTASKINFO_SIZE) <
-      PROC_PIDTASKINFO_SIZE) {
-    return NS_ERROR_FAILURE;
-  }
-
-  mach_timebase_info_data_t timebase;
-  GetTimeBase(&timebase);
-
-  *aResult = (pti.pti_total_user + pti.pti_total_system) * timebase.numer / timebase.denom /
-             PR_NSEC_PER_MSEC;
-  return NS_OK;
-#else
-  return NS_ERROR_NOT_IMPLEMENTED;
-#endif
+    return NS_ERROR_NOT_IMPLEMENTED;
 }
 
 nsresult GetGpuTimeSinceProcessStartInMs(uint64_t* aResult) {
-#ifdef MOZ_WIDGET_COCOA
-  task_power_info_v2_data_t task_power_info;
-  mach_msg_type_number_t count = TASK_POWER_INFO_V2_COUNT;
-  kern_return_t kr =
-      task_info(mach_task_self(), TASK_POWER_INFO_V2, (task_info_t)&task_power_info, &count);
-  if (kr != KERN_SUCCESS) {
-    return NS_ERROR_FAILURE;
-  }
-
-  *aResult = task_power_info.gpu_energy.task_gpu_utilisation / PR_NSEC_PER_MSEC;
-  return NS_OK;
-#else
-  return NS_ERROR_NOT_IMPLEMENTED;
-#endif
+    return NS_ERROR_NOT_IMPLEMENTED;
 }
 
 int GetCycleTimeFrequencyMHz() { return 0; }
@@ -90,20 +59,7 @@ ProcInfoPromise::ResolveOrRejectValue GetProcInfoSync(nsTArray<ProcInfoRequest>&
     info.windows = std::move(request.windowInfo);
     info.utilityActors = std::move(request.utilityInfo);
 
-#ifdef MOZ_WIDGET_COCOA
-    struct proc_taskinfo pti;
-    if ((unsigned long)proc_pidinfo(request.pid, PROC_PIDTASKINFO, 0, &pti, PROC_PIDTASKINFO_SIZE) <
-        PROC_PIDTASKINFO_SIZE) {
-      // Can't read data for this process.
-      // Probably either a sandboxing issue or a race condition, e.g.
-      // the process has been just been killed. Regardless, skip process.
-      continue;
-    }
-    info.cpuTime = (pti.pti_total_user + pti.pti_total_system) * timebase.numer / timebase.denom;
-#else
-    // FIXME: Add an implementation on iOS
-    info.cpuTime = 0;
-#endif
+    info.cpuTime = 0; // FIXME: UNIMPLEMENTED on iOS
 
     mach_port_t selectedTask;
     // If we did not get a task from a child process, we use mach_task_self()

@@ -291,7 +291,7 @@ if CONFIG["MOZ_WIDGET_TOOLKIT"] == "windows":
         "NetworkInfoServiceWindows.cpp",
         "nsNetworkInfoService.cpp",
     ]
-elif CONFIG["MOZ_WIDGET_TOOLKIT"] == "cocoa":
+elif CONFIG["MOZ_WIDGET_TOOLKIT"] in ("cocoa", "uikit"):
     SOURCES += [
         "NetworkInfoServiceCocoa.cpp",
         "nsNetworkInfoService.cpp",
