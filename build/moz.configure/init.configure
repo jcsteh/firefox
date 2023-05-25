@@ -609,7 +609,7 @@ def split_triplet(triplet, allow_wasi=False):
     # prefixes. We need to be more specific about the LLVM target on Mac
     # so cross-language LTO will work correctly.
 
-    if os.startswith("darwin"):
+    if os.startswith(("darwin", "ios")):
         toolchain = "%s-apple-%s" % (cpu, os)
     else:
         toolchain = "%s-%s" % (cpu, os)
