@@ -359,6 +359,7 @@ def basic_bindgen_cflags(
         "DragonFly": ["-DOS_BSD=1", "-DOS_DRAGONFLY=1"],
         "FreeBSD": ["-DOS_BSD=1", "-DOS_FREEBSD=1"],
         "GNU": ["-DOS_LINUX=1"],
+        "iOS": ["-DOS_IOS=1", "-DOS_APPLE=1"],
         "NetBSD": ["-DOS_BSD=1", "-DOS_NETBSD=1"],
         "OpenBSD": ["-DOS_BSD=1", "-DOS_OPENBSD=1"],
         "OSX": ["-DOS_MACOSX=1", "-DOS_APPLE=1"],

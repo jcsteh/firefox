@@ -35,7 +35,10 @@ else:
     DEFINES['OS_POSIX'] = 1
 
     if CONFIG['OS_ARCH'] == 'Darwin':
-        DEFINES['OS_MACOSX'] = 1
+        if CONFIG['TARGET_OS'] == 'iOS':
+            DEFINES['OS_IOS'] = 1
+        else:
+            DEFINES['OS_MACOSX'] = 1
         DEFINES['OS_APPLE'] = 1
 
     elif CONFIG['OS_ARCH'] == 'SunOS':
