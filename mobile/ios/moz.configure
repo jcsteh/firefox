@@ -6,6 +6,7 @@
 
 imply_option("MOZ_PLACES", True)
 
+
 @depends(target)
 def check_target(target):
     if target.os != "iOS":
