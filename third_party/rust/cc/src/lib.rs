@@ -2082,7 +2082,7 @@ impl Build {
             }
         } else if is_sim {
             match arch {
-                "arm64" | "aarch64" => ArchSpec::Simulator("-arch arm64"),
+                "arm64" | "aarch64" => ArchSpec::Simulator("arm64"),
                 _ => {
                     return Err(Error::new(
                         ErrorKind::ArchitectureInvalid,
@@ -2119,7 +2119,13 @@ impl Build {
                 "iphoneos"
             }
             ArchSpec::Simulator(arch) => {
-                cmd.args.push(arch.into());
+                if arch.starts_with('-') {
+                    // -m32 or -m64
+                    cmd.args.push(arch.into());
+                } else {
+                    cmd.args.push("-arch".into());
+                    cmd.args.push(arch.into());
+                }
                 cmd.args
                     .push(format!("-mios-simulator-version-min={}", min_version).into());
                 "iphonesimulator"
