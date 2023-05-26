@@ -549,7 +549,11 @@ def check_compiler(configure_cache, compiler, language, target, android_version)
             if "--target=arm64-apple-darwin" not in compiler:
                 flags.append("--target=arm64-apple-darwin")
             has_target = True
-
+        elif target.os == "iOS":
+            target_flag = "--target=%s" % toolchain
+            if target_flag not in compiler:
+                flags.append(target_flag)
+            has_target = True
         elif (
             not info.kernel
             or info.kernel != target.kernel
