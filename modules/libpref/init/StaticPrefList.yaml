@@ -7614,7 +7614,7 @@
   # Experimental support for change-array-by-copy methods
 - name: javascript.options.experimental.enable_change_array_by_copy
   type: bool
-  value: false
+  value: true
   mirror: always
 
 # Support Array.fromAsync
@@ -10770,6 +10770,23 @@
   value: true
   mirror: once
 
+# This pref turns on legacy (non-spec) exposure of camera and microphone
+# information from enumerateDevices and devicechange ahead of successful
+# getUserMedia calls. Should only be turned on to resolve web compat issues,
+# since doing so reveals more user fingerprinting information to trackers.
+#
+# This mode is marginally more permissive than the legacy behavior it attempts
+# to emulate in that device labels do not disappear when tracks are stopped and
+# temporary permission expires. That behavior isn't emulated due to low relative
+# privacy value  compared to spec and it not being being conducive to spec
+# convergence.
+#
+# Planned next steps: true → @IS_NOT_NIGHTLY_BUILD@ → false
+- name: media.devices.enumerate.legacy.enabled
+  type: bool
+  value: true
+  mirror: always
+
 # WebRTC prefs follow
 
 # Enables RTCPeerConnection support. Note that, when true, this pref enables
@@ -12741,6 +12758,13 @@
   value: 60000
   mirror: always
 
+# When the Access-Control-Allow-Headers is wildcard (*), whether to allow
+# CORS-protected requests with the Authorization request header.
+- name: network.cors_preflight.authorization_covered_by_wildcard
+  type: bool
+  value: true
+  mirror: always
+
 #---------------------------------------------------------------------------
 # Prefs starting with "nglayout."
 #---------------------------------------------------------------------------
@@ -12862,20 +12886,6 @@
 - name: plain_text.wrap_long_lines
   type: bool
   value: true
-  mirror: always
-
-#---------------------------------------------------------------------------
-# Prefs starting with "plugin."
-#---------------------------------------------------------------------------
-
-- name: plugin.state.flash
-  type: uint32_t
-  # Flash is Click-to-Activate by default on all channels. Disabled for ARM builds.
-#if defined(_ARM64_) && defined(XP_WIN)
-  value: 0
-#else
-  value: 1
-#endif
   mirror: always
 
 #---------------------------------------------------------------------------
@@ -13703,12 +13713,12 @@
 
 -   name: security.sandbox.gpu.shadow-stack.enabled
     type: RelaxedAtomicBool
-    value: false
+    value: @IS_NIGHTLY_BUILD@
     mirror: always
 
 -   name: security.sandbox.gmp.shadow-stack.enabled
     type: RelaxedAtomicBool
-    value: false
+    value: @IS_NIGHTLY_BUILD@
     mirror: always
 
   # Whether a Low Privilege AppContainer (LPAC) is enabled for the relevant
