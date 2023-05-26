@@ -151,7 +151,7 @@ class Channel {
   // Close the client side of the socketpair.
   void CloseClientFileDescriptor();
 
-#  if defined(OS_MACOSX)
+#  if defined(OS_APPLE)
   // Configure the mach task_t for the peer task.
   void SetOtherMachTask(task_t task);
 

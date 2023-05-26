@@ -14,7 +14,7 @@
 #if defined(OS_WIN)
 #  include "mozilla/UniquePtrExtensions.h"
 #endif
-#if !defined(OS_WIN) && !defined(OS_MACOSX)
+#if !defined(OS_WIN) && !defined(OS_APPLE)
 #  include <pthread.h>
 #  include <semaphore.h>
 #  include "mozilla/ipc/SharedMemoryBasic.h"
@@ -39,7 +39,7 @@ inline bool IsHandleValid(const T& handle) {
 
 #if defined(OS_WIN)
 typedef mozilla::UniqueFileHandle CrossProcessSemaphoreHandle;
-#elif !defined(OS_MACOSX)
+#elif !defined(OS_APPLE)
 typedef mozilla::ipc::SharedMemoryBasic::Handle CrossProcessSemaphoreHandle;
 
 template <>
@@ -106,7 +106,7 @@ class CrossProcessSemaphore {
   explicit CrossProcessSemaphore(HANDLE aSemaphore);
 
   HANDLE mSemaphore;
-#elif !defined(OS_MACOSX)
+#elif !defined(OS_APPLE)
   RefPtr<mozilla::ipc::SharedMemoryBasic> mSharedBuffer;
   sem_t* mSemaphore;
   mozilla::Atomic<int32_t>* mRefCount;

@@ -273,7 +273,7 @@ class GeckoChildProcessHost : public ChildProcessHost,
 
   mozilla::RWLock mHandleLock;
   ProcessHandle mChildProcessHandle MOZ_GUARDED_BY(mHandleLock);
-#if defined(OS_MACOSX)
+#if defined(OS_APPLE)
   task_t mChildTask MOZ_GUARDED_BY(mHandleLock);
 #endif
   RefPtr<ProcessHandlePromise> mHandlePromise;
