@@ -30,7 +30,7 @@ bool ChildProcessHost::CreateChannel() {
       new IPC::Channel(channel_id_, IPC::Channel::MODE_SERVER, &listener_));
 #if defined(OS_WIN)
   channel_->StartAcceptingHandles(IPC::Channel::MODE_SERVER);
-#elif defined(OS_MACOSX)
+#elif defined(OS_APPLE)
   channel_->StartAcceptingMachPorts(IPC::Channel::MODE_SERVER);
 #endif
   if (!channel_->Connect()) return false;

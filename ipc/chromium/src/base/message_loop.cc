@@ -20,7 +20,7 @@
 #include "nsITargetShutdownTask.h"
 #include "nsThreadUtils.h"
 
-#if defined(OS_MACOSX)
+#if defined(OS_APPLE)
 #  include "base/message_pump_mac.h"
 #endif
 #if defined(OS_POSIX)
@@ -250,7 +250,7 @@ MessageLoop::MessageLoop(Type type, nsISerialEventTarget* aEventTarget)
     case TYPE_MOZILLA_NONMAINTHREAD:
       pump_ = new mozilla::ipc::MessagePumpForNonMainThreads(aEventTarget);
       return;
-#if defined(OS_WIN) || defined(OS_MACOSX)
+#if defined(OS_WIN) || defined(OS_APPLE)
     case TYPE_MOZILLA_NONMAINUITHREAD:
       pump_ = new mozilla::ipc::MessagePumpForNonMainUIThreads(aEventTarget);
       return;
@@ -277,7 +277,7 @@ MessageLoop::MessageLoop(Type type, nsISerialEventTarget* aEventTarget)
   }
 #elif defined(OS_POSIX)
   if (type_ == TYPE_UI) {
-#  if defined(OS_MACOSX)
+#  if defined(OS_APPLE)
     pump_ = base::MessagePumpMac::Create();
 #  elif defined(OS_LINUX) || defined(OS_BSD)
     pump_ = new base::MessagePumpForUI();

@@ -9,13 +9,13 @@
 
 #include "base/basictypes.h"
 
-#if defined(OS_MACOSX)
+#if defined(OS_APPLE)
 #  if defined(__OBJC__)
 @class NSAutoreleasePool;
 #  else   // __OBJC__
 class NSAutoreleasePool;
 #  endif  // __OBJC__
-#endif    // OS_MACOSX
+#endif    // OS_APPLE
 
 namespace base {
 
@@ -29,10 +29,10 @@ namespace base {
 // ugly #ifdefs.
 class ScopedNSAutoreleasePool {
  public:
-#if !defined(OS_MACOSX)
+#if !defined(OS_APPLE)
   ScopedNSAutoreleasePool() {}
   void Recycle() {}
-#else   // OS_MACOSX
+#else   // OS_APPLE
   ScopedNSAutoreleasePool();
   ~ScopedNSAutoreleasePool();
 
@@ -44,7 +44,7 @@ class ScopedNSAutoreleasePool {
 
  private:
   NSAutoreleasePool* autorelease_pool_;
-#endif  // OS_MACOSX
+#endif  // OS_APPLE
 
  private:
   DISALLOW_COPY_AND_ASSIGN(ScopedNSAutoreleasePool);

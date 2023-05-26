@@ -361,7 +361,7 @@ def basic_bindgen_cflags(
         "GNU": ["-DOS_LINUX=1"],
         "NetBSD": ["-DOS_BSD=1", "-DOS_NETBSD=1"],
         "OpenBSD": ["-DOS_BSD=1", "-DOS_OPENBSD=1"],
-        "OSX": ["-DOS_MACOSX=1"],
+        "OSX": ["-DOS_MACOSX=1", "-DOS_APPLE=1"],
         "SunOS": ["-DOS_SOLARIS=1"],
         "WINNT": [
             "-DOS_WIN=1",

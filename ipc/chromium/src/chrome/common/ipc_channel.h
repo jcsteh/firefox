@@ -195,7 +195,7 @@ class Channel {
   RefPtr<ChannelImpl> channel_impl_;
 
   enum {
-#if defined(OS_MACOSX)
+#if defined(OS_APPLE)
     // If the channel receives a message that contains file descriptors, then
     // it will reply back with this message, indicating that the message has
     // been received. The sending channel can then close any descriptors that
