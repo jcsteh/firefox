@@ -8977,7 +8977,7 @@
 # serial.
 - name: layout.css.stylo-parallelism-threshold
   type: RelaxedAtomicUint32
-  value: 16
+  value: 32
   mirror: always
   rust: true
 
@@ -9278,6 +9278,13 @@
 - name: layout.css.scroll-anchoring.max-consecutive-adjustments
   type: uint32_t
   value: 10
+  mirror: always
+
+# Whether to reset counting the consecutive scroll-anchoring adjustments during
+# running async scrolling by APZ.
+- name: layout.css.scroll-anchoring.reset-heuristic-during-animation
+  type: bool
+  value: false
   mirror: always
 
 # The time after which we reset the max-consecutive-adjustments period, in
@@ -12884,15 +12891,6 @@
 
 # When false, text in plaintext documents does not wrap long lines.
 - name: plain_text.wrap_long_lines
-  type: bool
-  value: true
-  mirror: always
-
-#---------------------------------------------------------------------------
-# Prefs starting with "plugins."
-#---------------------------------------------------------------------------
-
-- name: plugins.http_https_only
   type: bool
   value: true
   mirror: always
