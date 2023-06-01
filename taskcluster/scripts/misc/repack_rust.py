@@ -248,7 +248,11 @@ def fetch_std(manifest, targets):
     for target in targets:
         stds.append(fetch_package(manifest, "rust-std", target))
         # not available for i686
-        if target != "i686-unknown-linux-musl":
+        if target not in (
+            "i686-unknown-linux-musl",
+            "aarch64-apple-ios",
+            "aarch64-apple-ios-sim",
+        ):
             stds.append(fetch_package(manifest, "rust-analysis", target))
     return stds
 

@@ -32,3 +32,41 @@ macosx64-sdk-13.3:
             - macosx64-sdk
             - macosx64-sdk-toolchain
             - MacOSX13.3.sdk
+
+ios-sdk-16.4:
+    description: "iPhoneOS16.4 SDK"
+    treeherder:
+        symbol: TM(ios16.4)
+    # Because it's using an internal tooltool artifact, it can't be used as a local-toolchain for
+    # bootstrap. But we still want to use the same script as local-toolchains.
+    attributes:
+        local-toolchain: false
+    run:
+        script: private_local_toolchain.sh
+        arguments:
+            - unpack-sdk.py
+            - http://taskcluster/tooltool.mozilla-releng.net/sha512/a3b103d2226d867bd549932397d25a704ffe7d0d9cc99b364aba5952df96558ec50bee21b4c87687dc96e5e9f3fc00cfcf4b419af986aad3d630360a05e1d76f
+            - 5871b0d773710f15b2f286b7df536a308cbf6335d16cc9b9cbd139a188587c7e
+            - Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS.sdk
+        toolchain-artifact: project/gecko/mac-sdk/iPhoneOS16.4.sdk.tar.zst
+        toolchain-alias: ios-sdk
+        tooltool-downloads: internal
+
+ios-sim-sdk-16.4:
+    description: "iPhoneSimulator16.4 SDK"
+    treeherder:
+        symbol: TM(ios-sim-16.4)
+    # Because it's using an internal tooltool artifact, it can't be used as a local-toolchain for
+    # bootstrap. But we still want to use the same script as local-toolchains.
+    attributes:
+        local-toolchain: false
+    run:
+        script: private_local_toolchain.sh
+        arguments:
+            - unpack-sdk.py
+            - http://taskcluster/tooltool.mozilla-releng.net/sha512/a3b103d2226d867bd549932397d25a704ffe7d0d9cc99b364aba5952df96558ec50bee21b4c87687dc96e5e9f3fc00cfcf4b419af986aad3d630360a05e1d76f
+            - 5871b0d773710f15b2f286b7df536a308cbf6335d16cc9b9cbd139a188587c7e
+            - Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk
+        toolchain-artifact: project/gecko/mac-sdk/iPhoneSimulator16.4.sdk.tar.zst
+        toolchain-alias: ios-sim-sdk
+        tooltool-downloads: internal
