@@ -140,7 +140,10 @@ void MediaControlService::NotifyMediaControlHasEverBeenUsed() {
     return;
   }
   mHasEverUsedMediaControl = true;
+#if defined(XP_WIN) || defined(XP_MACOSX) || defined(MOZ_WIDGET_GTK) || \
+    defined(MOZ_WIDGET_ANDROID)
   const uint32_t usedOnMediaControl = 1;
+#endif
 #ifdef XP_WIN
   Telemetry::ScalarSet(Telemetry::ScalarID::MEDIA_CONTROL_PLATFORM_USAGE,
                        u"Windows"_ns, usedOnMediaControl);
@@ -165,7 +168,10 @@ void MediaControlService::NotifyMediaControlHasEverBeenEnabled() {
     return;
   }
   mHasEverEnabledMediaControl = true;
+#if defined(XP_WIN) || defined(XP_MACOSX) || defined(MOZ_WIDGET_GTK) || \
+    defined(MOZ_WIDGET_ANDROID)
   const uint32_t enableOnMediaControl = 0;
+#endif
 #ifdef XP_WIN
   Telemetry::ScalarSet(Telemetry::ScalarID::MEDIA_CONTROL_PLATFORM_USAGE,
                        u"Windows"_ns, enableOnMediaControl);

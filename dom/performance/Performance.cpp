@@ -593,6 +593,7 @@ void Performance::MaybeEmitExternalProfilerMarker(
     return;
   }
 
+#if defined(XP_LINUX) || defined(XP_WIN) || defined(XP_MACOSX)
   const DOMHighResTimeStamp unclampedStartTime = ResolveStartTimeForMeasure(
       aStartMark, aOptions, rv, /* aReturnUnclamped */ true);
   if (NS_WARN_IF(rv.Failed())) {
@@ -609,6 +610,7 @@ void Performance::MaybeEmitExternalProfilerMarker(
       CreationTimeStamp() + TimeDuration::FromMilliseconds(unclampedStartTime);
   TimeStamp endTimeStamp =
       CreationTimeStamp() + TimeDuration::FromMilliseconds(unclampedEndTime);
+#endif
 
 #ifdef XP_LINUX
   uint64_t rawStart = startTimeStamp.RawClockMonotonicNanosecondsSinceBoot();

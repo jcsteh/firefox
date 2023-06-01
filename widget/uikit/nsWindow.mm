@@ -184,7 +184,14 @@ class nsAutoRetainUIKitObject {
   if (!mGeckoChild) return;
 
   for (UITouch* touch : touches) {
+    // XXX: mTouches is a NSMutableDictionary, which wants a key that obeys the
+    // NSCopying protocol, but UITouch does not. This would normally be an error on
+    // CI, but downgrade to a warning until someone figures out how to actually
+    // address this.
+#pragma clang diagnostic push
+#pragma clang diagnostic warning "-Wincompatible-pointer-types"
     mTouches[touch] = [NSNumber numberWithInt:mNextTouchID];
+#pragma clang diagnostic pop
     mNextTouchID++;
   }
   [self sendTouchEvent:eTouchStart touches:[event allTouches] widget:mGeckoChild];

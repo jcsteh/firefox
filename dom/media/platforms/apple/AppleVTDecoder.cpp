@@ -763,7 +763,7 @@ CFDictionaryRef AppleVTDecoder::CreateOutputConfiguration() {
       kCFAllocatorDefault, outputKeys, outputValues, ArrayLength(outputKeys),
       &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
 #else
-  MOZ_ASSERT_UNREACHABLE("No MacIOSurface on iOS");
+  MOZ_CRASH("No MacIOSurface on iOS");
 #endif
 }
 

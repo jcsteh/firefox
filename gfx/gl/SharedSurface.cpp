@@ -94,6 +94,7 @@ UniquePtr<SurfaceFactory> SurfaceFactory::Create(
 #ifdef XP_MACOSX
       return MakeUnique<SurfaceFactory_IOSurface>(gl);
 #else
+      Unused << gl;
       return nullptr;
 #endif
 
