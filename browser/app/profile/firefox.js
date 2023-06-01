@@ -280,6 +280,9 @@ pref("browser.shell.setDefaultPDFHandler", true);
 // is a known browser, and not when existing handler is another PDF handler such
 // as Acrobat Reader or Nitro PDF.
 pref("browser.shell.setDefaultPDFHandler.onlyReplaceBrowsers", true);
+// URL to navigate to when launching Firefox after accepting the Windows Default
+// Browser Agent "Set Firefox as default" call to action.
+pref("browser.shell.defaultBrowserAgent.thanksURL", "https://www.mozilla.org/%LOCALE%/firefox/set-as-default/thanks/");
 #endif
 
 
@@ -2166,6 +2169,7 @@ pref("dom.ipc.processPrelaunch.enabled", false);
 pref("dom.ipc.processPrelaunch.enabled", true);
 #endif
 
+pref("browser.migrate.bookmarks-file.enabled", true);
 pref("browser.migrate.brave.enabled", true);
 pref("browser.migrate.canary.enabled", true);
 
@@ -2591,6 +2595,7 @@ pref("devtools.netmonitor.har.compress", false);
 pref("devtools.netmonitor.har.forceExport", false);
 pref("devtools.netmonitor.har.pageLoadedTimeout", 1500);
 pref("devtools.netmonitor.har.enableAutoExportToFile", false);
+pref("devtools.netmonitor.har.multiple-pages", false);
 
 // netmonitor audit
 pref("devtools.netmonitor.audits.slow", 500);

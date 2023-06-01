@@ -76,6 +76,7 @@ ChromeUtils.defineESModuleGetters(this, {
   UrlbarUtils: "resource:///modules/UrlbarUtils.sys.mjs",
   UrlbarValueFormatter: "resource:///modules/UrlbarValueFormatter.sys.mjs",
   Weave: "resource://services-sync/main.sys.mjs",
+  WebNavigationFrames: "resource://gre/modules/WebNavigationFrames.sys.mjs",
   WebsiteFilter: "resource:///modules/policies/WebsiteFilter.sys.mjs",
 });
 
@@ -97,7 +98,6 @@ XPCOMUtils.defineLazyModuleGetters(this, {
   SiteDataManager: "resource:///modules/SiteDataManager.jsm",
   TabCrashHandler: "resource:///modules/ContentCrashHandlers.jsm",
   Translation: "resource:///modules/translation/TranslationParent.jsm",
-  WebNavigationFrames: "resource://gre/modules/WebNavigationFrames.jsm",
   webrtcUI: "resource:///modules/webrtcUI.jsm",
   ZoomUI: "resource:///modules/ZoomUI.jsm",
 });
@@ -6512,7 +6512,7 @@ function onViewToolbarsPopupShowing(aEvent, aInsertPoint) {
     document.getElementById("toolbar-context-selectAllTabs").disabled =
       gBrowser.allTabsSelected();
     document.getElementById("toolbar-context-undoCloseTab").disabled =
-      SessionStore.getClosedTabCount(window) == 0;
+      SessionStore.getClosedTabCountForWindow(window) == 0;
     return;
   }
 
@@ -6829,8 +6829,8 @@ const nodeToShortcutMap = {
   "context-reload": "key_reload",
   "context-stop": "key_stop",
   "downloads-button": "key_openDownloads",
-  "fullscreen-button": "key_fullScreen",
-  "appMenu-fullscreen-button2": "key_fullScreen",
+  "fullscreen-button": "key_enterFullScreen",
+  "appMenu-fullscreen-button2": "key_enterFullScreen",
   "new-window-button": "key_newNavigator",
   "new-tab-button": "key_newNavigatorTab",
   "tabs-newtab-button": "key_newNavigatorTab",
@@ -7283,7 +7283,7 @@ var ToolbarContextMenu = {
     return node?.closest(".unified-extensions-item")?.id;
   },
 
-  async updateExtension(popup) {
+  async updateExtension(popup, event) {
     let removeExtension = popup.querySelector(
       ".customize-context-removeExtension"
     );
@@ -7325,7 +7325,9 @@ var ToolbarContextMenu = {
         addon.permissions & AddonManager.PERM_CAN_UNINSTALL
       );
 
-      ExtensionsUI.originControlsMenu(popup, id);
+      if (event?.target?.id === "toolbar-context-menu") {
+        ExtensionsUI.originControlsMenu(popup, id);
+      }
     }
   },
 
@@ -8107,7 +8109,7 @@ function AddKeywordForSearchField() {
 /**
  * Re-open a closed tab.
  * @param aIndex
- *        The index of the tab (via SessionStore.getClosedTabData)
+ *        The index of the tab (via SessionStore.getClosedTabDataForWindow)
  * @returns a reference to the reopened tab.
  */
 function undoCloseTab(aIndex) {
@@ -8137,7 +8139,7 @@ function undoCloseTab(aIndex) {
     aIndex !== undefined ? [aIndex] : new Array(closedTabCount).fill(0);
   let tabsRemoved = false;
   for (let index of tabsToRemove) {
-    if (SessionStore.getClosedTabCount(window) > index) {
+    if (SessionStore.getClosedTabCountForWindow(window) > index) {
       tab = SessionStore.undoCloseTab(window, index);
       tabsRemoved = true;
     }

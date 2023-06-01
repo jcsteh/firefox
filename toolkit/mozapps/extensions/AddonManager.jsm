@@ -88,6 +88,7 @@ const { PromiseUtils } = ChromeUtils.importESModule(
 const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
+  Extension: "resource://gre/modules/Extension.sys.mjs",
   RemoteSettings: "resource://services-settings/remote-settings.sys.mjs",
   TelemetryTimestamps: "resource://gre/modules/TelemetryTimestamps.sys.mjs",
   isGatedPermissionType:
@@ -101,7 +102,6 @@ ChromeUtils.defineESModuleGetters(lazy, {
 XPCOMUtils.defineLazyModuleGetters(lazy, {
   AddonRepository: "resource://gre/modules/addons/AddonRepository.jsm",
   AbuseReporter: "resource://gre/modules/AbuseReporter.jsm",
-  Extension: "resource://gre/modules/Extension.jsm",
 });
 
 XPCOMUtils.defineLazyPreferenceGetter(
@@ -779,6 +779,23 @@ var AddonManagerInternal = {
       logger.error("startup failed", e);
       AddonManagerPrivate.recordException("AMI", "startup failed", e);
       gStartedPromise.reject("startup failed");
+    }
+
+    // Disable the quarantined domains feature if the system add-on has been
+    // disabled in a previous version.
+    if (
+      Services.prefs.getBoolPref(
+        "extensions.webextensions.addons-restricted-domains@mozilla.com.disabled",
+        false
+      )
+    ) {
+      Services.prefs.setBoolPref(
+        "extensions.quarantinedDomains.enabled",
+        false
+      );
+      logger.debug(
+        "Disabled quarantined domains because the system add-on was disabled"
+      );
     }
 
     logger.debug("Completed startup sequence");
