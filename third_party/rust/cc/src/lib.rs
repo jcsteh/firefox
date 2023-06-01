@@ -2137,7 +2137,7 @@ impl Build {
         let sdk_path = self.apple_sdk_root(sdk)?;
         cmd.args.push("-isysroot".into());
         cmd.args.push(sdk_path);
-        cmd.args.push("-fembed-bitcode".into());
+        //cmd.args.push("-fembed-bitcode".into());
         /*
          * TODO we probably ultimately want the -fembed-bitcode-marker flag
          * but can't have it now because of an issue in LLVM:
