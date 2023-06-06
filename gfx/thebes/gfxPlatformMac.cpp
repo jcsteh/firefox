@@ -9,7 +9,6 @@
 #include "mozilla/DataMutex.h"
 #include "mozilla/gfx/2D.h"
 
-#include "gfxMacPlatformFontList.h"
 #include "gfxMacFont.h"
 #include "gfxCoreTextShaper.h"
 #include "gfxTextRun.h"
@@ -50,74 +49,12 @@ using namespace mozilla::unicode;
 
 using mozilla::dom::SystemFontList;
 
-#ifdef MOZ_WIDGET_UIKIT
-gfxMacPlatformFontList::gfxMacPlatformFontList() {}
-gfxMacPlatformFontList::~gfxMacPlatformFontList() {}
-
-nsresult gfxMacPlatformFontList::InitFontListForPlatform() {
-  return NS_ERROR_NOT_IMPLEMENTED;
-}
-
-void gfxMacPlatformFontList::InitSharedFontListForPlatform() {}
-gfxFontEntry* gfxMacPlatformFontList::PlatformGlobalFontFallback(
-    nsPresContext* aPresContext, const uint32_t aCh, Script aRunScript,
-    const gfxFontStyle* aMatchStyle, FontFamily& aMatchedFamily) {
-  return nullptr;
-}
-
-already_AddRefed<FontInfoData> gfxMacPlatformFontList::CreateFontInfoData() {
-  return nullptr;
-}
-
-gfxFontEntry* gfxMacPlatformFontList::CreateFontEntry(
-    mozilla::fontlist::Face* aFace, const mozilla::fontlist::Family* aFamily) {
-  return nullptr;
-}
-
-void gfxMacPlatformFontList::GetFacesInitDataForFamily(
-    const mozilla::fontlist::Family* aFamily,
-    nsTArray<mozilla::fontlist::Face::InitData>& aFaces,
-    bool aLoadCmaps) const {}
-
-void gfxMacPlatformFontList::ReadFaceNamesForFamily(
-    mozilla::fontlist::Family* aFamily, bool aNeedFullnamePostscriptNames) {}
-
-bool gfxMacPlatformFontList::FindAndAddFamiliesLocked(
-    nsPresContext* aPresContext, mozilla::StyleGenericFontFamily aGeneric,
-    const nsACString& aFamily, nsTArray<FamilyAndGeneric>* aOutput,
-    FindFamiliesFlags aFlags, gfxFontStyle* aStyle, nsAtom* aLanguage,
-    gfxFloat aDevToCssSize) {
-  return false;
-}
-
-gfxFontEntry* gfxMacPlatformFontList::LookupLocalFont(
-    nsPresContext* aPresContext, const nsACString& aFontName,
-    WeightRange aWeightForEntry, StretchRange aStretchForEntry,
-    SlantStyleRange aStyleForEntry) {
-  return nullptr;
-}
-
-gfxFontEntry* gfxMacPlatformFontList::MakePlatformFont(
-    const nsACString& aFontName, WeightRange aWeightForEntry,
-    StretchRange aStretchForEntry, SlantStyleRange aStyleForEntry,
-    const uint8_t* aFontData, uint32_t aLength) {
-  return nullptr;
-}
-
-gfxFontFamily* gfxMacPlatformFontList::CreateFontFamily(
-    const nsACString& aName, FontVisibility aVisibility) const {
-  return nullptr;
-}
-
-FontFamily gfxMacPlatformFontList::GetDefaultFontForPlatform(
-    nsPresContext* aPresContext, const gfxFontStyle* aStyle,
-    nsAtom* aLanguage) {
-  MOZ_CRASH("not implemented");
-}
-
-void gfxMacPlatformFontList::ReadSystemFontList(mozilla::dom::SystemFontList*) {
-}
-
+#ifdef MOZ_WIDGET_COCOA
+#  include "gfxMacPlatformFontList.h"
+using PlatformFontListClass = gfxMacPlatformFontList;
+#else
+#  include "IOSPlatformFontList.h"
+using PlatformFontListClass = IOSPlatformFontList;
 #endif
 
 // A bunch of fonts for "additional language support" are shipped in a
@@ -134,7 +71,7 @@ void gfxPlatformMac::FontRegistrationCallback(void* aUnused) {
   PR_SetCurrentThreadName("RegisterFonts");
 
   for (const auto& dir : kLangFontsDirs) {
-    gfxMacPlatformFontList::ActivateFontsFromDir(dir);
+    PlatformFontListClass::ActivateFontsFromDir(dir);
   }
 }
 
@@ -163,7 +100,7 @@ void gfxPlatformMac::RegisterSupplementalFonts() {
       // CTFontManager.h header claiming that it's thread-safe. So we just do it
       // immediately on the main thread, and accept the startup-time hit (sigh).
       for (const auto& dir : kLangFontsDirs) {
-        gfxMacPlatformFontList::ActivateFontsFromDir(dir);
+        PlatformFontListClass::ActivateFontsFromDir(dir);
       }
     }
 #endif
@@ -198,11 +135,11 @@ BackendPrefsData gfxPlatformMac::GetBackendPrefs() const {
 }
 
 bool gfxPlatformMac::CreatePlatformFontList() {
-  return gfxPlatformFontList::Initialize(new gfxMacPlatformFontList);
+  return gfxPlatformFontList::Initialize(new PlatformFontListClass);
 }
 
 void gfxPlatformMac::ReadSystemFontList(SystemFontList* aFontList) {
-  gfxMacPlatformFontList::PlatformFontList()->ReadSystemFontList(aFontList);
+  PlatformFontListClass::PlatformFontList()->ReadSystemFontList(aFontList);
 }
 
 already_AddRefed<gfxASurface> gfxPlatformMac::CreateOffscreenSurface(
@@ -755,7 +692,7 @@ void gfxPlatformMac::GetCommonFallbackFonts(uint32_t aCh, Script aRunScript,
 void gfxPlatformMac::LookupSystemFont(
     mozilla::LookAndFeel::FontID aSystemFontID, nsACString& aSystemFontName,
     gfxFontStyle& aFontStyle) {
-  gfxMacPlatformFontList* pfl = gfxMacPlatformFontList::PlatformFontList();
+  auto* pfl = PlatformFontListClass::PlatformFontList();
   return pfl->LookupSystemFont(aSystemFontID, aSystemFontName, aFontStyle);
 }
 
