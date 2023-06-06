@@ -87,6 +87,7 @@ if CONFIG["MOZ_WIDGET_TOOLKIT"] in ("cocoa", "uikit"):
         "gfxQuartzSurface.h",
     ]
     SOURCES += [
+        "CoreTextFontList.cpp",
         "gfxCoreTextShaper.cpp",
         "gfxMacFont.cpp",
         "gfxMacUtils.cpp",
