@@ -1856,6 +1856,12 @@ pref("browser.translation.ui.show", false);
 // Allows to define the translation engine. Google is default, Bing or Yandex are other options.
 pref("browser.translation.engine", "Google");
 
+// Enable Firefox translations powered by the Bergamot translations
+// engine https://browser.mt/. See Bug 971044.
+#if defined(EARLY_BETA_OR_EARLIER)
+pref("browser.translations.enable", true);
+#endif
+
 // Telemetry settings.
 // Determines if Telemetry pings can be archived locally.
 pref("toolkit.telemetry.archive.enabled", true);
@@ -2192,13 +2198,9 @@ pref("browser.migrate.opera-gx.enabled", true);
 pref("browser.migrate.safari.enabled", true);
 pref("browser.migrate.vivaldi.enabled", true);
 
-#ifdef NIGHTLY_BUILD
 pref("browser.migrate.content-modal.enabled", true);
-#else
-pref("browser.migrate.content-modal.enabled", false);
-#endif
+pref("browser.migrate.content-modal.import-all.enabled", true);
 
-pref("browser.migrate.content-modal.import-all.enabled", false);
 // Values can be: "default", "autoclose", "standalone".
 pref("browser.migrate.content-modal.about-welcome-behavior", "default");
 

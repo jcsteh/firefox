@@ -20,6 +20,11 @@ git = "https://github.com/chris-zen/coremidi.git"
 rev = "fc68464b5445caf111e41f643a2e69ccce0b4f83"
 replace-with = "vendored-sources"
 
+[source."git+https://github.com/franziskuskiefer/cose-rust?rev=43c22248d136c8b38fe42ea709d08da6355cf04b"]
+git = "https://github.com/franziskuskiefer/cose-rust"
+rev = "43c22248d136c8b38fe42ea709d08da6355cf04b"
+replace-with = "vendored-sources"
+
 [source."git+https://github.com/gfx-rs/d3d12-rs?rev=b940b1d71"]
 git = "https://github.com/gfx-rs/d3d12-rs"
 rev = "b940b1d71"
@@ -103,11 +108,6 @@ replace-with = "vendored-sources"
 [source."git+https://github.com/mozilla/uniffi-rs.git?rev=bc7ff8977bf38d0fdd1a458810b14f434d4dc4de"]
 git = "https://github.com/mozilla/uniffi-rs.git"
 rev = "bc7ff8977bf38d0fdd1a458810b14f434d4dc4de"
-replace-with = "vendored-sources"
-
-[source."git+https://github.com/servo/rust-cssparser?rev=6ce91afdf292c4290118843e7421e146f0a4c48b"]
-git = "https://github.com/servo/rust-cssparser"
-rev = "6ce91afdf292c4290118843e7421e146f0a4c48b"
 replace-with = "vendored-sources"
 
 

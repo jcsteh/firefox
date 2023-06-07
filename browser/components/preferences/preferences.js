@@ -171,6 +171,12 @@ function register_module(categoryName, categoryObject) {
       if (template) {
         // Replace the template element with the nodes inside of it.
         template.replaceWith(template.content);
+
+        // We've inserted elements that rely on 'preference' attributes.
+        // So we need to update those by reading from the prefs.
+        // The bindings will do this using idle dispatch and avoid
+        // repeated runs if called multiple times before the task runs.
+        Preferences.queueUpdateOfAllElements();
       }
 
       categoryObject.init();
@@ -247,12 +253,6 @@ function init_all() {
   });
 
   gotoPref().then(() => {
-    let helpButton = document.getElementById("helpButton");
-    let helpUrl =
-      Services.urlFormatter.formatURLPref("app.support.baseURL") +
-      "preferences";
-    helpButton.setAttribute("href", helpUrl);
-
     document.getElementById("addonsButton").addEventListener("click", e => {
       e.preventDefault();
       if (e.button >= 2) {

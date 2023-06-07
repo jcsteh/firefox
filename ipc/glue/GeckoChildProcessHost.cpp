@@ -17,6 +17,7 @@
 #  include "SharedMemoryBasic.h"
 #  include "base/rand_util.h"
 #  include "chrome/common/mach_ipc_mac.h"
+#  include "mozilla/StaticPrefs_media.h"
 #endif
 #ifdef MOZ_WIDGET_UIKIT
 #  include "base/ios_sim_header_shims.h"
@@ -286,7 +287,7 @@ class WindowsProcessLauncher : public BaseProcessLauncher {
 typedef WindowsProcessLauncher ProcessLauncher;
 #endif  // XP_WIN
 
-#ifdef OS_POSIX
+#ifdef XP_UNIX
 class PosixProcessLauncher : public BaseProcessLauncher {
  public:
   PosixProcessLauncher(GeckoChildProcessHost* aHost,
@@ -383,7 +384,7 @@ typedef LinuxProcessLauncher ProcessLauncher;
 #  else
 #    error "Unknown platform"
 #  endif
-#endif  // OS_POSIX
+#endif  // XP_UNIX
 
 using base::ProcessHandle;
 using mozilla::ipc::BaseProcessLauncher;
@@ -555,23 +556,37 @@ mozilla::BinPathType BaseProcessLauncher::GetPathToBinary(
   BinPathType pathType = XRE_GetChildProcBinPathType(processType);
 
   if (pathType == BinPathType::Self) {
-#if defined(OS_WIN)
+#if defined(XP_WIN)
     wchar_t exePathBuf[MAXPATHLEN];
     if (!::GetModuleFileNameW(nullptr, exePathBuf, MAXPATHLEN)) {
       MOZ_CRASH("GetModuleFileNameW failed (FIXME)");
     }
     exePath = FilePath::FromWStringHack(exePathBuf);
-#elif defined(OS_POSIX)
-    exePath = FilePath(CommandLine::ForCurrentProcess()->argv()[0]);
 #else
-#  error Sorry; target OS not supported yet.
+    exePath = FilePath(CommandLine::ForCurrentProcess()->argv()[0]);
 #endif
     return pathType;
   }
 
+#ifdef MOZ_WIDGET_COCOA
+  // The GMP child process runs via the Media Plugin Helper executable
+  // which is a clone of plugin-container allowing for GMP-specific
+  // codesigning entitlements.
+  nsCString bundleName;
+  std::string executableLeafName;
+  if (processType == GeckoProcessType_GMPlugin &&
+      mozilla::StaticPrefs::media_plugin_helper_process_enabled()) {
+    bundleName = MOZ_EME_PROCESS_BUNDLENAME;
+    executableLeafName = MOZ_EME_PROCESS_NAME_BRANDED;
+  } else {
+    bundleName = MOZ_CHILD_PROCESS_BUNDLENAME;
+    executableLeafName = MOZ_CHILD_PROCESS_NAME;
+  }
+#endif
+
   if (ShouldHaveDirectoryService()) {
     MOZ_ASSERT(gGREBinPath);
-#ifdef OS_WIN
+#ifdef XP_WIN
     exePath = FilePath(char16ptr_t(gGREBinPath));
 #elif MOZ_WIDGET_COCOA
     nsCOMPtr<nsIFile> childProcPath;
@@ -580,7 +595,7 @@ mozilla::BinPathType BaseProcessLauncher::GetPathToBinary(
 
     // We need to use an App Bundle on OS X so that we can hide
     // the dock icon. See Bug 557225.
-    childProcPath->AppendNative("plugin-container.app"_ns);
+    childProcPath->AppendNative(bundleName);
     childProcPath->AppendNative("Contents"_ns);
     childProcPath->AppendNative("MacOS"_ns);
     nsCString tempCPath;
@@ -594,7 +609,7 @@ mozilla::BinPathType BaseProcessLauncher::GetPathToBinary(
   }
 
   if (exePath.empty()) {
-#ifdef OS_WIN
+#ifdef XP_WIN
     exePath =
         FilePath::FromWStringHack(CommandLine::ForCurrentProcess()->program());
 #else
@@ -603,7 +618,11 @@ mozilla::BinPathType BaseProcessLauncher::GetPathToBinary(
     exePath = exePath.DirName();
   }
 
+#ifdef MOZ_WIDGET_COCOA
+  exePath = exePath.Append(executableLeafName);
+#else
   exePath = exePath.AppendASCII(MOZ_CHILD_PROCESS_NAME);
+#endif
 
   return pathType;
 }
@@ -1176,7 +1195,7 @@ Result<Ok, LaunchError> LinuxProcessLauncher::DoSetup() {
 }
 #endif  // MOZ_WIDGET_GTK
 
-#ifdef OS_POSIX
+#ifdef XP_UNIX
 Result<Ok, LaunchError> PosixProcessLauncher::DoSetup() {
   Result<Ok, LaunchError> aError = BaseProcessLauncher::DoSetup();
   if (aError.isErr()) {
@@ -1191,7 +1210,8 @@ Result<Ok, LaunchError> PosixProcessLauncher::DoSetup() {
     MOZ_ASSERT(gGREBinPath);
     nsCString path;
     NS_CopyUnicodeToNative(nsDependentString(gGREBinPath), path);
-#  if defined(OS_LINUX) || defined(OS_BSD)
+#  if defined(XP_LINUX) || defined(__DragonFly__) || defined(XP_FREEBSD) || \
+      defined(XP_NETBSD) || defined(XP_OPENBSD)
     const char* ld_library_path = PR_GetEnv("LD_LIBRARY_PATH");
     nsCString new_ld_lib_path(path.get());
 
@@ -1201,7 +1221,7 @@ Result<Ok, LaunchError> PosixProcessLauncher::DoSetup() {
     }
     mLaunchOptions->env_map["LD_LIBRARY_PATH"] = new_ld_lib_path.get();
 
-#  elif OS_APPLE  // defined(OS_LINUX) || defined(OS_BSD)
+#  elif XP_DARWIN
     // With signed production Mac builds, the dynamic linker (dyld) will
     // ignore dyld environment variables preventing the use of variables
     // such as DYLD_LIBRARY_PATH and DYLD_INSERT_LIBRARIES.
@@ -1229,7 +1249,7 @@ Result<Ok, LaunchError> PosixProcessLauncher::DoSetup() {
       mLaunchOptions->env_map["OS_ACTIVITY_MODE"] = "disable";
     }
 #    endif  // defined(MOZ_SANDBOX)
-#  endif    // defined(OS_LINUX) || defined(OS_BSD)
+#  endif
   }
 
   FilePath exePath;
@@ -1288,7 +1308,9 @@ Result<Ok, LaunchError> PosixProcessLauncher::DoSetup() {
   mChildArgv.push_back(mPidString);
 
   if (!CrashReporter::IsDummy()) {
-#  if defined(OS_LINUX) || defined(OS_BSD) || defined(OS_SOLARIS)
+#  if defined(MOZ_WIDGET_COCOA)
+    mChildArgv.push_back(CrashReporter::GetChildNotificationPipe());
+#  elif defined(XP_UNIX)
     int childCrashFd, childCrashRemapFd;
     if (NS_WARN_IF(!CrashReporter::CreateNotificationPipeForChild(
             &childCrashFd, &childCrashRemapFd))) {
@@ -1304,10 +1326,7 @@ Result<Ok, LaunchError> PosixProcessLauncher::DoSetup() {
       // "false" == crash reporting disabled
       mChildArgv.push_back("false");
     }
-#  elif defined(MOZ_WIDGET_COCOA) /* defined(OS_LINUX) || defined(OS_BSD) || \
-                                     defined(OS_SOLARIS) */
-    mChildArgv.push_back(CrashReporter::GetChildNotificationPipe());
-#  endif  // defined(OS_LINUX) || defined(OS_BSD) || defined(OS_SOLARIS)
+#  endif
   }
 
   int fd = PR_FileDesc2NativeHandle(mCrashAnnotationWritePipe);
@@ -1332,7 +1351,7 @@ Result<Ok, LaunchError> PosixProcessLauncher::DoSetup() {
   mChildArgv.push_back(ChildProcessType());
   return Ok();
 }
-#endif  // OS_POSIX
+#endif  // XP_UNIX
 
 #if defined(MOZ_WIDGET_ANDROID)
 RefPtr<ProcessHandlePromise> AndroidProcessLauncher::DoLaunch() {
@@ -1341,7 +1360,7 @@ RefPtr<ProcessHandlePromise> AndroidProcessLauncher::DoLaunch() {
 }
 #endif  // MOZ_WIDGET_ANDROID
 
-#ifdef OS_POSIX
+#ifdef XP_UNIX
 RefPtr<ProcessHandlePromise> PosixProcessLauncher::DoLaunch() {
   ProcessHandle handle = 0;
   Result<Ok, LaunchError> aError =
@@ -1365,7 +1384,7 @@ Result<Ok, LaunchError> PosixProcessLauncher::DoFinishLaunch() {
 
   return Ok();
 }
-#endif  // OS_POSIX
+#endif  // XP_UNIX
 
 #ifdef XP_DARWIN
 Result<Ok, LaunchError> MacProcessLauncher::DoFinishLaunch() {
