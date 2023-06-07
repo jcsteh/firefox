@@ -4,7 +4,7 @@
 
 #include "base/message_pump_mac.h"
 
-#if !defined(OS_IOS)
+#if !defined(XP_IOS)
 #  import <AppKit/AppKit.h>
 #  include <IOKit/IOMessage.h>
 #  include <IOKit/pwr_mgt/IOPMLib.h>
@@ -13,7 +13,7 @@
 
 #include <limits>
 
-#if !defined(OS_IOS)
+#if !defined(XP_IOS)
 #  import "base/chrome_application_mac.h"
 #endif
 #include "base/logging.h"
@@ -117,7 +117,7 @@ MessagePumpCFRunLoopBase::MessagePumpCFRunLoopBase()
                                                  0,     // priority
                                                  EnterExitObserver, &observer_context);
   CFRunLoopAddObserver(run_loop_, enter_exit_observer_, kCFRunLoopCommonModes);
-#if !defined(OS_IOS)
+#if !defined(XP_IOS)
   root_power_domain_ = IORegisterForSystemPower(
       this, &power_notification_port_, PowerStateNotification, &power_notification_object_);
   if (root_power_domain_ != MACH_PORT_NULL) {
@@ -131,7 +131,7 @@ MessagePumpCFRunLoopBase::MessagePumpCFRunLoopBase()
 // lower on the run loop thread's stack when this object was created, the
 // same number of run loops must be running when this object is destroyed.
 MessagePumpCFRunLoopBase::~MessagePumpCFRunLoopBase() {
-#if !defined(OS_IOS)
+#if !defined(XP_IOS)
   if (root_power_domain_ != MACH_PORT_NULL) {
     CFRunLoopRemoveSource(run_loop_, IONotificationPortGetRunLoopSource(power_notification_port_),
                           kCFRunLoopCommonModes);
@@ -468,7 +468,7 @@ void MessagePumpCFRunLoopBase::EnterExitObserver(CFRunLoopObserverRef observer,
   self->EnterExitRunLoop(activity);
 }
 
-#if !defined(OS_IOS)
+#if !defined(XP_IOS)
 // Called from the run loop.
 // static
 void MessagePumpCFRunLoopBase::PowerStateNotification(void* info, io_service_t service,
@@ -616,7 +616,7 @@ void MessagePumpNSRunLoop::Quit() {
   CFRunLoopWakeUp(run_loop());
 }
 
-#if defined(OS_IOS)
+#if defined(XP_IOS)
 MessagePumpUIApplication::MessagePumpUIApplication()
 //    : run_loop_(NULL)
 {}
@@ -732,7 +732,7 @@ NSAutoreleasePool* MessagePumpNSApplication::CreateAutoreleasePool() {
 // static
 MessagePump* MessagePumpMac::Create() {
   if ([NSThread isMainThread]) {
-#if defined(OS_IOS)
+#if defined(XP_IOS)
     return new MessagePumpUIApplication;
 #else
     return new MessagePumpNSApplication;

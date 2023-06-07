@@ -10,9 +10,8 @@
 #include <mach/mach.h>
 #include <mach/message.h>
 #include <sys/types.h>
-#include <build/build_config.h>
 
-#if !defined(OS_IOS)
+#if !defined(XP_IOS)
 #  include <CoreServices/CoreServices.h>
 #  include <servers/bootstrap.h>
 #endif

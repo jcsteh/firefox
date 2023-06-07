@@ -93,7 +93,7 @@ Result<Ok, LaunchError> LaunchApp(const std::vector<std::string>& argv,
   // disturbing other threads, and then restore it afterwards.
   int old_cwd_fd = -1;
   if (!options.workdir.empty()) {
-#if !OS_IOS
+#if !XP_IOS
     if (@available(macOS 10.15, iOS 15, *)) {
       int rv = posix_spawn_file_actions_addchdir_np(&file_actions, options.workdir.c_str());
       if (rv != 0) {
