@@ -255,6 +255,7 @@ bool LazyInstantiator::ShouldInstantiate(const DWORD aClientTid) {
 }
 
 MsaaRootAccessible* LazyInstantiator::ResolveMsaaRoot() {
+::DebugBreak();
   LocalAccessible* acc = widget::WinUtils::GetRootAccessibleForHWND(mHwnd);
   if (!acc || !acc->IsRoot()) {
     return nullptr;

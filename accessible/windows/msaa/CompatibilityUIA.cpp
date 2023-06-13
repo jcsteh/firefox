@@ -195,8 +195,10 @@ Maybe<bool> Compatibility::OnUIAMessage(WPARAM aWParam, LPARAM aLParam) {
   };
 
   if (!FindNamedObject(comparator) || !section) {
+    printf("jtd couldn't find named object\n");
     return Nothing();
   }
+  printf("jtd found named object\n");
 
   NTSTATUS ntStatus;
 

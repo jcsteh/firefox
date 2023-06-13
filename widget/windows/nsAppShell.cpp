@@ -400,7 +400,11 @@ static LRESULT CALLBACK UiaHookProc(int aCode, WPARAM aWParam, LPARAM aLParam) {
   }
 
   auto cwp = reinterpret_cast<CWPSTRUCT*>(aLParam);
+  char name[100] = "";
+  GetClipboardFormatNameA(cwp->message, name, sizeof(name));
+  printf_stderr("jtd message %x %s\n", cwp->message, name);
   if (gUiaMsg && cwp->message == gUiaMsg) {
+    printf_stderr("jtd got uia message\n");
     if (gUiaAttempts < kMaxUiaAttempts) {
       ++gUiaAttempts;
 
@@ -435,6 +439,7 @@ static LRESULT CALLBACK UiaHookProc(int aCode, WPARAM aWParam, LPARAM aLParam) {
 }
 
 static void InitUIADetection() {
+printf_stderr("jtd init\n");
   if (gUiaHook) {
     // In this case we want to re-hook so that the hook is always called ahead
     // of UIA's hook.
@@ -447,7 +452,8 @@ static void InitUIADetection() {
     // This is the message that UIA sends to trigger a command. UIA's
     // CallWndProc looks for this message and then handles the request.
     // Our hook gets in front of UIA's hook and examines the message first.
-    gUiaMsg = ::RegisterWindowMessageW(L"HOOKUTIL_MSG");
+printf_stderr("jtd register message\n");
+    gUiaMsg = ::RegisterWindowMessageW(L"UiaServerConnection_HookMessage");
   }
 
   if (!gUiaHook) {
@@ -466,17 +472,19 @@ nsAppShell::Observe(nsISupports* aSubject, const char* aTopic,
         mozilla::services::GetObserverService());
 
 #if defined(ACCESSIBILITY)
-    if (!strcmp(aTopic, "dll-loaded-main-thread")) {
+    if (!strcmp(aTopic, "dll-loaded-main-thread") || !strcmp(aTopic, "dll-loaded-non-main-thread")) {
       if (a11y::PlatformDisabledState() != a11y::ePlatformIsDisabled &&
           !gUiaHook) {
         nsDependentString dllName(aData);
 
         if (StringEndsWith(dllName, u"uiautomationcore.dll"_ns,
                            nsCaseInsensitiveStringComparator)) {
+          printf_stderr("jtd %s\n", aTopic);
           InitUIADetection();
 
           // Now that we've handled the observer notification, we can remove it
           obsServ->RemoveObserver(this, "dll-loaded-main-thread");
+          obsServ->RemoveObserver(this, "dll-loaded-non-main-thread");
         }
       }
 
@@ -578,9 +586,12 @@ nsresult nsAppShell::Init() {
 
 #if defined(ACCESSIBILITY)
     if (::GetModuleHandleW(L"uiautomationcore.dll")) {
+      printf_stderr("jtd UIA already present\n");
       InitUIADetection();
     } else {
+      printf_stderr("jtd waiting for UIA\n");
       obsServ->AddObserver(this, "dll-loaded-main-thread", false);
+      obsServ->AddObserver(this, "dll-loaded-non-main-thread", false);
     }
 #endif  // defined(ACCESSIBILITY)
   }
