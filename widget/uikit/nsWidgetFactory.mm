@@ -14,8 +14,16 @@
 #include "nsAppShellSingleton.h"
 #include "nsLookAndFeel.h"
 
+#include "HeadlessClipboard.h"
+
 using namespace mozilla;
 using namespace mozilla::widget;
+
+NS_IMPL_COMPONENT_FACTORY(nsIClipboard) {
+  nsCOMPtr<nsIClipboard> inst = new HeadlessClipboard();
+
+  return inst.forget();
+}
 
 void nsWidgetUIKitModuleCtor() { nsAppShellInit(); }
 
