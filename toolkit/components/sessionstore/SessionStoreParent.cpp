@@ -107,6 +107,16 @@ static void DoSessionStoreUpdate(CanonicalBrowsingContext* aBrowsingContext,
     window->OnUpdateSessionStore(update);
   }
 }
+#elif defined(XP_IOS)
+static void DoSessionStoreUpdate(CanonicalBrowsingContext* aBrowsingContext,
+                                 const Maybe<nsCString>& aDocShellCaps,
+                                 const Maybe<bool>& aPrivatedMode,
+                                 SessionStoreFormData* aFormData,
+                                 SessionStoreScrollData* aScroll,
+                                 const MaybeSessionStoreZoom& aZoom,
+                                 bool aNeedCollectSHistory, uint32_t aEpoch) {
+  // not implemented yet
+}
 #else
 static void DoSessionStoreUpdate(CanonicalBrowsingContext* aBrowsingContext,
                                  const Maybe<nsCString>& aDocShellCaps,
