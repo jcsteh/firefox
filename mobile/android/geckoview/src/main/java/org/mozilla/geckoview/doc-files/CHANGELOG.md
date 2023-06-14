@@ -13,6 +13,14 @@ exclude: true
 
 ⚠️  breaking change and deprecation notices
 
+## v116
+- Added [`GeckoSession.didPrintPageContent`][116.1] to included extra print status for a standard print and new `GeckoPrintException.ERROR_NO_PRINT_DELEGATE`
+- Added [`PromptInstanceDelegate.onSelectIdentityCredentialProvider`][116.2] to allow the user to choose an Identity Credential provider (FedCM) to be used when authenticating.
+  ([bug 1836356]({{bugzilla}}1836356))
+
+[116.1]: {{javadoc_uri}}/GeckoSession.html#didPrintPageContent
+[116.2]:{{javadoc_uri}}/GeckoSession.PromptDelegate.html#onSelectIdentityCredentialProvider(org.mozilla.geckoview.GeckoSession,org.mozilla.geckoview.GeckoSession.PromptDelegate.IdentityCredential.ProviderSelectorPrompt)
+
 ## v115
 - Changed [`SessionPdfFileSaver.createResponse`][115.1] to response of saving PDF to accept two additional
   arguments: `skipConfirmation` and `requestExternalApp`.
@@ -1376,4 +1384,4 @@ to allow adding gecko profiler markers.
 [65.24]: {{javadoc_uri}}/CrashReporter.html#sendCrashReport(android.content.Context,android.os.Bundle,java.lang.String)
 [65.25]: {{javadoc_uri}}/GeckoResult.html
 
-[api-version]: aa4d7a44b1bdd7687884196affc6af0555ac7253
+[api-version]: 000a36f40e66164256ef221b2842a72d363db6e6

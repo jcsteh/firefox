@@ -2526,10 +2526,6 @@ void InitializeQuotaManager() {
   MOZ_ASSERT(NS_IsMainThread());
   MOZ_ASSERT(!gQuotaManagerInitialized);
 
-#ifdef QM_SCOPED_LOG_EXTRA_INFO_ENABLED
-  ScopedLogExtraInfo::Initialize();
-#endif
-
   if (!QuotaManager::IsRunningGTests()) {
     // These services have to be started on the main thread currently.
     const nsCOMPtr<mozIStorageService> ss =
@@ -2545,6 +2541,12 @@ void InitializeQuotaManager() {
 
 #ifdef DEBUG
   gQuotaManagerInitialized = true;
+#endif
+}
+
+void InitializeScopedLogExtraInfo() {
+#ifdef QM_SCOPED_LOG_EXTRA_INFO_ENABLED
+  ScopedLogExtraInfo::Initialize();
 #endif
 }
 
@@ -4437,6 +4439,9 @@ Result<FullOriginMetadata, nsresult> QuotaManager::LoadFullOriginMetadata(
   PrincipalInfo principalInfo;
   QM_TRY(MOZ_TO_RESULT(PrincipalToPrincipalInfo(principal, &principalInfo)));
 
+  QM_TRY(MOZ_TO_RESULT(IsPrincipalInfoValid(principalInfo)),
+         Err(NS_ERROR_MALFORMED_URI));
+
   QM_TRY_UNWRAP(auto principalMetadata,
                 GetInfoFromValidatedPrincipalInfo(principalInfo));
 
@@ -4524,6 +4529,9 @@ Result<OriginMetadata, nsresult> QuotaManager::GetOriginMetadata(
   PrincipalInfo principalInfo;
   QM_TRY(MOZ_TO_RESULT(PrincipalToPrincipalInfo(principal, &principalInfo)));
 
+  QM_TRY(MOZ_TO_RESULT(IsPrincipalInfoValid(principalInfo)),
+         Err(NS_ERROR_MALFORMED_URI));
+
   QM_TRY_UNWRAP(auto principalMetadata,
                 GetInfoFromValidatedPrincipalInfo(principalInfo));
 
@@ -4594,8 +4602,28 @@ nsresult QuotaManager::InitializeRepository(PersistenceType aPersistenceType,
                     switch (dirEntryKind) {
                       case nsIFileKind::ExistsAsDirectory: {
                         QM_TRY_UNWRAP(
-                            auto metadata,
-                            LoadFullOriginMetadataWithRestore(childDirectory));
+                            auto maybeMetadata,
+                            QM_OR_ELSE_WARN_IF(
+                                // Expression
+                                LoadFullOriginMetadataWithRestore(
+                                    childDirectory)
+                                    .map([](auto metadata)
+                                             -> Maybe<FullOriginMetadata> {
+                                      return Some(std::move(metadata));
+                                    }),
+                                // Predicate.
+                                IsSpecificError<NS_ERROR_MALFORMED_URI>,
+                                // Fallback.
+                                ErrToDefaultOk<Maybe<FullOriginMetadata>>));
+
+                        if (!maybeMetadata) {
+                          // Unknown directories during initialization are
+                          // allowed. Just warn if we find them.
+                          UNKNOWN_FILE_WARNING(leafName);
+                          break;
+                        }
+
+                        auto metadata = maybeMetadata.extract();
 
                         MOZ_ASSERT(metadata.mPersistenceType ==
                                    aPersistenceType);
@@ -6550,7 +6578,8 @@ QuotaManager::GetInfoFromValidatedPrincipalInfo(
     }
 
     default: {
-      MOZ_CRASH("Should never get here!");
+      MOZ_ASSERT_UNREACHABLE("Should never get here!");
+      return Err(NS_ERROR_UNEXPECTED);
     }
   }
 }
@@ -8491,8 +8520,30 @@ nsresult GetUsageOp::ProcessOrigin(QuotaManager& aQuotaManager,
                                    const PersistenceType aPersistenceType) {
   AssertIsOnIOThread();
 
-  QM_TRY_INSPECT(const auto& metadata,
-                 aQuotaManager.LoadFullOriginMetadataWithRestore(&aOriginDir));
+  QM_TRY_UNWRAP(auto maybeMetadata,
+                QM_OR_ELSE_WARN_IF(
+                    // Expression
+                    aQuotaManager.LoadFullOriginMetadataWithRestore(&aOriginDir)
+                        .map([](auto metadata) -> Maybe<FullOriginMetadata> {
+                          return Some(std::move(metadata));
+                        }),
+                    // Predicate.
+                    IsSpecificError<NS_ERROR_MALFORMED_URI>,
+                    // Fallback.
+                    ErrToDefaultOk<Maybe<FullOriginMetadata>>));
+
+  if (!maybeMetadata) {
+    // Unknown directories during getting usage are allowed. Just warn if we
+    // find them.
+    QM_TRY_INSPECT(const auto& leafName,
+                   MOZ_TO_RESULT_INVOKE_MEMBER_TYPED(nsAutoString, aOriginDir,
+                                                     GetLeafName));
+
+    UNKNOWN_FILE_WARNING(leafName);
+    return NS_OK;
+  }
+
+  auto metadata = maybeMetadata.extract();
 
   QM_TRY_INSPECT(const auto& usageInfo,
                  GetUsageForOrigin(aQuotaManager, aPersistenceType, metadata));
@@ -8805,7 +8856,7 @@ nsresult InitTemporaryStorageOp::DoDirectoryWork(QuotaManager& aQuotaManager) {
 
   AUTO_PROFILER_LABEL("InitTemporaryStorageOp::DoDirectoryWork", OTHER);
 
-  QM_TRY(OkIf(aQuotaManager.IsStorageInitialized()), NS_ERROR_FAILURE);
+  QM_TRY(OkIf(aQuotaManager.IsStorageInitialized()), NS_ERROR_NOT_INITIALIZED);
 
   QM_TRY(MOZ_TO_RESULT(aQuotaManager.EnsureTemporaryStorageIsInitialized()));
 
@@ -8874,7 +8925,7 @@ nsresult InitializePersistentOriginOp::DoDirectoryWork(
 
   AUTO_PROFILER_LABEL("InitializePersistentOriginOp::DoDirectoryWork", OTHER);
 
-  QM_TRY(OkIf(aQuotaManager.IsStorageInitialized()), NS_ERROR_FAILURE);
+  QM_TRY(OkIf(aQuotaManager.IsStorageInitialized()), NS_ERROR_NOT_INITIALIZED);
 
   QM_TRY_UNWRAP(
       mCreated,
@@ -8910,9 +8961,10 @@ nsresult InitializeTemporaryOriginOp::DoDirectoryWork(
 
   AUTO_PROFILER_LABEL("InitializeTemporaryOriginOp::DoDirectoryWork", OTHER);
 
-  QM_TRY(OkIf(aQuotaManager.IsStorageInitialized()), NS_ERROR_FAILURE);
+  QM_TRY(OkIf(aQuotaManager.IsStorageInitialized()), NS_ERROR_NOT_INITIALIZED);
 
-  QM_TRY(OkIf(aQuotaManager.IsTemporaryStorageInitialized()), NS_ERROR_FAILURE);
+  QM_TRY(OkIf(aQuotaManager.IsTemporaryStorageInitialized()),
+         NS_ERROR_NOT_INITIALIZED);
 
   QM_TRY_UNWRAP(
       mCreated,
@@ -9171,10 +9223,33 @@ void ClearRequestBase::DeleteFiles(QuotaManager& aQuotaManager,
            this](nsCOMPtr<nsIFile>&& file) -> mozilla::Result<Ok, nsresult> {
             QM_TRY_INSPECT(const auto& dirEntryKind, GetDirEntryKind(*file));
 
+            QM_TRY_INSPECT(const auto& leafName,
+                           MOZ_TO_RESULT_INVOKE_MEMBER_TYPED(nsAutoString, file,
+                                                             GetLeafName));
+
             switch (dirEntryKind) {
               case nsIFileKind::ExistsAsDirectory: {
-                QM_TRY_INSPECT(const auto& metadata,
-                               aQuotaManager.GetOriginMetadata(file));
+                QM_TRY_UNWRAP(
+                    auto maybeMetadata,
+                    QM_OR_ELSE_WARN_IF(
+                        // Expression
+                        aQuotaManager.GetOriginMetadata(file).map(
+                            [](auto metadata) -> Maybe<OriginMetadata> {
+                              return Some(std::move(metadata));
+                            }),
+                        // Predicate.
+                        IsSpecificError<NS_ERROR_MALFORMED_URI>,
+                        // Fallback.
+                        ErrToDefaultOk<Maybe<OriginMetadata>>));
+
+                if (!maybeMetadata) {
+                  // Unknown directories during clearing are allowed. Just warn
+                  // if we find them.
+                  UNKNOWN_FILE_WARNING(leafName);
+                  break;
+                }
+
+                auto metadata = maybeMetadata.extract();
 
                 MOZ_ASSERT(metadata.mPersistenceType == aPersistenceType);
 
@@ -9236,10 +9311,6 @@ void ClearRequestBase::DeleteFiles(QuotaManager& aQuotaManager,
               }
 
               case nsIFileKind::ExistsAsFile: {
-                QM_TRY_INSPECT(const auto& leafName,
-                               MOZ_TO_RESULT_INVOKE_MEMBER_TYPED(
-                                   nsAutoString, file, GetLeafName));
-
                 // Unknown files during clearing are allowed. Just warn if we
                 // find them.
                 if (!IsOSMetadata(leafName)) {
@@ -9696,7 +9767,30 @@ nsresult ListOriginsOp::ProcessOrigin(QuotaManager& aQuotaManager,
                                       const PersistenceType aPersistenceType) {
   AssertIsOnIOThread();
 
-  QM_TRY_UNWRAP(auto metadata, aQuotaManager.GetOriginMetadata(&aOriginDir));
+  QM_TRY_UNWRAP(auto maybeMetadata,
+                QM_OR_ELSE_WARN_IF(
+                    // Expression
+                    aQuotaManager.GetOriginMetadata(&aOriginDir)
+                        .map([](auto metadata) -> Maybe<OriginMetadata> {
+                          return Some(std::move(metadata));
+                        }),
+                    // Predicate.
+                    IsSpecificError<NS_ERROR_MALFORMED_URI>,
+                    // Fallback.
+                    ErrToDefaultOk<Maybe<OriginMetadata>>));
+
+  if (!maybeMetadata) {
+    // Unknown directories during listing are allowed. Just warn if we find
+    // them.
+    QM_TRY_INSPECT(const auto& leafName,
+                   MOZ_TO_RESULT_INVOKE_MEMBER_TYPED(nsAutoString, aOriginDir,
+                                                     GetLeafName));
+
+    UNKNOWN_FILE_WARNING(leafName);
+    return NS_OK;
+  }
+
+  auto metadata = maybeMetadata.extract();
 
   if (aQuotaManager.IsOriginInternal(metadata.mOrigin)) {
     return NS_OK;
@@ -9899,6 +9993,18 @@ nsresult StorageOperationBase::ProcessOriginDirectories() {
         QM_TRY(
             MOZ_TO_RESULT(PrincipalToPrincipalInfo(principal, &principalInfo)));
 
+        QM_WARNONLY_TRY_UNWRAP(
+            auto valid,
+            MOZ_TO_RESULT(quotaManager->IsPrincipalInfoValid(principalInfo)));
+
+        if (!valid) {
+          // Unknown directories during upgrade are allowed. Just warn if we
+          // find them.
+          UNKNOWN_FILE_WARNING(originProps.mLeafName);
+          originProps.mIgnore = true;
+          break;
+        }
+
         QM_TRY_UNWRAP(
             auto principalMetadata,
             quotaManager->GetInfoFromValidatedPrincipalInfo(principalInfo));
@@ -9928,7 +10034,7 @@ nsresult StorageOperationBase::ProcessOriginDirectories() {
       MOZ_ASSERT(originProps.mOriginMetadata.mOrigin.IsEmpty());
 
       QM_TRY(MOZ_TO_RESULT(RemoveObsoleteOrigin(originProps)));
-    } else {
+    } else if (!originProps.mIgnore) {
       MOZ_ASSERT(!originProps.mOriginMetadata.mGroup.IsEmpty());
       MOZ_ASSERT(!originProps.mOriginMetadata.mOrigin.IsEmpty());
 

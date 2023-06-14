@@ -36,6 +36,7 @@ ChromeUtils.defineESModuleGetters(lazy, {
   Interactions: "resource:///modules/Interactions.sys.mjs",
   Log: "resource://gre/modules/Log.sys.mjs",
   LoginBreaches: "resource:///modules/LoginBreaches.sys.mjs",
+  MigrationUtils: "resource:///modules/MigrationUtils.sys.mjs",
   NetUtil: "resource://gre/modules/NetUtil.sys.mjs",
   NewTabUtils: "resource://gre/modules/NewTabUtils.sys.mjs",
   NimbusFeatures: "resource://nimbus/ExperimentAPI.sys.mjs",
@@ -600,31 +601,6 @@ let JSWINDOWACTORS = {
     messageManagerGroups: ["browsers"],
   },
 
-  MigrationWizard: {
-    parent: {
-      esModuleURI: "resource:///actors/MigrationWizardParent.sys.mjs",
-    },
-
-    child: {
-      esModuleURI: "resource:///actors/MigrationWizardChild.sys.mjs",
-      events: {
-        "MigrationWizard:RequestState": { wantUntrusted: true },
-        "MigrationWizard:BeginMigration": { wantUntrusted: true },
-        "MigrationWizard:RequestSafariPermissions": { wantUntrusted: true },
-        "MigrationWizard:SelectSafariPasswordFile": { wantUntrusted: true },
-      },
-    },
-
-    includeChrome: true,
-    allFrames: true,
-    matches: [
-      "about:welcome",
-      "about:welcome?*",
-      "about:preferences",
-      "chrome://browser/content/migration/migration-dialog-window.html",
-    ],
-  },
-
   PageInfo: {
     child: {
       esModuleURI: "resource:///actors/PageInfoChild.sys.mjs",
@@ -1113,22 +1089,6 @@ BrowserGlue.prototype = {
           "urlbar"
         );
         break;
-      case "browser-search-engine-modified":
-        // Ensure we cleanup the hiddenOneOffs pref when removing
-        // an engine, and that newly added engines are visible.
-        if (data == "engine-added" || data == "engine-removed") {
-          let engineName = subject.QueryInterface(Ci.nsISearchEngine).name;
-          let pref = Services.prefs.getStringPref(
-            "browser.search.hiddenOneOffs"
-          );
-          let hiddenList = pref ? pref.split(",") : [];
-          hiddenList = hiddenList.filter(x => x !== engineName);
-          Services.prefs.setStringPref(
-            "browser.search.hiddenOneOffs",
-            hiddenList.join(",")
-          );
-        }
-        break;
       case "xpi-signature-changed":
         let disabledAddons = JSON.parse(data).disabled;
         let addons = await lazy.AddonManager.getAddonsByIDs(disabledAddons);
@@ -1181,7 +1141,6 @@ BrowserGlue.prototype = {
       "handle-xul-text-link",
       "profile-before-change",
       "keyword-search",
-      "browser-search-engine-modified",
       "restart-in-safe-mode",
       "xpi-signature-changed",
       "sync-ui-state:update",
@@ -2306,6 +2265,12 @@ BrowserGlue.prototype = {
     this._setupSearchDetection();
 
     this._monitorGPCPref();
+
+    // Loading the MigrationUtils module does the work of registering the
+    // migration wizard JSWindowActor pair. In case nothing else has done
+    // this yet, load the MigrationUtils so that the wizard is ready to be
+    // used.
+    lazy.MigrationUtils;
   },
 
   /**
@@ -4237,48 +4202,6 @@ BrowserGlue.prototype = {
         }
       } catch (ex) {
         console.error("Failed to clear XULStore PiP values: ", ex);
-      }
-    }
-
-    if (currentUIVersion < 126) {
-      // Bug 1747343 - Add a pref to set the default download action to "Always
-      // ask" so the UCT dialog will be opened for mime types that are not
-      // stored already. Users who wanted this behavior would have disabled the
-      // experimental pref browser.download.improvements_to_download_panel so we
-      // can migrate its inverted value to this new pref.
-      if (
-        !Services.prefs.getBoolPref(
-          "browser.download.improvements_to_download_panel",
-          true
-        )
-      ) {
-        Services.prefs.setBoolPref(
-          "browser.download.always_ask_before_handling_new_types",
-          true
-        );
-      }
-    }
-
-    // Bug 1769071: The UI Version 127 was used for a clean up code that is not
-    // necessary anymore. Please do not use 127 because this number is probably
-    // set in Nightly and Beta channel.
-
-    // Non-macOS only (on macOS we've never used the tmp folder for downloads):
-    if (AppConstants.platform != "macosx" && currentUIVersion < 128) {
-      // Bug 1738574 - Add a pref to start downloads in the tmp folder.
-      // Users who wanted this behavior would have disabled the experimental
-      // pref browser.download.improvements_to_download_panel so we
-      // can migrate its inverted value to this new pref.
-      if (
-        !Services.prefs.getBoolPref(
-          "browser.download.improvements_to_download_panel",
-          true
-        )
-      ) {
-        Services.prefs.setBoolPref(
-          "browser.download.start_downloads_in_tmp_dir",
-          true
-        );
       }
     }
 

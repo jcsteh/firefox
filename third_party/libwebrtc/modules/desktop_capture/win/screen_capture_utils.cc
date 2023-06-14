@@ -10,6 +10,7 @@
 
 #include "modules/desktop_capture/win/screen_capture_utils.h"
 
+#include <shellscalingapi.h>
 #include <windows.h>
 
 #include <string>
@@ -143,6 +144,34 @@ DesktopRect GetFullscreenRect() {
                                GetSystemMetrics(SM_YVIRTUALSCREEN),
                                GetSystemMetrics(SM_CXVIRTUALSCREEN),
                                GetSystemMetrics(SM_CYVIRTUALSCREEN));
+}
+
+DesktopVector GetDpiForMonitor(HMONITOR monitor) {
+// See Bug 1837647 - upstream commit 60795e8c7a added this method using
+// ::GetDpiForMonitor which is not available on Win7 machines.  For now,
+// we'll return the default case of {96, 96} until we can properly
+// restore the functionality for newer machines (See Bug 1837667).
+#if 0
+  UINT dpi_x, dpi_y;
+  // MDT_EFFECTIVE_DPI includes the scale factor as well as the system DPI.
+  HRESULT hr = ::GetDpiForMonitor(monitor, MDT_EFFECTIVE_DPI, &dpi_x, &dpi_y);
+  if (SUCCEEDED(hr)) {
+    return {static_cast<INT>(dpi_x), static_cast<INT>(dpi_y)};
+  }
+  RTC_LOG_GLE_EX(LS_WARNING, hr) << "GetDpiForMonitor() failed";
+
+  // If we can't get the per-monitor DPI, then return the system DPI.
+  HDC hdc = GetDC(nullptr);
+  if (hdc) {
+    DesktopVector dpi{GetDeviceCaps(hdc, LOGPIXELSX),
+                      GetDeviceCaps(hdc, LOGPIXELSY)};
+    ReleaseDC(nullptr, hdc);
+    return dpi;
+  }
+#endif
+
+  // If everything fails, then return the default DPI for Windows.
+  return {96, 96};
 }
 
 DesktopRect GetScreenRect(const DesktopCapturer::SourceId screen,

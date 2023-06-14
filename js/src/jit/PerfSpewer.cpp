@@ -563,7 +563,7 @@ void BaselinePerfSpewer::recordInstruction(JSContext* cx, MacroAssembler& masm,
 #ifdef JS_JITSPEW
   if (PerfIROpsEnabled()) {
     JSScript* script = frame.script;
-    unsigned numOperands = js::StackUses(pc);
+    unsigned numOperands = js::StackUses(op, pc);
 
     Sprinter buf(cx);
     CHECK_RETURN(buf.init());
@@ -1182,6 +1182,15 @@ void js::jit::PerfSpewerRangeRecorder::recordOffset(const char* name) {
     return;
   }
   UniqueChars desc = DuplicateString(name);
+  appendEntry(desc);
+}
+
+void js::jit::PerfSpewerRangeRecorder::recordVMWrapperOffset(const char* name) {
+  if (!PerfEnabled()) {
+    return;
+  }
+
+  UniqueChars desc = JS_smprintf("VMWrapper: %s", name);
   appendEntry(desc);
 }
 

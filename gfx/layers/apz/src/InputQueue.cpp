@@ -881,7 +881,11 @@ void InputQueue::ConfirmDragBlock(
   InputBlockState* inputBlock = FindBlockForId(aInputBlockId, &firstInput);
   if (inputBlock && inputBlock->AsDragBlock()) {
     DragBlockState* block = inputBlock->AsDragBlock();
-    block->SetDragMetrics(aDragMetrics);
+
+    // We use the target initial scrollable rect for updating the thumb position
+    // during dragging the thumb even if the scrollable rect got expanded during
+    // the drag.
+    block->SetDragMetrics(aDragMetrics, aTargetApzc->GetScrollableRect());
     success = block->SetConfirmedTargetApzc(
         aTargetApzc, InputBlockState::TargetConfirmationState::eConfirmed,
         firstInput,
@@ -948,9 +952,17 @@ static APZHandledResult GetHandledResultFor(
                : APZHandledResult{APZHandledPlace::Unhandled, aApzc};
   }
 
-  auto [result, rootApzc] = aCurrentInputBlock.GetOverscrollHandoffChain()
-                                ->ScrollingDownWillMoveDynamicToolbar(aApzc);
-  if (!result) {
+  bool mayTriggerPullToRefresh =
+      aCurrentInputBlock.GetOverscrollHandoffChain()
+          ->ScrollingUpWillTriggerPullToRefresh(aApzc);
+  if (mayTriggerPullToRefresh) {
+    return APZHandledResult{APZHandledPlace::Unhandled, aApzc, true};
+  }
+
+  auto [willMoveDynamicToolbar, rootApzc] =
+      aCurrentInputBlock.GetOverscrollHandoffChain()
+          ->ScrollingDownWillMoveDynamicToolbar(aApzc);
+  if (!willMoveDynamicToolbar) {
     return APZHandledResult{APZHandledPlace::HandledByContent, aApzc};
   }
 

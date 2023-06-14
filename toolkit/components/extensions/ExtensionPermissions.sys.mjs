@@ -589,14 +589,12 @@ export var OriginControls = {
       return { attention, quarantined };
     }
 
-    if (WebExtensionPolicy.quarantinedDomainsEnabled) {
-      const state = this.getState(policy, window.gBrowser.selectedTab);
-      const attention = !!state.quarantined;
-      // If it needs attention, it's because of the quarantined domains.
-      return { attention, quarantined: attention };
-    }
-
-    return { attention: false, quarantined: false };
+    // No need to check whether the Quarantined Domains feature is enabled
+    // here, it's already done in `getState()`.
+    const state = this.getState(policy, window.gBrowser.selectedTab);
+    const attention = !!state.quarantined;
+    // If it needs attention, it's because of the quarantined domains.
+    return { attention, quarantined: attention };
   },
 
   // Grant extension host permission to always run on this host.

@@ -132,6 +132,7 @@ use style::traversal_flags::{self, TraversalFlags};
 use style::use_counters::UseCounters;
 use style::values::animated::{Animate, Procedure, ToAnimatedZero};
 use style::values::computed::easing::ComputedTimingFunction;
+use style::values::computed::effects::Filter;
 use style::values::computed::font::{
     FontFamily, FontFamilyList, FontStretch, FontStyle, FontWeight, GenericFontFamily,
 };
@@ -2424,26 +2425,21 @@ pub extern "C" fn Servo_StyleRule_GetSelectorTextAtIndex(
 }
 
 #[no_mangle]
-pub extern "C" fn Servo_StyleRule_GetSelectorCount(rule: &LockedStyleRule, count: *mut u32) {
-    read_locked_arc(rule, |rule: &StyleRule| {
-        *unsafe { count.as_mut().unwrap() } = rule.selectors.0.len() as u32;
-    })
+pub extern "C" fn Servo_StyleRule_GetSelectorCount(rule: &LockedStyleRule) -> u32 {
+    read_locked_arc(rule, |rule: &StyleRule| rule.selectors.0.len() as u32)
 }
 
 #[no_mangle]
 pub extern "C" fn Servo_StyleRule_GetSpecificityAtIndex(
     rule: &LockedStyleRule,
     index: u32,
-    specificity: *mut u64,
-) {
+) -> u64 {
     read_locked_arc(rule, |rule: &StyleRule| {
-        let specificity = unsafe { specificity.as_mut().unwrap() };
         let index = index as usize;
         if index >= rule.selectors.0.len() {
-            *specificity = 0;
-            return;
+            return 0;
         }
-        *specificity = rule.selectors.0[index].specificity() as u64;
+        rule.selectors.0[index].specificity() as u64
     })
 }
 
@@ -2452,6 +2448,7 @@ pub extern "C" fn Servo_StyleRule_SelectorMatchesElement(
     rule: &LockedStyleRule,
     element: &RawGeckoElement,
     index: u32,
+    host: Option<&RawGeckoElement>,
     pseudo_type: PseudoStyleType,
     relevant_link_visited: bool,
 ) -> bool {
@@ -2488,6 +2485,7 @@ pub extern "C" fn Servo_StyleRule_SelectorMatchesElement(
         };
 
         let element = GeckoElement(element);
+        let host = host.map(GeckoElement);
         let quirks_mode = element.as_node().owner_doc().quirks_mode();
         let mut nth_index_cache = Default::default();
         let visited_mode = if relevant_link_visited {
@@ -2497,13 +2495,15 @@ pub extern "C" fn Servo_StyleRule_SelectorMatchesElement(
         };
         let mut ctx = MatchingContext::new_for_visited(
             matching_mode,
-            None,
+            /* bloom_filter = */ None,
             &mut nth_index_cache,
             visited_mode,
             quirks_mode,
             NeedsSelectorFlags::No,
         );
-        matches_selector(selector, 0, None, &element, &mut ctx)
+        ctx.with_shadow_host(host, |ctx| {
+            matches_selector(selector, 0, None, &element, ctx)
+        })
     })
 }
 
@@ -5351,10 +5351,10 @@ pub extern "C" fn Servo_DeclarationBlock_SetPixelValue(
     let prop = match_wrap_declared! { long,
         Height => Size::LengthPercentage(NonNegative(lp)),
         Width => Size::LengthPercentage(NonNegative(lp)),
-        BorderTopWidth => BorderSideWidth::Length(nocalc.into()),
-        BorderRightWidth => BorderSideWidth::Length(nocalc.into()),
-        BorderBottomWidth => BorderSideWidth::Length(nocalc.into()),
-        BorderLeftWidth => BorderSideWidth::Length(nocalc.into()),
+        BorderTopWidth => BorderSideWidth::from_px(value),
+        BorderRightWidth => BorderSideWidth::from_px(value),
+        BorderBottomWidth => BorderSideWidth::from_px(value),
+        BorderLeftWidth => BorderSideWidth::from_px(value),
         MarginTop => lp_or_auto,
         MarginRight => lp_or_auto,
         MarginBottom => lp_or_auto,
@@ -7216,6 +7216,62 @@ pub extern "C" fn Servo_ParseTransformIntoMatrix(
 
     *result = m.to_array();
     *contain_3d = is_3d;
+    true
+}
+
+#[no_mangle]
+pub extern "C" fn Servo_ParseFilters(
+    value: &nsACString,
+    ignore_urls: bool,
+    data: *mut URLExtraData,
+    out: &mut style::OwnedSlice<Filter>,
+) -> bool {
+    use style::values::specified::effects::SpecifiedFilter;
+
+    let string = unsafe { value.as_str_unchecked() };
+    let mut input = ParserInput::new(&string);
+    let mut parser = Parser::new(&mut input);
+    let url_data = unsafe { UrlExtraData::from_ptr_ref(&data) };
+    let context = ParserContext::new(
+        Origin::Author,
+        url_data,
+        None,
+        ParsingMode::DEFAULT,
+        QuirksMode::NoQuirks,
+        /* namespaces = */ Default::default(),
+        None,
+        None,
+    );
+
+    let mut filters = vec![];
+
+    if parser.try_parse(|i| i.expect_ident_matching("none")).is_ok() {
+        return parser.expect_exhausted().is_ok();
+    }
+
+    if parser.is_exhausted() {
+        return false;
+    }
+
+    while !parser.is_exhausted() {
+        let specified_filter = match SpecifiedFilter::parse(&context, &mut parser) {
+            Ok(f) => f,
+            Err(..) => return false,
+        };
+
+        let filter = match specified_filter.to_computed_value_without_context() {
+            Ok(f) => f,
+            Err(..) => return false,
+        };
+
+        if ignore_urls && matches!(filter, Filter::Url(_)) {
+            continue;
+        }
+
+        filters.push(filter);
+    }
+
+    *out = style::OwnedSlice::from(filters);
     true
 }
 

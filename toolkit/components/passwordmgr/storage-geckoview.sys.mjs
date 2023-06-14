@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 /**
- * nsILoginManagerStorage implementation for GeckoView
+ * LoginManagerStorage implementation for GeckoView
  */
 
 import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
@@ -21,12 +21,18 @@ XPCOMUtils.defineLazyModuleGetters(lazy, {
   LoginEntry: "resource://gre/modules/GeckoViewAutocomplete.jsm",
 });
 
-export class LoginManagerStorage_geckoview extends LoginManagerStorage_json {
-  get classID() {
-    return Components.ID("{337f317f-f713-452a-962d-db831c785fec}");
-  }
-  get QueryInterface() {
-    return ChromeUtils.generateQI(["nsILoginManagerStorage"]);
+export class LoginManagerStorage extends LoginManagerStorage_json {
+  static #storage = null;
+
+  static create(callback) {
+    if (!LoginManagerStorage.#storage) {
+      LoginManagerStorage.#storage = new LoginManagerStorage();
+      LoginManagerStorage.#storage.initialize().then(callback);
+    } else if (callback) {
+      callback();
+    }
+
+    return LoginManagerStorage.#storage;
   }
 
   get _crypto() {
@@ -76,19 +82,19 @@ export class LoginManagerStorage_geckoview extends LoginManagerStorage_json {
   }
 
   /**
-   * Returns an array of all saved logins that can be decrypted.
+   * Returns a promise resolving to an array of all saved logins that can be decrypted.
    *
    * @resolve {nsILoginInfo[]}
    */
-  async getAllLoginsAsync() {
-    return this._getLoginsAsync({});
+  getAllLoginsAsync(includeDeleted) {
+    return this._getLoginsAsync({}, includeDeleted);
   }
 
-  async searchLoginsAsync(matchData) {
+  async searchLoginsAsync(matchData, includeDeleted) {
     this.log(
       `Searching for matching saved logins for origin: ${matchData.origin}`
     );
-    return this._getLoginsAsync(matchData);
+    return this._getLoginsAsync(matchData, includeDeleted);
   }
 
   _baseHostnameFromOrigin(origin) {
@@ -111,7 +117,7 @@ export class LoginManagerStorage_geckoview extends LoginManagerStorage_json {
     }
   }
 
-  async _getLoginsAsync(matchData) {
+  async _getLoginsAsync(matchData, includeDeleted) {
     let baseHostname = this._baseHostnameFromOrigin(matchData.origin);
 
     // Query all logins for the eTLD+1 and then filter the logins in _searchLogins
@@ -158,6 +164,7 @@ export class LoginManagerStorage_geckoview extends LoginManagerStorage_json {
 
     const [logins] = this._searchLogins(
       realMatchData,
+      includeDeleted,
       options,
       candidateLogins.map(this._vanillaLoginToStorageLogin)
     );
@@ -246,11 +253,7 @@ export class LoginManagerStorage_geckoview extends LoginManagerStorage_json {
   }
 }
 
-XPCOMUtils.defineLazyGetter(
-  LoginManagerStorage_geckoview.prototype,
-  "log",
-  () => {
-    let logger = lazy.LoginHelper.createLogger("Login storage");
-    return logger.log.bind(logger);
-  }
-);
+XPCOMUtils.defineLazyGetter(LoginManagerStorage.prototype, "log", () => {
+  let logger = lazy.LoginHelper.createLogger("Login storage");
+  return logger.log.bind(logger);
+});

@@ -62,8 +62,8 @@ export class MigrationWizard extends HTMLElement {
               <span class="error-icon" role="img"></span>
               <div data-l10n-id="migration-wizard-import-browser-no-resources"></div>
             </div>
-            <div data-l10n-id="migration-wizard-selection-list" class="resource-selection-preamble deemphasized-text hide-on-error"></div>
-            <details class="resource-selection-details hide-on-error">
+            <div data-l10n-id="migration-wizard-selection-list" class="resource-selection-preamble deemphasized-text hide-on-no-resources-error"></div>
+            <details class="resource-selection-details hide-on-no-resources-error">
               <summary id="resource-selection-summary">
                 <div class="selected-data-header" data-l10n-id="migration-all-available-data-label"></div>
                 <div class="selected-data deemphasized-text">&nbsp;</div>
@@ -90,6 +90,11 @@ export class MigrationWizard extends HTMLElement {
                 </label>
               </fieldset>
             </details>
+
+            <div class="file-import-error error-message">
+              <span class="error-icon" role="img"></span>
+              <div id="file-import-error-message"></div>
+            </div>
 
             <moz-button-group class="buttons" part="buttons">
               <button class="cancel-close" data-l10n-id="migration-cancel-button-label"></button>
@@ -128,6 +133,24 @@ export class MigrationWizard extends HTMLElement {
               <div data-resource-type="PAYMENT_METHODS" class="resource-progress-group">
                 <span class="progress-icon-parent"><span class="progress-icon" role="img"></span></span>
                 <span data-l10n-id="migration-payment-methods-option-label"></span>
+                <span class="success-text deemphasized-text">&nbsp;</span>
+              </div>
+
+              <div data-resource-type="COOKIES" class="resource-progress-group">
+                <span class="progress-icon-parent"><span class="progress-icon" role="img"></span></span>
+                <span data-l10n-id="migration-cookies-option-label"></span>
+                <span class="success-text deemphasized-text">&nbsp;</span>
+              </div>
+
+              <div data-resource-type="SESSION" class="resource-progress-group">
+                <span class="progress-icon-parent"><span class="progress-icon" role="img"></span></span>
+                <span data-l10n-id="migration-session-option-label"></span>
+                <span class="success-text deemphasized-text">&nbsp;</span>
+              </div>
+
+              <div data-resource-type="OTHERDATA" class="resource-progress-group">
+                <span class="progress-icon-parent"><span class="progress-icon" role="img"></span></span>
+                <span data-l10n-id="migration-otherdata-option-label"></span>
                 <span class="success-text deemphasized-text">&nbsp;</span>
               </div>
             </div>
@@ -389,6 +412,7 @@ export class MigrationWizard extends HTMLElement {
     // closely lines up with the edges of the selector button.
     this.#browserProfileSelectorList.style.boxSizing = "border-box";
     this.#browserProfileSelectorList.style.overflowY = "auto";
+    this.#browserProfileSelectorList.style.maxHeight = "100%";
   }
 
   /**
@@ -474,8 +498,16 @@ export class MigrationWizard extends HTMLElement {
    * @param {object} state
    *   The state object passed into setState. The following properties are
    *   used:
-   * @param {string[]} state.migrators An array of source browser names that
-   *   can be migrated from.
+   * @param {string[]} state.migrators
+   *   An array of source browser names that can be migrated from.
+   * @param {string} [state.migratorKey=null]
+   *   The key for a migrator to automatically select in the migrators array.
+   *   If not defined, the first item in the array will be selected.
+   * @param {string} [state.fileImportErrorMessage=null]
+   *   An error message to display in the event that an attempt at doing a
+   *   file import failed. File import failures are special in that they send
+   *   the wizard back to the selection page with an error message. If not
+   *   defined, it is presumed that a file import error has not occurred.
    */
   #onShowingSelection(state) {
     this.#ensureSelectionDropdown();
@@ -555,6 +587,25 @@ export class MigrationWizard extends HTMLElement {
       this.#onBrowserProfileSelectionChanged(
         this.#browserProfileSelectorList.firstElementChild
       );
+    }
+
+    if (state.migratorKey) {
+      let panelItem = this.#browserProfileSelectorList.querySelector(
+        `panel-item[key="${state.migratorKey}"]`
+      );
+      this.#onBrowserProfileSelectionChanged(panelItem);
+    }
+
+    let fileImportErrorMessageEl = selectionPage.querySelector(
+      "#file-import-error-message"
+    );
+
+    if (state.fileImportErrorMessage) {
+      fileImportErrorMessageEl.textContent = state.fileImportErrorMessage;
+      selectionPage.toggleAttribute("file-import-error", true);
+    } else {
+      fileImportErrorMessageEl.textContent = "";
+      selectionPage.toggleAttribute("file-import-error", false);
     }
 
     // Since this is called before the named-deck actually switches to
@@ -720,6 +771,7 @@ export class MigrationWizard extends HTMLElement {
           "migration-wizard-progress-icon-in-progress"
         );
         progressIcon.classList.remove("completed");
+        successText.textContent = "";
         // With no status text, we re-insert the &nbsp; so that the status
         // text area does not fully collapse.
         successText.appendChild(document.createTextNode("\u00A0"));
@@ -787,6 +839,35 @@ export class MigrationWizard extends HTMLElement {
   }
 
   /**
+   * A public method for starting a migration without the user needing
+   * to choose a browser, profile or resource types. This is typically
+   * done only for doing a profile reset.
+   *
+   * @param {string} migratorKey
+   *   The key associated with the migrator to use.
+   * @param {object|null} profile
+   *   A representation of a browser profile. When not null, this is an
+   *   object with a string "id" property, and a string "name" property.
+   * @param {string[]} resourceTypes
+   *   An array of resource types that import should occur for. These
+   *   strings should be from MigrationWizardConstants.DISPLAYED_RESOURCE_TYPES.
+   */
+  doAutoImport(migratorKey, profile, resourceTypes) {
+    let migrationEventDetail = this.#gatherMigrationEventDetails({
+      migratorKey,
+      profile,
+      resourceTypes,
+    });
+
+    this.dispatchEvent(
+      new CustomEvent("MigrationWizard:BeginMigration", {
+        bubbles: true,
+        detail: migrationEventDetail,
+      })
+    );
+  }
+
+  /**
    * Takes the current state of the selections page and bundles them
    * up into a MigrationWizard:BeginMigration event that can be handled
    * externally to perform the actual migration.
@@ -824,11 +905,37 @@ export class MigrationWizard extends HTMLElement {
   /**
    * Pulls information from the DOM state of the MigrationWizard and constructs
    * and returns an object that can be used to begin migration via and event
-   * sent to the MigrationWizardChild.
+   * sent to the MigrationWizardChild. If autoMigrationDetails is provided,
+   * this information is used to construct the object instead of the DOM state.
    *
+   * @param {object} [autoMigrationDetails=null]
+   *   Provided iff an automatic migration is being invoked. In that case, the
+   *   details are constructed from this object rather than the wizard DOM state.
+   * @param {string} autoMigrationDetails.migratorKey
+   *   The key of the migrator to do automatic migration from.
+   * @param {object|null} autoMigrationDetails.profile
+   *   A representation of a browser profile. When not null, this is an
+   *   object with a string "id" property, and a string "name" property.
+   * @param {string[]} autoMigrationDetails.resourceTypes
+   *   An array of resource types that import should occur for. These
+   *   strings should be from MigrationWizardConstants.DISPLAYED_RESOURCE_TYPES.
    * @returns {MigrationDetails} details
    */
-  #gatherMigrationEventDetails() {
+  #gatherMigrationEventDetails(autoMigrationDetails) {
+    if (autoMigrationDetails?.migratorKey) {
+      let { migratorKey, profile, resourceTypes } = autoMigrationDetails;
+
+      return {
+        key: migratorKey,
+        type: MigrationWizardConstants.MIGRATOR_TYPES.BROWSER,
+        profile,
+        resourceTypes,
+        hasPermissions: true,
+        expandedDetails: this.#expandedDetails,
+        autoMigration: true,
+      };
+    }
+
     let panelItem = this.#browserProfileSelector.selectedPanelItem;
     let key = panelItem.getAttribute("key");
     let type = panelItem.getAttribute("type");
@@ -852,6 +959,7 @@ export class MigrationWizard extends HTMLElement {
       resourceTypes,
       hasPermissions,
       expandedDetails: this.#expandedDetails,
+      autoMigration: false,
     };
   }
 

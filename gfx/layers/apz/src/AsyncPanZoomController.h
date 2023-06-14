@@ -370,7 +370,8 @@ class AsyncPanZoomController {
 
   nsEventStatus HandleDragEvent(const MouseInput& aEvent,
                                 const AsyncDragMetrics& aDragMetrics,
-                                OuterCSSCoord aInitialThumbPos);
+                                OuterCSSCoord aInitialThumbPos,
+                                const CSSRect& aInitialScrollableRect);
 
   /**
    * Handler for events which should not be intercepted by the touch listener.
@@ -562,6 +563,9 @@ class AsyncPanZoomController {
 
   // Return true if there is room to scroll downwards.
   bool CanScrollDownwards() const;
+
+  // Return true if there is room to scroll upwards.
+  bool CanOverscrollUpwards() const;
 
   /**
    * Convert a point on the scrollbar from this APZC's ParentLayer coordinates
@@ -1251,6 +1255,11 @@ class AsyncPanZoomController {
   LayoutDeviceToLayerScale GetCumulativeResolution() const {
     RecursiveMutexAutoLock lock(mRecursiveMutex);
     return mScrollMetadata.GetMetrics().GetCumulativeResolution();
+  }
+
+  CSSRect GetScrollableRect() const {
+    RecursiveMutexAutoLock lock(mRecursiveMutex);
+    return mScrollMetadata.GetMetrics().GetScrollableRect();
   }
 
   // Returns the delta for the given InputData.
