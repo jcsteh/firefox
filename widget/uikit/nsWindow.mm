@@ -115,7 +115,7 @@ class nsAutoRetainUIKitObject {
   tapRecognizer.numberOfTapsRequired = 1;
   [self addGestureRecognizer:tapRecognizer];
 
-  mTouches = [NSMutableDictionary init];
+  mTouches = [[NSMutableDictionary alloc] init];
   mNextTouchID = 0;
   return self;
 }
