@@ -32,5 +32,9 @@ DisableStlWrapping()
 
 DIST_INSTALL = True
 
+if CONFIG["MOZ_WIDGET_TOOLKIT"] == "uikit":
+    # We link to xpcomglue.a from xcode, so can't use expanded libs on iOS.
+    NO_EXPAND_LIBS = True
+
 if CONFIG["MOZ_WIDGET_TOOLKIT"] == "gtk":
     CXXFLAGS += CONFIG["GLIB_CFLAGS"]
