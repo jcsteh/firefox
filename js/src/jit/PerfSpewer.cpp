@@ -23,7 +23,7 @@
 #  define gettid() static_cast<pid_t>(syscall(__NR_gettid))
 #endif
 
-#if defined(JS_ION_PERF) && defined(XP_MACOSX)
+#if defined(JS_ION_PERF) && defined(XP_DARWIN)
 #  include <pthread.h>
 #  include <unistd.h>
 

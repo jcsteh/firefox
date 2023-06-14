@@ -423,6 +423,10 @@ void DefaultJitOptions::maybeSetWriteProtectCode(bool val) {
 #ifdef JS_USE_APPLE_FAST_WX
   // On Apple Silicon we always use pthread_jit_write_protect_np.
   MOZ_ASSERT(!writeProtectCode);
+#elif defined(XP_IOS)
+  // On iOS we both can't use pthread_jit_write_protect_np and RWX pages, so
+  // writeProtectCode must always be enabled.
+  MOZ_ASSERT(writeProtectCode);
 #else
   writeProtectCode = val;
 #endif
