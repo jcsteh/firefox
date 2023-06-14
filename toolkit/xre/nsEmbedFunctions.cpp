@@ -46,8 +46,13 @@
 #  include <mach/mach.h>
 #  include <servers/bootstrap.h>
 #  include "nsVersionComparator.h"
-#  include "chrome/common/mach_ipc_mac.h"
 #  include "gfxPlatformMac.h"
+#endif
+#if defined(XP_IOS)
+#  include "base/ios_sim_header_shims.h"
+#endif
+#if defined(XP_DARWIN)
+#  include "chrome/common/mach_ipc_mac.h"
 #endif
 #include "nsX11ErrorHandler.h"
 #include "nsGDKErrorHandler.h"
@@ -335,7 +340,7 @@ nsresult XRE_InitChildProcess(int aArgc, char* aArgv[],
 
   // Complete 'task_t' exchange for Mac OS X. This structure has the same size
   // regardless of architecture so we don't have any cross-arch issues here.
-#ifdef XP_MACOSX
+#ifdef XP_DARWIN
   if (aArgc < 1) return NS_ERROR_FAILURE;
 
 #  if defined(MOZ_SANDBOX)
@@ -369,7 +374,7 @@ nsresult XRE_InitChildProcess(int aArgc, char* aArgv[],
     return NS_ERROR_FAILURE;
   }
 
-#  if defined(MOZ_SANDBOX)
+#  if defined(MOZ_SANDBOX) && defined(XP_MACOSX)
   std::string sandboxError;
   if (!GeckoChildProcessHost::StartMacSandbox(allArgc, aArgv, sandboxError)) {
     printf_stderr("Sandbox error: %s\n", sandboxError.c_str());

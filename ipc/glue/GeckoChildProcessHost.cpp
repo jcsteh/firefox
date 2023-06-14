@@ -404,7 +404,7 @@ GeckoChildProcessHost::GeckoChildProcessHost(GeckoProcessType aProcessType,
 #endif
       mHandleLock("mozilla.ipc.GeckoChildProcessHost.mHandleLock"),
       mChildProcessHandle(0),
-#if defined(MOZ_WIDGET_COCOA)
+#if defined(XP_DARWIN)
       mChildTask(MACH_PORT_NULL),
 #endif
 #if defined(MOZ_SANDBOX) && defined(XP_MACOSX)
@@ -457,7 +457,7 @@ GeckoChildProcessHost::~GeckoChildProcessHost()
 
   {
     mozilla::AutoWriteLock hLock(mHandleLock);
-#if defined(MOZ_WIDGET_COCOA)
+#if defined(XP_DARWIN)
     if (mChildTask != MACH_PORT_NULL) {
       mach_port_deallocate(mach_task_self(), mChildTask);
     }
@@ -1305,7 +1305,7 @@ Result<Ok, LaunchError> PosixProcessLauncher::DoSetup() {
 #  endif
   }
 
-#  ifdef MOZ_WIDGET_COCOA
+#  ifdef XP_DARWIN
   {
     auto* thisMac = static_cast<MacProcessLauncher*>(this);
     kern_return_t kr =
