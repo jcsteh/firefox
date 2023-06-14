@@ -5788,6 +5788,12 @@ int XREMain::XRE_main(int argc, char* argv[], const BootstrapConfig& aConfig) {
     greDir->AppendNative("Resources"_ns);
 #endif
 
+#ifdef XP_IOS
+    // For now, the `build-gecko.sh` script dumps everything into the Frameworks
+    // directory.
+    greDir->AppendNative("Frameworks"_ns);
+#endif
+
     mAppData->xreDirectory = greDir;
   }
 
