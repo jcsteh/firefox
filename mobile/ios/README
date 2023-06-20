@@ -1,0 +1,53 @@
+# iOS Port Prototype
+
+Currently, the iOS port prototype cannot easily be built in the same way as we
+build and run applications for other platforms.
+
+This project currently loads XUL through mozglue and then starts `XRE_main` like
+we do on desktop, handling full control over to XUL. This is the same as the
+original approach which was removed in
+https://phabricator.services.mozilla.com/D25800, and the code is heavily
+inspired by that old project.
+
+## Building
+
+1. Update the .mozconfig to be as it is described below. Some things like the
+   OBJDIR are hard-coded in the xcode project file currently, so need to be
+   configured correctly.
+
+2. Build the main core of XUL with `./mach build` as normal.
+
+3. Once the build is finished, open the xcode project, and attempt to run the
+   project in the iOS simulator.
+
+   The build script in the xcode project will copy the relevant files from the objdir into the final bundle's path
+
+### .mozconfig
+
+The following is a .mozconfig which can be used to build a debug iOS simulator
+version of the iOS prototype on an apple-silicon macbook.
+
+```
+# Enable this target application.
+# Note that this only actually builds the libraries (i.e.  XUL), and doesn't
+# actually build a full iOS application.
+ac_add_options --enable-application=mobile/ios
+
+# Tests like c++ unit tests aren't working on iOS yet, so we need to disable
+# building them.
+ac_add_options --disable-tests
+
+# The `DEBUG` status of XUL needs to match the debug status of the xcode
+# project. Given that you're probably running in the emulator in debug mode -
+# you'll need `--enable-debug`.
+ac_add_options --enable-debug
+
+# In order to target the iOS simulator, you need to explicitly specify an iOS
+# simulator target. This is the target to use on apple silicon, I haven't tried
+# building on an x86-64 macbook,
+ac_add_options --target=aarch64-apple-ios-sim
+
+# Unfortunately the OBJDIR is hard-coded in the xcode project file right now, so
+# you'll need to build with specifically this objdir path.
+mk_add_options MOZ_OBJDIR=@TOPSRCDIR@/obj-firefox
+```
