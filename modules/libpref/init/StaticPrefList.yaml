@@ -1758,6 +1758,19 @@
   mirror: always
   do_not_use_directly: true
 
+# This pref controls how exceptions to opaque response blocking for the media MIME types
+# `audio/*` and `video/*` are handled. This is because step 8 in the spec that performs
+# audio or video type pattern matching cannot handle certain MIME types (yet).
+# See https://whatpr.org/fetch/1442.html#orb-algorithm
+#   0) No exceptions
+#   1) Some exceptions, explicitly hard coded in `IsOpaqueSafeListedSpecBreakingMIMEType`
+#   2) Allow all MIME types beginning with `audio/*` or `video/*`.
+- name: browser.opaqueResponseBlocking.mediaExceptionsStrategy
+  type: uint32_t
+  value: 1
+  mirror: always
+  do_not_use_directly: true
+
 # When this pref is enabled, <object> and <embed> elements will create
 # synthetic documents when the resource type they're loading is an image.
 - name: browser.opaqueResponseBlocking.syntheticBrowsingContext
@@ -2539,7 +2552,7 @@
 # events that occur in a given wheel transaction have the same event target.
 - name: dom.event.wheel-event-groups.enabled
   type: bool
-  value: @IS_EARLY_BETA_OR_EARLIER@
+  value: true
   mirror: always
 
 # Whether WheelEvent should return pixels instead of lines for
@@ -2610,7 +2623,7 @@
 # If true, event is first captured then bubbled on target element
 - name: dom.events.phases.correctOrderOnTarget
   type: RelaxedAtomicBool
-  value: true
+  value: false
   mirror: always
 
 # This pref controls whether or not the `protected` dataTransfer state is
@@ -2626,7 +2639,7 @@
 # the content process.
 - name: dom.events.dataTransfer.mozFile.enabled
   type: bool
-  value: @IS_NIGHTLY_BUILD@
+  value: true
   mirror: always
 
 - name: dom.events.dataTransfer.imageAsFile.enabled
@@ -2930,11 +2943,6 @@
 #endif
   mirror: always
 
-- name: dom.ipc.tabs.disabled
-  type: bool
-  value: false
-  mirror: always
-
 # Process launch delay (in milliseconds).
 - name: dom.ipc.processPrelaunch.delayMs
   type: uint32_t
@@ -3145,7 +3153,7 @@
 # WebCodecs API
 - name: dom.media.webcodecs.enabled
   type: RelaxedAtomicBool
-  value: false
+  value: @IS_NIGHTLY_BUILD@
   mirror: always
 
 # Number of seconds of very quiet or silent audio before considering the audio
@@ -4207,7 +4215,7 @@
 
 - name: dom.textMetrics.fontBoundingBox.enabled
   type: RelaxedAtomicBool
-  value: false
+  value: true
   mirror: always
 
 # Time (in ms) that it takes to regenerate 1ms.
@@ -4902,7 +4910,7 @@
 # Controls if a content script will be aborted on child process shutdown.
 - name: dom.abort_script_on_child_shutdown
   type: bool
-  value: @IS_NIGHTLY_BUILD@
+  value: true
   mirror: always
 
 - name: dom.max_chrome_script_run_time
@@ -6354,11 +6362,6 @@
   value: false
   mirror: once
 
-- name: gfx.vsync.collect-scroll-transforms
-  type: RelaxedAtomicBool
-  value: false
-  mirror: always
-
 - name: gfx.vsync.compositor.unobserve-count
   type: int32_t
   value: 10
@@ -6577,11 +6580,6 @@
   mirror: once
 
 #ifdef XP_WIN
-  # Whether or not to fallback from WebRender to Software WebRender + D3D11.
--   name: gfx.webrender.fallback.software-d3d11
-    type: bool
-    value: true
-    mirror: once
   # Whether to use a video overlay layers with DirectComposition
 -   name: gfx.webrender.dcomp-video-overlay-win
     type: bool
@@ -8640,6 +8638,22 @@
   value: true
   mirror: always
 
+# Is support for motion-path <basic-shape> other than path() enabled?
+# https://drafts.fxtf.org/motion-1/#valdef-offset-path-basic-shape
+- name: layout.css.motion-path-basic-shapes.enabled
+  type: RelaxedAtomicBool
+  value: @IS_NIGHTLY_BUILD@
+  mirror: always
+  rust: true
+
+# Is support for motion-path <coord-box> enabled?
+# https://drafts.fxtf.org/motion-1/#valdef-offset-path-coord-box
+- name: layout.css.motion-path-coord-box.enabled
+  type: RelaxedAtomicBool
+  value: @IS_NIGHTLY_BUILD@
+  mirror: always
+  rust: true
+
 # Is support for motion-path ray() enabled?
 - name: layout.css.motion-path-ray.enabled
   type: RelaxedAtomicBool
@@ -10093,6 +10107,18 @@
     mirror: always
 #endif  # ANDROID
 
+# Now we will completely disable the ability to perform audio decoding outside
+# of Utility.
+# We do that only on nightly builds for now.
+-   name: media.allow-audio-non-utility
+    type: RelaxedAtomicBool
+#if defined(NIGHTLY_BUILD)
+    value: false
+#else
+    value: true
+#endif // defined(NIGHTLY_BUILD)
+    mirror: always
+
 #ifdef MOZ_OMX
 -   name: media.omx.enabled
     type: bool
@@ -10712,6 +10738,14 @@
   value: @IS_NOT_MOBILE@
   mirror: always
 
+# The getDisplayMedia prompt uses getDisplayMedia under the hood to show previews.
+# This can be turned off if, e.g. on systems with known issues like X11, or if
+# previews are not desired.
+- name: media.getdisplaymedia.previews.enabled
+  type: bool
+  value: @IS_NOT_ANDROID@
+  mirror: always
+
 # Turn off any cameras (but not mics) while in the background. This is desirable
 # on mobile.
 - name: media.getusermedia.camera.background.mute.enabled
@@ -10974,6 +11008,11 @@
   type: RelaxedAtomicBool
   value: true
   mirror: always
+
+- name: media.webrtc.camera.allow-pipewire
+  type: bool
+  value: false
+  mirror: once
 #endif
 
 - name: media.block-autoplay-until-in-foreground
@@ -11029,6 +11068,13 @@
 - name: media.audio.playbackrate.muting_threshold
   type: uint32_t
   value: 8
+  mirror: always
+
+# The interval of time in milliseconds between attempts to reopen any
+# previously unavailable audio device.
+- name: media.audio.device.retry.ms
+  type: RelaxedAtomicInt32
+  value: 1000
   mirror: always
 
 # Time-stretch algorithm single processing sequence length in milliseconds.
@@ -12935,11 +12981,6 @@
 # Prefs starting with "privacy."
 #---------------------------------------------------------------------------
 
-- name: privacy.fuzzyfox.clockgrainus
-  type: RelaxedAtomicUint32
-  value: 100
-  mirror: always
-
 # Annotate trackers using the strict list. If set to false, the basic list will
 # be used instead.
 - name: privacy.annotate_channels.strict_list.enabled
@@ -14352,11 +14393,6 @@
 # Prefs starting with "thread."
 #---------------------------------------------------------------------------
 
-- name: threads.medium_high_event_queue.enabled
-  type: RelaxedAtomicBool
-  value: true
-  mirror: always
-
 # If control tasks aren't enabled, they get medium high priority.
 - name: threads.control_event_queue.enabled
   type: RelaxedAtomicBool
@@ -14404,11 +14440,7 @@
 # Setting this to zero will effectively disable timer coalescing.
 - name: timer.maximum_firing_delay_tolerance_ms
   type: AtomicFloat
-#ifdef NIGHTLY_BUILD
   value: 10000.0
-#else
-  value: 0.0
-#endif
   mirror: always
 
 #---------------------------------------------------------------------------
@@ -15044,11 +15076,7 @@
 # Forces async present to wait for a sync, even while using remote textures.
 - name: webgl.out-of-process.async-present.force-sync
   type: RelaxedAtomicBool
-#if defined(EARLY_BETA_OR_EARLIER)
   value: false
-#else
-  value: true
-#endif
   mirror: always
 
 #if defined(MOZ_WIDGET_ANDROID)

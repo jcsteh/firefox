@@ -125,9 +125,9 @@ add_task(async function testSimpleSourcesWithManualClickExpand() {
   // Before trigerring the menu, mock the file picker
   const MockFilePicker = SpecialPowers.MockFilePicker;
   MockFilePicker.init(window);
-  const nsiFile = FileUtils.getFile("TmpD", [
-    `export_source_content_${Date.now()}.log`,
-  ]);
+  const nsiFile = new FileUtils.File(
+    PathUtils.join(PathUtils.tempDir, `export_source_content_${Date.now()}.log`)
+  );
   MockFilePicker.setFiles([nsiFile]);
   const path = nsiFile.path;
 
@@ -493,6 +493,7 @@ add_task(async function testSourceTreeWithEncodedPaths() {
     <html>
       <head>
       <script src="/my folder/my file.js"></script>
+      <script src="/malformedUri.js?%"></script>
       </head>
       <body>
       <h1>Encoded scripts paths</h1>
@@ -507,6 +508,14 @@ add_task(async function testSourceTreeWithEncodedPaths() {
       response.write(`const x = 42`);
     }
   );
+  httpServer.registerPathHandler(
+    "/malformedUri.js",
+    function (request, response) {
+      response.setStatusLine(request.httpVersion, 200, "OK");
+      response.setHeader("Content-Type", "application/javascript", false);
+      response.write(`const y = "malformed"`);
+    }
+  );
   const port = httpServer.identity.primaryPort;
 
   const dbg = await initDebuggerWithAbsoluteURL(
@@ -514,8 +523,11 @@ add_task(async function testSourceTreeWithEncodedPaths() {
     "my file.js"
   );
 
-  await waitForSourcesInSourceTree(dbg, ["my file.js"]);
-  ok(true, "source name is decoded in the tree");
+  await waitForSourcesInSourceTree(dbg, ["my file.js", "malformedUri.js?%"]);
+  ok(
+    true,
+    "source name are decoded in the tree, and malformed uri source are displayed"
+  );
   is(
     // We don't have any specific class on the folder item, so let's target the folder
     // icon next sibling, which is the directory label.

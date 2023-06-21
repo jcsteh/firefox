@@ -1489,15 +1489,6 @@ nsXULAppInfo::GetAccessibilityInstantiator(nsAString& aInstantiator) {
 }
 
 NS_IMETHODIMP
-nsXULAppInfo::GetShouldBlockIncompatJaws(bool* aResult) {
-  *aResult = false;
-#if defined(ACCESSIBILITY) && defined(XP_WIN)
-  *aResult = mozilla::a11y::Compatibility::IsOldJAWS();
-#endif
-  return NS_OK;
-}
-
-NS_IMETHODIMP
 nsXULAppInfo::GetIs64Bit(bool* aResult) {
 #ifdef HAVE_64BIT_BUILD
   *aResult = true;
@@ -5834,7 +5825,8 @@ int XREMain::XRE_main(int argc, char* argv[], const BootstrapConfig& aConfig) {
     return NS_OK;
   });
 
-  mozilla::IOInterposerInit ioInterposerGuard;
+  mozilla::AutoIOInterposer ioInterposerGuard;
+  ioInterposerGuard.Init();
 
 #if defined(XP_WIN)
   // We should have already done this when we created the skeleton UI. However,

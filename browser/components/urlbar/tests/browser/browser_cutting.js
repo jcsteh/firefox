@@ -3,8 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 add_task(async function test() {
-  gURLBar.focus();
-  gURLBar.inputField.value = "https://example.com/";
+  await UrlbarTestUtils.inputIntoURLBar(window, "https://example.com/");
   gURLBar.selectionStart = 4;
   gURLBar.selectionEnd = 5;
   goDoCommand("cmd_cut");

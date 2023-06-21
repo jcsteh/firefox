@@ -107,9 +107,6 @@ pref("browser.cache.disk_cache_ssl",        true);
 // The half life used to re-compute cache entries frecency in hours.
 pref("browser.cache.frecency_half_life_hours", 6);
 
-// offline cache capacity in kilobytes
-pref("browser.cache.offline.capacity",         512000);
-
 // Don't show "Open with" option on download dialog if true.
 pref("browser.download.forbid_open_with", false);
 
@@ -213,11 +210,6 @@ pref("media.omt_data_delivery.enabled", true);
 // This means we'll only throttle the download if there's no concern that
 // throttling would cause us to stop and buffer.
 pref("media.throttle-factor", 2);
-// By default, we'll throttle media download once we've reached the the
-// readahead_limit if the download is fast. This pref toggles the "and the
-// download is fast" check off, so that we can always throttle the download
-// once the readaheadd limit is reached even on a slow network.
-pref("media.throttle-regardless-of-download-rate", false);
 
 // Master HTML5 media volume scale.
 pref("media.volume_scale", "1.0");
@@ -230,8 +222,6 @@ pref("media.play-stand-alone", true);
   pref("media.wmf.dxva.enabled", true);
   pref("media.wmf.play-stand-alone", true);
 #endif
-pref("media.gmp.decoder.aac", 0);
-pref("media.gmp.decoder.h264", 0);
 
 // GMP storage version number. At startup we check the version against
 // media.gmp.storage.version.observed, and if the versions don't match,
@@ -301,7 +291,6 @@ pref("media.videocontrols.keyboard-tab-to-all-controls", true);
 
   pref("media.navigator.video.default_width",0);  // adaptive default
   pref("media.navigator.video.default_height",0); // adaptive default
-  pref("media.peerconnection.video.enabled", true);
   pref("media.navigator.video.max_fs", 12288); // Enough for 2048x1536
   pref("media.navigator.video.max_fr", 60);
   pref("media.navigator.video.h264.level", 31); // 0x42E01f - level 3.1
@@ -405,10 +394,6 @@ pref("media.video-queue.default-size", 10);
 // The maximum number of queued frames to send to the compositor.
 // By default, send all of them.
 pref("media.video-queue.send-to-compositor-size", 9999);
-
-// Log level for cubeb, the audio input/output system. Valid values are
-// "verbose", "normal" and "" (log disabled).
-pref("media.cubeb.logging_level", "");
 
 pref("media.cubeb.output_voice_routing", true);
 
@@ -1610,9 +1595,6 @@ pref("network.proxy.enable_wpad_over_dhcp", true);
 // Use the HSTS preload list by default
 pref("network.stricttransportsecurity.preloadlist", true);
 
-// Use JS mDNS as a fallback
-pref("network.mdns.use_js_fallback", false);
-
 pref("converter.html2txt.structs",          true); // Output structured phrases (strong, em, code, sub, sup, b, i, u)
 pref("converter.html2txt.header_strategy",  1); // 0 = no indention; 1 = indention, increased with header level; 2 = numbering and slight indention
 
@@ -1624,10 +1606,6 @@ pref("intl.ellipsis",                       "chrome://global-platform/locale/int
 // like date/time formatting, unit formatting, calendars etc. should use
 // OS locale set instead of the app locale set.
 pref("intl.regional_prefs.use_os_locales",  false);
-// fallback charset list for Unicode conversion (converting from Unicode)
-// currently used for mail send only to handle symbol characters (e.g Euro, trademark, smartquotes)
-// for ISO-8859-1
-pref("intl.fallbackCharsetList.ISO-8859-1", "windows-1252");
 pref("font.language.group",                 "chrome://global/locale/intl.properties");
 pref("font.cjk_pref_fallback_order",        "zh-cn,zh-hk,zh-tw,ja,ko");
 
@@ -1994,9 +1972,6 @@ pref("mousewheel.with_shift.delta_multiplier_z", 100);
 pref("mousewheel.with_win.delta_multiplier_x", 100);
 pref("mousewheel.with_win.delta_multiplier_y", 100);
 pref("mousewheel.with_win.delta_multiplier_z", 100);
-
-// We can show it anytime from menus
-pref("profile.manage_only_at_launch", false);
 
 // pref for which side vertical scrollbars should be on
 // 0 = end-side in UI direction
@@ -2731,10 +2706,6 @@ pref("font.size.monospace.x-math", 13);
   // the parent window when the managed popup is shown.
   pref("ui.panel.default_level_parent", true);
 
-  // Forward downloads with known OMA MIME types to Android's download manager
-  // instead of downloading them in the browser.
-  pref("browser.download.forward_oma_android_download_manager", false);
-
 #endif // ANDROID
 
 #if !defined(ANDROID) && !defined(XP_MACOSX) && defined(XP_UNIX)
@@ -3204,9 +3175,6 @@ pref("browser.region.network.scan", false);
 pref("browser.region.timeout", 5000);
 pref("browser.region.update.enabled", true);
 
-// Enable/Disable the device storage API for content
-pref("device.storage.enabled", false);
-
 pref("browser.meta_refresh_when_inactive.disabled", false);
 
 // XPInstall prefs
@@ -3279,7 +3247,11 @@ pref("alerts.showFavicons", false);
 // DOM full-screen API.
 #ifdef XP_MACOSX
   // Whether to use macOS native full screen for Fullscreen API
-  pref("full-screen-api.macos-native-full-screen", false);
+  #ifdef NIGHTLY_BUILD
+    pref("full-screen-api.macos-native-full-screen", true);
+  #else
+    pref("full-screen-api.macos-native-full-screen", false);
+  #endif
 #endif
 // transition duration of fade-to-black and fade-from-black, unit: ms
 #ifndef MOZ_WIDGET_GTK

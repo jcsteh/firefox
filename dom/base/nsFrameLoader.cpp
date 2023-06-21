@@ -357,11 +357,6 @@ static already_AddRefed<BrowsingContext> CreateBrowsingContext(
 }
 
 static bool InitialLoadIsRemote(Element* aOwner) {
-  if (PR_GetEnv("MOZ_DISABLE_OOP_TABS") ||
-      Preferences::GetBool("dom.ipc.tabs.disabled", false)) {
-    return false;
-  }
-
   // The initial load in an content process iframe should never be made remote.
   // Content process iframes always become remote due to navigation.
   if (XRE_IsContentProcess()) {
@@ -2387,7 +2382,7 @@ nsresult nsFrameLoader::CheckForRecursiveLoad(nsIURI* aURI) {
   mDepthTooGreat = false;
   RefPtr<BrowsingContext> parentBC(
       mOwnerContent->OwnerDoc()->GetBrowsingContext());
-  MOZ_ASSERT(parentBC, "How can we not have a parent here?");
+  NS_ENSURE_STATE(parentBC);
 
   if (!parentBC->IsContent()) {
     return NS_OK;

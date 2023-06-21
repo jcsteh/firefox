@@ -6,6 +6,7 @@
 
 #include "mozilla/dom/MouseEvent.h"
 #include "mozilla/MouseEvents.h"
+#include "mozilla/BasePrincipal.h"
 #include "nsContentUtils.h"
 #include "nsIContent.h"
 #include "nsIScreenManager.h"
@@ -221,8 +222,8 @@ CSSIntPoint MouseEvent::ScreenPoint(CallerType aCallerType) const {
     return {};
   }
 
-  if (nsContentUtils::ShouldResistFingerprinting(aCallerType, GetParentObject(),
-                                                 RFPTarget::Unknown)) {
+  if (nsContentUtils::ShouldResistFingerprinting(
+          aCallerType, GetParentObject(), RFPTarget::MouseEventScreenPoint)) {
     // Sanitize to something sort of like client cooords, but not quite
     // (defaulting to (0,0) instead of our pre-specified client coords).
     return Event::GetClientCoords(mPresContext, mEvent, mEvent->mRefPoint,
@@ -310,6 +311,25 @@ uint16_t MouseEvent::MozInputSource() const {
 }  // namespace mozilla::dom
 
 using namespace mozilla;
+
+void WidgetDragEvent::UpdateDefaultPreventedOnContent(
+    dom::EventTarget* aTarget) {
+  MOZ_ASSERT(DefaultPrevented());
+  nsIPrincipal* principal = nullptr;
+  nsINode* node = nsINode::FromEventTargetOrNull(aTarget);
+  if (node) {
+    principal = node->NodePrincipal();
+  } else {
+    nsCOMPtr<nsIScriptObjectPrincipal> sop = do_QueryInterface(aTarget);
+    if (sop) {
+      principal = sop->GetPrincipal();
+    }
+  }
+  if (principal && !principal->IsSystemPrincipal()) {
+    mDefaultPreventedOnContent = true;
+  }
+}
+
 using namespace mozilla::dom;
 
 already_AddRefed<MouseEvent> NS_NewDOMMouseEvent(EventTarget* aOwner,

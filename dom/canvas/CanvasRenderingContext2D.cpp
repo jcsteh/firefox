@@ -1061,7 +1061,6 @@ CanvasRenderingContext2D::CanvasRenderingContext2D(
       mPredictManyRedrawCalls(false),
       mFrameCaptureState(FrameCaptureState::CLEAN,
                          "CanvasRenderingContext2D::mFrameCaptureState"),
-      mPathTransformWillUpdate(false),
       mInvalidateCount(0),
       mWriteOnly(false) {
   sNumLivingContexts.infallibleInit();
@@ -1518,8 +1517,6 @@ void CanvasRenderingContext2D::SetInitialState() {
   // Set up the initial canvas defaults
   mPathBuilder = nullptr;
   mPath = nullptr;
-  mDSPathBuilder = nullptr;
-  mPathTransformWillUpdate = false;
 
   mStyleStack.Clear();
   ContextState* state = mStyleStack.AppendElement();
@@ -1961,7 +1958,7 @@ void CanvasRenderingContext2D::Restore() {
     return;
   }
 
-  TransformWillUpdate();
+  EnsureTarget();
   if (!IsTargetValid()) {
     return;
   }
@@ -1974,7 +1971,16 @@ void CanvasRenderingContext2D::Restore() {
 
   mStyleStack.RemoveLastElement();
 
-  mTarget->SetTransform(CurrentState().transform);
+  Matrix newMatrix = CurrentState().transform;
+  Matrix adjustMatrix = mTarget->GetTransform();
+
+  Matrix inverse = newMatrix;
+  if (inverse.Invert()) {
+    adjustMatrix = adjustMatrix * inverse;
+  }
+  TransformCurrentPath(adjustMatrix);
+
+  mTarget->SetTransform(newMatrix);
 }
 
 //
@@ -1983,12 +1989,13 @@ void CanvasRenderingContext2D::Restore() {
 
 void CanvasRenderingContext2D::Scale(double aX, double aY,
                                      ErrorResult& aError) {
-  TransformWillUpdate();
+  EnsureTarget();
   if (!IsTargetValid()) {
     aError.Throw(NS_ERROR_FAILURE);
     return;
   }
 
+  TransformCurrentPath(Matrix::Scaling(1 / aX, 1 / aY));
   Matrix newMatrix = mTarget->GetTransform();
   newMatrix.PreScale(aX, aY);
 
@@ -1996,12 +2003,13 @@ void CanvasRenderingContext2D::Scale(double aX, double aY,
 }
 
 void CanvasRenderingContext2D::Rotate(double aAngle, ErrorResult& aError) {
-  TransformWillUpdate();
+  EnsureTarget();
   if (!IsTargetValid()) {
     aError.Throw(NS_ERROR_FAILURE);
     return;
   }
 
+  TransformCurrentPath(Matrix::Rotation(-aAngle));
   Matrix newMatrix = Matrix::Rotation(aAngle) * mTarget->GetTransform();
 
   SetTransformInternal(newMatrix);
@@ -2009,12 +2017,13 @@ void CanvasRenderingContext2D::Rotate(double aAngle, ErrorResult& aError) {
 
 void CanvasRenderingContext2D::Translate(double aX, double aY,
                                          ErrorResult& aError) {
-  TransformWillUpdate();
+  EnsureTarget();
   if (!IsTargetValid()) {
     aError.Throw(NS_ERROR_FAILURE);
     return;
   }
 
+  TransformCurrentPath(Matrix::Translation(-aX, -aY));
   Matrix newMatrix = mTarget->GetTransform();
   newMatrix.PreTranslate(aX, aY);
 
@@ -2024,15 +2033,20 @@ void CanvasRenderingContext2D::Translate(double aX, double aY,
 void CanvasRenderingContext2D::Transform(double aM11, double aM12, double aM21,
                                          double aM22, double aDx, double aDy,
                                          ErrorResult& aError) {
-  TransformWillUpdate();
+  EnsureTarget();
   if (!IsTargetValid()) {
     aError.Throw(NS_ERROR_FAILURE);
     return;
   }
 
   Matrix newMatrix(aM11, aM12, aM21, aM22, aDx, aDy);
-  newMatrix *= mTarget->GetTransform();
 
+  Matrix inverse = newMatrix;
+  if (inverse.Invert()) {
+    TransformCurrentPath(inverse);
+  }
+
+  newMatrix *= mTarget->GetTransform();
   SetTransformInternal(newMatrix);
 }
 
@@ -2052,18 +2066,29 @@ void CanvasRenderingContext2D::SetTransform(double aM11, double aM12,
                                             double aM21, double aM22,
                                             double aDx, double aDy,
                                             ErrorResult& aError) {
-  TransformWillUpdate();
+  EnsureTarget();
   if (!IsTargetValid()) {
     aError.Throw(NS_ERROR_FAILURE);
     return;
   }
 
-  SetTransformInternal(Matrix(aM11, aM12, aM21, aM22, aDx, aDy));
+  Matrix newMatrix(aM11, aM12, aM21, aM22, aDx, aDy);
+
+  Matrix adjustMatrix = mTarget->GetTransform();
+  Matrix inverse = newMatrix;
+  // Uses the inverted transform to undo the actual transform that
+  // will be stored on the DrawTarget
+  if (inverse.Invert()) {
+    adjustMatrix = adjustMatrix * inverse;
+  }
+  TransformCurrentPath(adjustMatrix);
+
+  SetTransformInternal(newMatrix);
 }
 
 void CanvasRenderingContext2D::SetTransform(const DOMMatrix2DInit& aInit,
                                             ErrorResult& aError) {
-  TransformWillUpdate();
+  EnsureTarget();
   if (!IsTargetValid()) {
     aError.Throw(NS_ERROR_FAILURE);
     return;
@@ -2072,7 +2097,18 @@ void CanvasRenderingContext2D::SetTransform(const DOMMatrix2DInit& aInit,
   RefPtr<DOMMatrixReadOnly> matrix =
       DOMMatrixReadOnly::FromMatrix(GetParentObject(), aInit, aError);
   if (!aError.Failed()) {
-    SetTransformInternal(Matrix(*(matrix->GetInternal2D())));
+    Matrix newMatrix = Matrix(*(matrix->GetInternal2D()));
+
+    Matrix adjustMatrix = mTarget->GetTransform();
+    Matrix inverse = newMatrix;
+    // Uses the inverted transform to undo the actual transform that
+    // will be stored on the DrawTarget
+    if (inverse.Invert()) {
+      adjustMatrix = adjustMatrix * inverse;
+    }
+    TransformCurrentPath(adjustMatrix);
+
+    SetTransformInternal(newMatrix);
   }
 }
 
@@ -2459,7 +2495,12 @@ static already_AddRefed<const ComputedStyle> GetFontStyleForServo(
 
   // The font getter is required to be reserialized based on what we
   // parsed (including having line-height removed).
+  // If we failed to reserialize, ignore this attempt to set the value.
   Servo_SerializeFontValueForCanvas(declarations, &aOutUsedFont);
+  if (aOutUsedFont.IsEmpty()) {
+    return nullptr;
+  }
+
   return sc.forget();
 }
 
@@ -2627,7 +2668,8 @@ void CanvasRenderingContext2D::ParseSpacing(const nsACString& aSpacing,
   // 'normal' keyword, which is not accepted.
   nsAutoCString normalized(aSpacing);
   normalized.CompressWhitespace(true, true);
-  if (normalized.Equals("normal", nsCaseInsensitiveCStringComparator)) {
+  ToLowerCase(normalized);
+  if (normalized.EqualsLiteral("normal")) {
     return;
   }
   float value;
@@ -2974,8 +3016,7 @@ void CanvasRenderingContext2D::StrokeRect(double aX, double aY, double aW,
 void CanvasRenderingContext2D::BeginPath() {
   mPath = nullptr;
   mPathBuilder = nullptr;
-  mDSPathBuilder = nullptr;
-  mPathTransformWillUpdate = false;
+  mPathPruned = false;
 }
 
 void CanvasRenderingContext2D::Fill(const CanvasWindingRule& aWinding) {
@@ -3230,17 +3271,7 @@ void CanvasRenderingContext2D::ArcTo(double aX1, double aY1, double aX2,
   EnsureWritablePath();
 
   // Current point in user space!
-  Point p0;
-  if (mPathBuilder) {
-    p0 = mPathBuilder->CurrentPoint();
-  } else {
-    Matrix invTransform = mTarget->GetTransform();
-    if (!invTransform.Invert()) {
-      return;
-    }
-
-    p0 = invTransform.TransformPoint(mDSPathBuilder->CurrentPoint());
-  }
+  Point p0 = mPathBuilder->CurrentPoint();
 
   Point p1(aX1, aY1);
   Point p2(aX2, aY2);
@@ -3304,11 +3335,15 @@ void CanvasRenderingContext2D::Arc(double aX, double aY, double aR,
   if (aR < 0.0) {
     return aError.ThrowIndexSizeError("Negative radius");
   }
+  if (aStartAngle == aEndAngle) {
+    mPathPruned = true;
+    return;
+  }
 
   EnsureWritablePath();
 
-  ArcToBezier(this, Point(aX, aY), Size(aR, aR), aStartAngle, aEndAngle,
-              aAnticlockwise);
+  mPathBuilder->Arc(Point(aX, aY), aR, aStartAngle, aEndAngle, aAnticlockwise);
+  mPathPruned = false;
 }
 
 void CanvasRenderingContext2D::Rect(double aX, double aY, double aW,
@@ -3320,29 +3355,15 @@ void CanvasRenderingContext2D::Rect(double aX, double aY, double aW,
     return;
   }
 
-  if (mPathBuilder) {
-    mPathBuilder->MoveTo(Point(aX, aY));
-    if (aW == 0 && aH == 0) {
-      return;
-    }
-    mPathBuilder->LineTo(Point(aX + aW, aY));
-    mPathBuilder->LineTo(Point(aX + aW, aY + aH));
-    mPathBuilder->LineTo(Point(aX, aY + aH));
-    mPathBuilder->Close();
-  } else {
-    mDSPathBuilder->MoveTo(
-        mTarget->GetTransform().TransformPoint(Point(aX, aY)));
-    if (aW == 0 && aH == 0) {
-      return;
-    }
-    mDSPathBuilder->LineTo(
-        mTarget->GetTransform().TransformPoint(Point(aX + aW, aY)));
-    mDSPathBuilder->LineTo(
-        mTarget->GetTransform().TransformPoint(Point(aX + aW, aY + aH)));
-    mDSPathBuilder->LineTo(
-        mTarget->GetTransform().TransformPoint(Point(aX, aY + aH)));
-    mDSPathBuilder->Close();
+  EnsureCapped();
+  mPathBuilder->MoveTo(Point(aX, aY));
+  if (aW == 0 && aH == 0) {
+    return;
   }
+  mPathBuilder->LineTo(Point(aX + aW, aY));
+  mPathBuilder->LineTo(Point(aX + aW, aY + aH));
+  mPathBuilder->LineTo(Point(aX, aY + aH));
+  mPathBuilder->Close();
 }
 
 // https://html.spec.whatwg.org/multipage/canvas.html#dom-context-2d-roundrect
@@ -3527,11 +3548,8 @@ void CanvasRenderingContext2D::RoundRect(
 
   PathBuilder* builder = mPathBuilder;
   Maybe<Matrix> transform = Nothing();
-  if (!builder) {
-    builder = mDSPathBuilder;
-    transform = Some(mTarget->GetTransform());
-  }
 
+  EnsureCapped();
   RoundRectImpl(builder, transform, aX, aY, aW, aH, aRadii, aError);
 }
 
@@ -3543,11 +3561,16 @@ void CanvasRenderingContext2D::Ellipse(double aX, double aY, double aRadiusX,
   if (aRadiusX < 0.0 || aRadiusY < 0.0) {
     return aError.ThrowIndexSizeError("Negative radius");
   }
+  if (aStartAngle == aEndAngle) {
+    mPathPruned = true;
+    return;
+  }
 
   EnsureWritablePath();
 
   ArcToBezier(this, Point(aX, aY), Size(aRadiusX, aRadiusY), aStartAngle,
               aEndAngle, aAnticlockwise, aRotation);
+  mPathPruned = false;
 }
 
 void CanvasRenderingContext2D::EnsureWritablePath() {
@@ -3555,34 +3578,16 @@ void CanvasRenderingContext2D::EnsureWritablePath() {
   // NOTE: IsTargetValid() may be false here (mTarget == sErrorTarget) but we
   // go ahead and create a path anyway since callers depend on that.
 
-  if (mDSPathBuilder) {
-    return;
-  }
-
   FillRule fillRule = CurrentState().fillRule;
 
   if (mPathBuilder) {
-    if (mPathTransformWillUpdate) {
-      mPath = mPathBuilder->Finish();
-      mDSPathBuilder = mPath->TransformedCopyToBuilder(mPathToDS, fillRule);
-      mPath = nullptr;
-      mPathBuilder = nullptr;
-      mPathTransformWillUpdate = false;
-    }
     return;
   }
 
   if (!mPath) {
-    NS_ASSERTION(
-        !mPathTransformWillUpdate,
-        "mPathTransformWillUpdate should be false, if all paths are null");
     mPathBuilder = mTarget->CreatePathBuilder(fillRule);
-  } else if (!mPathTransformWillUpdate) {
-    mPathBuilder = mPath->CopyToBuilder(fillRule);
   } else {
-    mDSPathBuilder = mPath->TransformedCopyToBuilder(mPathToDS, fillRule);
-    mPathTransformWillUpdate = false;
-    mPath = nullptr;
+    mPathBuilder = mPath->CopyToBuilder(fillRule);
   }
 }
 
@@ -3597,33 +3602,12 @@ void CanvasRenderingContext2D::EnsureUserSpacePath(
     return;
   }
 
-  if (!mPath && !mPathBuilder && !mDSPathBuilder) {
+  if (!mPath && !mPathBuilder) {
     mPathBuilder = mTarget->CreatePathBuilder(fillRule);
   }
 
   if (mPathBuilder) {
-    mPath = mPathBuilder->Finish();
-    mPathBuilder = nullptr;
-  }
-
-  if (mPath && mPathTransformWillUpdate) {
-    mDSPathBuilder = mPath->TransformedCopyToBuilder(mPathToDS, fillRule);
-    mPath = nullptr;
-    mPathTransformWillUpdate = false;
-  }
-
-  if (mDSPathBuilder) {
-    RefPtr<Path> dsPath;
-    dsPath = mDSPathBuilder->Finish();
-    mDSPathBuilder = nullptr;
-
-    Matrix inverse = mTarget->GetTransform();
-    if (!inverse.Invert()) {
-      NS_WARNING("Could not invert transform");
-      return;
-    }
-
-    mPathBuilder = dsPath->TransformedCopyToBuilder(inverse, fillRule);
+    EnsureCapped();
     mPath = mPathBuilder->Finish();
     mPathBuilder = nullptr;
   }
@@ -3637,23 +3621,18 @@ void CanvasRenderingContext2D::EnsureUserSpacePath(
   NS_ASSERTION(mPath, "mPath should exist");
 }
 
-void CanvasRenderingContext2D::TransformWillUpdate() {
+void CanvasRenderingContext2D::TransformCurrentPath(const Matrix& aTransform) {
   EnsureTarget();
   if (!IsTargetValid()) {
     return;
   }
 
-  // Store the matrix that would transform the current path to device
-  // space.
-  if (mPath || mPathBuilder) {
-    if (!mPathTransformWillUpdate) {
-      // If the transform has already been updated, but a device space builder
-      // has not been created yet mPathToDS contains the right transform to
-      // transform the current mPath into device space.
-      // We should leave it alone.
-      mPathToDS = mTarget->GetTransform();
-    }
-    mPathTransformWillUpdate = true;
+  if (mPathBuilder) {
+    RefPtr<Path> path = mPathBuilder->Finish();
+    mPathBuilder = path->TransformedCopyToBuilder(aTransform);
+  } else if (mPath) {
+    mPathBuilder = mPath->TransformedCopyToBuilder(aTransform);
+    mPath = nullptr;
   }
 }
 
@@ -3671,6 +3650,11 @@ void CanvasRenderingContext2D::SetFont(const nsACString& aFont,
   // If letterSpacing or wordSpacing is present, recompute to account for
   // changes to font-relative dimensions.
   UpdateSpacing();
+}
+
+static float QuantizeFontSize(float aSize) {
+  // Round to nearest 0.25px
+  return NS_round(4.0 * aSize) * 0.25;
 }
 
 bool CanvasRenderingContext2D::SetFontInternal(const nsACString& aFont,
@@ -3715,6 +3699,11 @@ bool CanvasRenderingContext2D::SetFontInternal(const nsACString& aFont,
   resizedFont.size =
       fontStyle->mSize.ScaledBy(1.0f / c->CSSToDevPixelScale().scale);
 
+  // Quantize font size to avoid filling caches with thousands of fonts that
+  // differ by imperceptibly-tiny size deltas.
+  resizedFont.size = StyleCSSPixelLength::FromPixels(
+      QuantizeFontSize(resizedFont.size.ToCSSPixels()));
+
   // Our FontKerning constants (see the enum definition) are the same as the
   // NS_FONT_KERNING_* values so we can simply assign here.
   resizedFont.kerning = uint8_t(CurrentState().fontKerning);
@@ -3742,7 +3731,7 @@ bool CanvasRenderingContext2D::SetFontInternal(const nsACString& aFont,
 
 static nsAutoCString FamilyListToString(
     const StyleFontFamilyList& aFamilyList) {
-  return StringJoin(","_ns, aFamilyList.list.AsSpan(),
+  return StringJoin(", "_ns, aFamilyList.list.AsSpan(),
                     [](nsACString& dst, const StyleSingleFontFamily& name) {
                       name.AppendToString(dst);
                     });
@@ -3769,6 +3758,10 @@ static void SerializeFontForCanvas(const StyleFontFamilyList& aList,
   if (!aStyle.stretch.IsNormal() &&
       Servo_FontStretch_SerializeKeyword(&aStyle.stretch, &aUsedFont)) {
     aUsedFont.Append(" ");
+  }
+
+  if (aStyle.variantCaps == NS_FONT_VARIANT_CAPS_SMALLCAPS) {
+    aUsedFont.Append("small-caps ");
   }
 
   // Serialize the computed (not specified) size, and the family name(s).
@@ -3812,13 +3805,16 @@ bool CanvasRenderingContext2D::SetFontInternalDisconnected(
   StyleFontFamilyList list;
   gfxFontStyle fontStyle;
   float size = 0.0f;
+  bool smallCaps = false;
   if (!ServoCSSParser::ParseFontShorthandForMatching(
           aFont, urlExtraData, list, fontStyle.style, fontStyle.stretch,
-          fontStyle.weight, &size)) {
+          fontStyle.weight, &size, &smallCaps)) {
     return false;
   }
 
-  fontStyle.size = size;
+  fontStyle.size = QuantizeFontSize(size);
+  fontStyle.variantCaps =
+      smallCaps ? NS_FONT_VARIANT_CAPS_SMALLCAPS : NS_FONT_VARIANT_CAPS_NORMAL;
 
   // Set the kerning feature, if required by the fontKerning attribute.
   gfxFontFeature setting{TRUETYPE_TAG('k', 'e', 'r', 'n'), 0};
@@ -4903,10 +4899,6 @@ bool CanvasRenderingContext2D::IsPointInPath(JSContext* aCx, double aX,
     return false;
   }
 
-  if (mPathTransformWillUpdate) {
-    return mPath->ContainsPoint(Point(aX, aY), mPathToDS);
-  }
-
   return mPath->ContainsPoint(Point(aX, aY), mTarget->GetTransform());
 }
 
@@ -4957,10 +4949,6 @@ bool CanvasRenderingContext2D::IsPointInStroke(
   StrokeOptions strokeOptions(state.lineWidth, state.lineJoin, state.lineCap,
                               state.miterLimit, state.dash.Length(),
                               state.dash.Elements(), state.dashOffset);
-
-  if (mPathTransformWillUpdate) {
-    return mPath->StrokeContainsPoint(strokeOptions, Point(aX, aY), mPathToDS);
-  }
 
   return mPath->StrokeContainsPoint(strokeOptions, Point(aX, aY),
                                     mTarget->GetTransform());
@@ -6312,6 +6300,16 @@ void CanvasPath::ClosePath() {
   EnsurePathBuilder();
 
   mPathBuilder->Close();
+  mPruned = false;
+}
+
+inline void CanvasPath::EnsureCapped() const {
+  // If there were zero-length segments emitted that were pruned, we need to
+  // emit a LineTo to ensure that caps are generated for the segment.
+  if (mPruned) {
+    mPathBuilder->LineTo(mPathBuilder->CurrentPoint());
+    mPruned = false;
+  }
 }
 
 void CanvasPath::MoveTo(double aX, double aY) {
@@ -6322,6 +6320,7 @@ void CanvasPath::MoveTo(double aX, double aY) {
     return;
   }
 
+  EnsureCapped();
   mPathBuilder->MoveTo(pos);
 }
 
@@ -6335,12 +6334,16 @@ void CanvasPath::QuadraticCurveTo(double aCpx, double aCpy, double aX,
 
   Point cp1(ToFloat(aCpx), ToFloat(aCpy));
   Point cp2(ToFloat(aX), ToFloat(aY));
-  if (!cp1.IsFinite() || !cp2.IsFinite() ||
-      (cp1 == mPathBuilder->CurrentPoint() && cp1 == cp2)) {
+  if (!cp1.IsFinite() || !cp2.IsFinite()) {
+    return;
+  }
+  if (cp1 == mPathBuilder->CurrentPoint() && cp1 == cp2) {
+    mPruned = true;
     return;
   }
 
   mPathBuilder->QuadraticBezierTo(cp1, cp2);
+  mPruned = false;
 }
 
 void CanvasPath::BezierCurveTo(double aCp1x, double aCp1y, double aCp2x,
@@ -6441,6 +6444,7 @@ void CanvasPath::RoundRect(
     ErrorResult& aError) {
   EnsurePathBuilder();
 
+  EnsureCapped();
   RoundRectImpl(mPathBuilder, Nothing(), aX, aY, aW, aH, aRadii, aError);
 }
 
@@ -6450,11 +6454,16 @@ void CanvasPath::Arc(double aX, double aY, double aRadius, double aStartAngle,
   if (aRadius < 0.0) {
     return aError.ThrowIndexSizeError("Negative radius");
   }
+  if (aStartAngle == aEndAngle) {
+    mPruned = true;
+    return;
+  }
 
   EnsurePathBuilder();
 
-  ArcToBezier(this, Point(aX, aY), Size(aRadius, aRadius), aStartAngle,
-              aEndAngle, aAnticlockwise);
+  mPathBuilder->Arc(Point(aX, aY), aRadius, aStartAngle, aEndAngle,
+                    aAnticlockwise);
+  mPruned = false;
 }
 
 void CanvasPath::Ellipse(double x, double y, double radiusX, double radiusY,
@@ -6463,33 +6472,47 @@ void CanvasPath::Ellipse(double x, double y, double radiusX, double radiusY,
   if (radiusX < 0.0 || radiusY < 0.0) {
     return aError.ThrowIndexSizeError("Negative radius");
   }
+  if (startAngle == endAngle) {
+    mPruned = true;
+    return;
+  }
 
   EnsurePathBuilder();
 
   ArcToBezier(this, Point(x, y), Size(radiusX, radiusY), startAngle, endAngle,
               anticlockwise, rotation);
+  mPruned = false;
 }
 
 void CanvasPath::LineTo(const gfx::Point& aPoint) {
   EnsurePathBuilder();
 
-  if (!aPoint.IsFinite() || aPoint == mPathBuilder->CurrentPoint()) {
+  if (!aPoint.IsFinite()) {
+    return;
+  }
+  if (aPoint == mPathBuilder->CurrentPoint()) {
+    mPruned = true;
     return;
   }
 
   mPathBuilder->LineTo(aPoint);
+  mPruned = false;
 }
 
 void CanvasPath::BezierTo(const gfx::Point& aCP1, const gfx::Point& aCP2,
                           const gfx::Point& aCP3) {
   EnsurePathBuilder();
 
-  if (!aCP1.IsFinite() || !aCP2.IsFinite() || !aCP3.IsFinite() ||
-      (aCP1 == mPathBuilder->CurrentPoint() && aCP1 == aCP2 && aCP1 == aCP3)) {
+  if (!aCP1.IsFinite() || !aCP2.IsFinite() || !aCP3.IsFinite()) {
+    return;
+  }
+  if (aCP1 == mPathBuilder->CurrentPoint() && aCP1 == aCP2 && aCP1 == aCP3) {
+    mPruned = true;
     return;
   }
 
   mPathBuilder->BezierTo(aCP1, aCP2, aCP3);
+  mPruned = false;
 }
 
 void CanvasPath::AddPath(CanvasPath& aCanvasPath, const DOMMatrix2DInit& aInit,
@@ -6518,6 +6541,7 @@ void CanvasPath::AddPath(CanvasPath& aCanvasPath, const DOMMatrix2DInit& aInit,
   }
 
   EnsurePathBuilder();  // in case a path is added to itself
+  EnsureCapped();
   tempPath->StreamToSink(mPathBuilder);
 }
 
@@ -6537,6 +6561,7 @@ already_AddRefed<gfx::Path> CanvasPath::GetPath(
   if (!mPath) {
     // if there is no path, there must be a pathbuilder
     MOZ_ASSERT(mPathBuilder);
+    EnsureCapped();
     mPath = mPathBuilder->Finish();
     if (!mPath) {
       RefPtr<gfx::Path> path(mPath);

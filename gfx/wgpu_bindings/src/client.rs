@@ -700,6 +700,28 @@ pub unsafe extern "C" fn wgpu_client_create_render_bundle(
     id
 }
 
+#[no_mangle]
+pub unsafe extern "C" fn wgpu_client_create_render_bundle_error(
+    client: &Client,
+    device_id: id::DeviceId,
+    label: Option<&nsACString>,
+    bb: &mut ByteBuf,
+) -> id::RenderBundleId {
+    let label = wgpu_string(label);
+
+    let backend = device_id.backend();
+    let id = client
+        .identities
+        .lock()
+        .select(backend)
+        .render_bundles
+        .alloc(backend);
+
+    let action = DeviceAction::CreateRenderBundleError(id, label);
+    *bb = make_byte_buf(&action);
+    id
+}
+
 #[repr(C)]
 pub struct ComputePassDescriptor<'a> {
     pub label: Option<&'a nsACString>,
@@ -1149,4 +1171,10 @@ pub unsafe extern "C" fn wgpu_queue_write_texture(
     let layout = layout.into_wgt();
     let action = QueueWriteAction::Texture { dst, layout, size };
     *bb = make_byte_buf(&action);
+}
+
+/// Returns the block size or zero if the format has multiple aspects (for example depth+stencil).
+#[no_mangle]
+pub extern "C" fn wgpu_texture_format_block_size_single_aspect(format: wgt::TextureFormat) -> u32 {
+    format.block_size(None).unwrap_or(0)
 }

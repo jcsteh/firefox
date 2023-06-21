@@ -428,8 +428,21 @@ void StructuredCloneHolder::ReadFromBuffer(
 
 static bool CheckExposedGlobals(JSContext* aCx, nsIGlobalObject* aGlobal,
                                 uint16_t aExposedGlobals) {
-  if (!IsGlobalInExposureSet(aCx, aGlobal->GetGlobalJSObject(),
-                             aExposedGlobals)) {
+  JS::Rooted<JSObject*> global(aCx, aGlobal->GetGlobalJSObject());
+
+  // Sandboxes aren't really DOM globals (though they do set the
+  // JSCLASS_DOM_GLOBAL flag), and so we can't simply do the exposure check.
+  // Some sandboxes do have a DOM global as their prototype, so using the
+  // prototype to check for exposure will at least make it work for those
+  // specific cases.
+  {
+    JSObject* proto = xpc::SandboxPrototypeOrNull(aCx, global);
+    if (proto) {
+      global = proto;
+    }
+  }
+
+  if (!IsGlobalInExposureSet(aCx, global, aExposedGlobals)) {
     ErrorResult error;
     error.ThrowDataCloneError("Interface is not exposed.");
     MOZ_ALWAYS_TRUE(error.MaybeSetPendingException(aCx));
@@ -896,52 +909,36 @@ bool WriteFormData(JSStructuredCloneWriter* aWriter, FormData* aFormData,
     return false;
   }
 
-  class MOZ_STACK_CLASS Closure final {
-    JSStructuredCloneWriter* mWriter;
-    StructuredCloneHolder* mHolder;
+  auto write = [aWriter, aHolder](
+                   const nsString& aName,
+                   const OwningBlobOrDirectoryOrUSVString& aValue) {
+    if (!StructuredCloneHolder::WriteString(aWriter, aName)) {
+      return false;
+    }
 
-   public:
-    Closure(JSStructuredCloneWriter* aWriter, StructuredCloneHolder* aHolder)
-        : mWriter(aWriter), mHolder(aHolder) {}
-
-    static bool Write(const nsString& aName,
-                      const OwningBlobOrDirectoryOrUSVString& aValue,
-                      void* aClosure) {
-      Closure* closure = static_cast<Closure*>(aClosure);
-      if (!StructuredCloneHolder::WriteString(closure->mWriter, aName)) {
+    if (aValue.IsBlob()) {
+      if (!JS_WriteUint32Pair(aWriter, SCTAG_DOM_BLOB,
+                              aHolder->BlobImpls().Length())) {
         return false;
       }
 
-      if (aValue.IsBlob()) {
-        if (!JS_WriteUint32Pair(closure->mWriter, SCTAG_DOM_BLOB,
-                                closure->mHolder->BlobImpls().Length())) {
-          return false;
-        }
+      RefPtr<BlobImpl> blobImpl = aValue.GetAsBlob()->Impl();
 
-        RefPtr<BlobImpl> blobImpl = aValue.GetAsBlob()->Impl();
-
-        closure->mHolder->BlobImpls().AppendElement(blobImpl);
-        return true;
-      }
-
-      if (aValue.IsDirectory()) {
-        Directory* directory = aValue.GetAsDirectory();
-        return WriteDirectory(closure->mWriter, directory);
-      }
-
-      size_t charSize = sizeof(nsString::char_type);
-      if (!JS_WriteUint32Pair(closure->mWriter, 0,
-                              aValue.GetAsUSVString().Length()) ||
-          !JS_WriteBytes(closure->mWriter, aValue.GetAsUSVString().get(),
-                         aValue.GetAsUSVString().Length() * charSize)) {
-        return false;
-      }
-
+      aHolder->BlobImpls().AppendElement(blobImpl);
       return true;
     }
+
+    if (aValue.IsDirectory()) {
+      Directory* directory = aValue.GetAsDirectory();
+      return WriteDirectory(aWriter, directory);
+    }
+
+    const size_t charSize = sizeof(nsString::char_type);
+    return JS_WriteUint32Pair(aWriter, 0, aValue.GetAsUSVString().Length()) &&
+           JS_WriteBytes(aWriter, aValue.GetAsUSVString().get(),
+                         aValue.GetAsUSVString().Length() * charSize);
   };
-  Closure closure(aWriter, aHolder);
-  return aFormData->ForEach(Closure::Write, &closure);
+  return aFormData->ForEach(write);
 }
 
 JSObject* ReadWasmModule(JSContext* aCx, uint32_t aIndex,

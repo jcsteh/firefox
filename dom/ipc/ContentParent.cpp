@@ -28,10 +28,6 @@
 #include "GMPServiceParent.h"
 #include "HandlerServiceParent.h"
 #include "IHistory.h"
-#if defined(XP_WIN) && defined(ACCESSIBILITY)
-#  include "mozilla/a11y/AccessibleWrap.h"
-#  include "mozilla/a11y/Compatibility.h"
-#endif
 #include <map>
 #include <utility>
 
@@ -248,6 +244,7 @@
 #include "nsThreadUtils.h"
 #include "nsWidgetsCID.h"
 #include "nsWindowWatcher.h"
+#include "prenv.h"
 #include "prio.h"
 #include "private/pprio.h"
 #include "xpcpublic.h"
@@ -1683,14 +1680,7 @@ void ContentParent::Init() {
   // If accessibility is running in chrome process then start it in content
   // process.
   if (GetAccService()) {
-#  if defined(XP_WIN)
-    // Don't init content a11y if we detect an incompat version of JAWS in use.
-    if (!mozilla::a11y::Compatibility::IsOldJAWS()) {
-      Unused << SendActivateA11y();
-    }
-#  else
     Unused << SendActivateA11y();
-#  endif
   }
 #endif  // #ifdef ACCESSIBILITY
 
@@ -1764,10 +1754,15 @@ void ContentParent::MaybeBeginShutDown(uint32_t aExpectedBrowserCount,
   // We're dying now, prevent anything from re-using this process.
   MarkAsDead();
   SignalImpendingShutdownToContentJS();
-  StartForceKillTimer();
 
   if (aSendShutDown) {
     MaybeAsyncSendShutDownMessage();
+  } else {
+    // aSendShutDown is false only when we get called from
+    // NotifyTabDestroying where we expect a subsequent call from
+    // NotifyTabDestroyed triggered by a Browser actor destroy
+    // roundtrip through the content process that might never arrive.
+    StartSendShutdownTimer();
   }
 }
 
@@ -1795,11 +1790,19 @@ void ContentParent::MaybeAsyncSendShutDownMessage() {
     mThreadsafeHandle->mShutdownStarted = true;
   }
 
-  // In the case of normal shutdown, send a shutdown message to child to
-  // allow it to perform shutdown tasks.
-  GetCurrentSerialEventTarget()->Dispatch(NewRunnableMethod<ShutDownMethod>(
-      "dom::ContentParent::ShutDownProcess", this,
-      &ContentParent::ShutDownProcess, SEND_SHUTDOWN_MESSAGE));
+  if (mSendShutdownTimer) {
+    mSendShutdownTimer->Cancel();
+    mSendShutdownTimer = nullptr;
+  }
+
+  if (!mSentShutdownMessage) {
+    // In the case of normal shutdown, send a shutdown message to child to
+    // allow it to perform shutdown tasks.
+    GetCurrentSerialEventTarget()->Dispatch(NewRunnableMethod<ShutDownMethod>(
+        "dom::ContentParent::ShutDownProcess", this,
+        &ContentParent::ShutDownProcess, SEND_SHUTDOWN_MESSAGE));
+    mSentShutdownMessage = true;
+  }
 }
 
 void MaybeLogBlockShutdownDiagnostics(ContentParent* aSelf, const char* aMsg,
@@ -1834,6 +1837,8 @@ bool ContentParent::ShutDownProcess(ShutDownMethod aMethod) {
       if (CanSend()) {
         // Stop sending input events with input priority when shutting down.
         SetInputPriorityEventEnabled(false);
+        // If we did not earlier, let's signal the shutdown to JS now.
+        SignalImpendingShutdownToContentJS();
         // Send a high priority announcement first. If this fails, SendShutdown
         // will also fail.
         Unused << SendShutdownConfirmedHP();
@@ -1843,13 +1848,9 @@ bool ContentParent::ShutDownProcess(ShutDownMethod aMethod) {
               this, "ShutDownProcess: Sent shutdown message.", __FILE__,
               __LINE__);
           mShutdownPending = true;
-          // Start the force-kill timer if we haven't already.
-          // This can happen if we shutdown a process while launching or
-          // because it is removed from the cached processes pool.
-          if (!mForceKillTimer) {
-            SignalImpendingShutdownToContentJS();
-            StartForceKillTimer();
-          }
+          // We start the kill timer only after we asked our process to
+          // shutdown.
+          StartForceKillTimer();
           result = true;
         } else {
           MaybeLogBlockShutdownDiagnostics(
@@ -2079,6 +2080,10 @@ void ContentParent::ProcessingError(Result aCode, const char* aReason) {
 }
 
 void ContentParent::ActorDestroy(ActorDestroyReason why) {
+  if (mSendShutdownTimer) {
+    mSendShutdownTimer->Cancel();
+    mSendShutdownTimer = nullptr;
+  }
   if (mForceKillTimer) {
     mForceKillTimer->Cancel();
     mForceKillTimer = nullptr;
@@ -2422,12 +2427,27 @@ void ContentParent::RemoveKeepAlive() {
   MaybeBeginShutDown();
 }
 
+void ContentParent::StartSendShutdownTimer() {
+  if (mSendShutdownTimer || !CanSend()) {
+    return;
+  }
+
+  uint32_t timeoutSecs = StaticPrefs::dom_ipc_tabs_shutdownTimeoutSecs();
+  if (timeoutSecs > 0) {
+    NS_NewTimerWithFuncCallback(getter_AddRefs(mSendShutdownTimer),
+                                ContentParent::SendShutdownTimerCallback, this,
+                                timeoutSecs * 1000, nsITimer::TYPE_ONE_SHOT,
+                                "dom::ContentParent::StartSendShutdownTimer");
+    MOZ_ASSERT(mSendShutdownTimer);
+  }
+}
+
 void ContentParent::StartForceKillTimer() {
   if (mForceKillTimer || !CanSend()) {
     return;
   }
 
-  int32_t timeoutSecs = StaticPrefs::dom_ipc_tabs_shutdownTimeoutSecs();
+  uint32_t timeoutSecs = StaticPrefs::dom_ipc_tabs_shutdownTimeoutSecs();
   if (timeoutSecs > 0) {
     NS_NewTimerWithFuncCallback(getter_AddRefs(mForceKillTimer),
                                 ContentParent::ForceKillTimerCallback, this,
@@ -2901,6 +2921,9 @@ ContentParent::ContentParent(const nsACString& aRemoteType, int32_t aJSPluginID)
 }
 
 ContentParent::~ContentParent() {
+  if (mSendShutdownTimer) {
+    mSendShutdownTimer->Cancel();
+  }
   if (mForceKillTimer) {
     mForceKillTimer->Cancel();
   }
@@ -4044,15 +4067,7 @@ ContentParent::Observe(nsISupports* aSubject, const char* aTopic,
     if (*aData == '1') {
       // Make sure accessibility is running in content process when
       // accessibility gets initiated in chrome process.
-#  if defined(XP_WIN)
-      // Don't init content a11y if we detect an incompat version of JAWS in
-      // use.
-      if (!mozilla::a11y::Compatibility::IsOldJAWS()) {
-        Unused << SendActivateA11y();
-      }
-#  else
       Unused << SendActivateA11y();
-#  endif
     } else {
       // If possible, shut down accessibility in content process when
       // accessibility gets shutdown in chrome process.
@@ -4430,6 +4445,13 @@ bool ContentParent::DeallocPRemoteSpellcheckEngineParent(
 }
 
 /* static */
+void ContentParent::SendShutdownTimerCallback(nsITimer* aTimer,
+                                              void* aClosure) {
+  auto* self = static_cast<ContentParent*>(aClosure);
+  self->MaybeAsyncSendShutDownMessage();
+}
+
+/* static */
 void ContentParent::ForceKillTimerCallback(nsITimer* aTimer, void* aClosure) {
   // We don't want to time out the content process during XPCShell tests. This
   // is the easiest way to ensure that.
@@ -4437,7 +4459,7 @@ void ContentParent::ForceKillTimerCallback(nsITimer* aTimer, void* aClosure) {
     return;
   }
 
-  auto self = static_cast<ContentParent*>(aClosure);
+  auto* self = static_cast<ContentParent*>(aClosure);
   self->KillHard("ShutDownKill");
 }
 
@@ -4494,7 +4516,14 @@ void ContentParent::KillHard(const char* aReason) {
     return;
   }
   mCalledKillHard = true;
-  mForceKillTimer = nullptr;
+  if (mSendShutdownTimer) {
+    mSendShutdownTimer->Cancel();
+    mSendShutdownTimer = nullptr;
+  }
+  if (mForceKillTimer) {
+    mForceKillTimer->Cancel();
+    mForceKillTimer = nullptr;
+  }
 
   RemoveShutdownBlockers();
   nsCString reason = nsDependentCString(aReason);

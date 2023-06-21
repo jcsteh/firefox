@@ -311,14 +311,18 @@ class CanvasRenderingContext2D : public nsICanvasRenderingContextInternal,
   void GetWordSpacing(nsACString& aWordSpacing);
   void SetWordSpacing(const nsACString& aWordSpacing);
 
+  void EnsureCapped() {
+    if (mPathPruned) {
+      mPathBuilder->LineTo(mPathBuilder->CurrentPoint());
+      mPathPruned = false;
+    }
+  }
+
   void ClosePath() override {
     EnsureWritablePath();
 
-    if (mPathBuilder) {
-      mPathBuilder->Close();
-    } else {
-      mDSPathBuilder->Close();
-    }
+    mPathBuilder->Close();
+    mPathPruned = false;
   }
 
   void MoveTo(double aX, double aY) override {
@@ -329,13 +333,8 @@ class CanvasRenderingContext2D : public nsICanvasRenderingContextInternal,
       return;
     }
 
-    if (mPathBuilder) {
-      mPathBuilder->MoveTo(pos);
-    } else {
-      mozilla::gfx::Point transformedPos =
-          mTarget->GetTransform().TransformPoint(pos);
-      mDSPathBuilder->MoveTo(transformedPos);
-    }
+    EnsureCapped();
+    mPathBuilder->MoveTo(pos);
   }
 
   void LineTo(double aX, double aY) override {
@@ -354,20 +353,12 @@ class CanvasRenderingContext2D : public nsICanvasRenderingContextInternal,
       return;
     }
 
-    if (mPathBuilder) {
-      if (cp1 == mPathBuilder->CurrentPoint() && cp1 == cp2) {
-        return;
-      }
-      mPathBuilder->QuadraticBezierTo(cp1, cp2);
-    } else {
-      mozilla::gfx::Matrix transform = mTarget->GetTransform();
-      mozilla::gfx::Point transformedPos = transform.TransformPoint(cp1);
-      if (transformedPos == mDSPathBuilder->CurrentPoint() && cp1 == cp2) {
-        return;
-      }
-      mDSPathBuilder->QuadraticBezierTo(transformedPos,
-                                        transform.TransformPoint(cp2));
+    if (cp1 == mPathBuilder->CurrentPoint() && cp1 == cp2) {
+      mPathPruned = true;
+      return;
     }
+    mPathBuilder->QuadraticBezierTo(cp1, cp2);
+    mPathPruned = false;
   }
 
   void BezierCurveTo(double aCp1x, double aCp1y, double aCp2x, double aCp2y,
@@ -505,19 +496,12 @@ class CanvasRenderingContext2D : public nsICanvasRenderingContextInternal,
     if (!aPoint.IsFinite()) {
       return;
     }
-    if (mPathBuilder) {
-      if (mPathBuilder->CurrentPoint() == aPoint) {
-        return;
-      }
-      mPathBuilder->LineTo(aPoint);
-    } else {
-      mozilla::gfx::Point transformedPt =
-          mTarget->GetTransform().TransformPoint(aPoint);
-      if (mDSPathBuilder->CurrentPoint() == transformedPt) {
-        return;
-      }
-      mDSPathBuilder->LineTo(transformedPt);
+    if (mPathBuilder->CurrentPoint() == aPoint) {
+      mPathPruned = true;
+      return;
     }
+    mPathBuilder->LineTo(aPoint);
+    mPathPruned = false;
   }
 
   void BezierTo(const mozilla::gfx::Point& aCP1,
@@ -527,22 +511,12 @@ class CanvasRenderingContext2D : public nsICanvasRenderingContextInternal,
       return;
     }
 
-    if (mPathBuilder) {
-      if (aCP1 == mPathBuilder->CurrentPoint() && aCP1 == aCP2 &&
-          aCP1 == aCP3) {
-        return;
-      }
-      mPathBuilder->BezierTo(aCP1, aCP2, aCP3);
-    } else {
-      mozilla::gfx::Matrix transform = mTarget->GetTransform();
-      mozilla::gfx::Point transformedPos = transform.TransformPoint(aCP1);
-      if (transformedPos == mDSPathBuilder->CurrentPoint() && aCP1 == aCP2 &&
-          aCP1 == aCP3) {
-        return;
-      }
-      mDSPathBuilder->BezierTo(transformedPos, transform.TransformPoint(aCP2),
-                               transform.TransformPoint(aCP3));
+    if (aCP1 == mPathBuilder->CurrentPoint() && aCP1 == aCP2 && aCP1 == aCP3) {
+      mPathPruned = true;
+      return;
     }
+    mPathBuilder->BezierTo(aCP1, aCP2, aCP3);
+    mPathPruned = false;
   }
 
   virtual UniquePtr<uint8_t[]> GetImageBuffer(
@@ -645,10 +619,7 @@ class CanvasRenderingContext2D : public nsICanvasRenderingContextInternal,
    */
   static void EnsureErrorTarget();
 
-  /* This function ensures there is a writable pathbuilder available, this
-   * pathbuilder may be working in user space or in device space or
-   * device space.
-   * After calling this function mPathTransformWillUpdate will be false
+  /* This function ensures there is a writable pathbuilder available
    */
   void EnsureWritablePath();
 
@@ -660,7 +631,7 @@ class CanvasRenderingContext2D : public nsICanvasRenderingContextInternal,
    * Needs to be called before updating the transform. This makes a call to
    * EnsureTarget() so you don't have to.
    */
-  void TransformWillUpdate();
+  void TransformCurrentPath(const mozilla::gfx::Matrix& aTransform);
 
   // Report the fillRule has changed.
   void FillRuleChanged();
@@ -856,10 +827,8 @@ class CanvasRenderingContext2D : public nsICanvasRenderingContextInternal,
    * mPath is always in user-space.
    */
   RefPtr<mozilla::gfx::Path> mPath;
-  RefPtr<mozilla::gfx::PathBuilder> mDSPathBuilder;
   RefPtr<mozilla::gfx::PathBuilder> mPathBuilder;
-  bool mPathTransformWillUpdate;
-  mozilla::gfx::Matrix mPathToDS;
+  bool mPathPruned = false;
 
   /**
    * Number of times we've invalidated before calling redraw

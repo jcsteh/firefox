@@ -10,6 +10,7 @@ use cssparser::{Parser, ParserInput, SourceLocation, UnicodeRange};
 use dom::{DocumentState, ElementState};
 use malloc_size_of::MallocSizeOfOps;
 use nsstring::{nsCString, nsString};
+use selectors::matching::IgnoreNthChildForInvalidation;
 use selectors::NthIndexCache;
 use servo_arc::{Arc, ArcBorrow};
 use smallvec::SmallVec;
@@ -816,9 +817,13 @@ pub unsafe extern "C" fn Servo_AnimationValue_GetTransform(
 #[no_mangle]
 pub unsafe extern "C" fn Servo_AnimationValue_GetOffsetPath(
     value: &AnimationValue,
-) -> *const computed::motion::OffsetPath {
+    output: &mut computed::motion::OffsetPath,
+) {
+    use style::values::animated::ToAnimatedValue;
     match *value {
-        AnimationValue::OffsetPath(ref value) => value,
+        AnimationValue::OffsetPath(ref value) => {
+            *output = ToAnimatedValue::from_animated_value(value.clone())
+        },
         _ => unreachable!("Expected offset-path"),
     }
 }
@@ -893,7 +898,8 @@ pub unsafe extern "C" fn Servo_AnimationValue_Transform(
 pub unsafe extern "C" fn Servo_AnimationValue_OffsetPath(
     p: &computed::motion::OffsetPath,
 ) -> Strong<AnimationValue> {
-    Arc::new(AnimationValue::OffsetPath(p.clone())).into()
+    use style::values::animated::ToAnimatedValue;
+    Arc::new(AnimationValue::OffsetPath(p.clone().to_animated_value())).into()
 }
 
 #[no_mangle]
@@ -1053,14 +1059,6 @@ impl_basic_serde_funcs!(
     Servo_StyleComputedTimingFunction_Deserialize,
     ComputedTimingFunction
 );
-
-#[no_mangle]
-pub extern "C" fn Servo_SVGPathData_Normalize(
-    input: &specified::SVGPathData,
-    output: &mut specified::SVGPathData,
-) {
-    *output = input.normalize();
-}
 
 // Return the ComputedValues by a base ComputedValues and the rules.
 fn resolve_rules_for_element_with_context<'a>(
@@ -2270,6 +2268,25 @@ impl_basic_rule_funcs! { (Style, StyleRule, Locked<StyleRule>),
     changed: Servo_StyleSet_StyleRuleChanged,
 }
 
+#[no_mangle]
+pub extern "C" fn Servo_StyleRule_EnsureRules(rule: &LockedStyleRule, read_only: bool) -> Strong<LockedCssRules> {
+    let global_style_data = &*GLOBAL_STYLE_DATA;
+    let lock = &global_style_data.shared_lock;
+    if read_only {
+        let guard = lock.read();
+        if let Some(ref rules) = rule.read_with(&guard).rules {
+            return rules.clone().into();
+        }
+        return CssRules::new(vec![], lock).into();
+    }
+    let mut guard = lock.write();
+    rule.write_with(&mut guard)
+        .rules
+        .get_or_insert_with(|| CssRules::new(vec![], lock))
+        .clone()
+        .into()
+}
+
 impl_basic_rule_funcs! { (Import, ImportRule, Locked<ImportRule>),
     getter: Servo_CssRules_GetImportRuleAt,
     debug: Servo_ImportRule_Debug,
@@ -2404,43 +2421,39 @@ pub extern "C" fn Servo_StyleRule_SetStyle(
 
 #[no_mangle]
 pub extern "C" fn Servo_StyleRule_GetSelectorText(rule: &LockedStyleRule, result: &mut nsACString) {
-    read_locked_arc(rule, |rule: &StyleRule| {
-        rule.selectors.to_css(result).unwrap();
-    })
+    read_locked_arc(rule, |rule| rule.selectors.to_css(result).unwrap());
 }
 
 #[no_mangle]
-pub extern "C" fn Servo_StyleRule_GetSelectorTextAtIndex(
-    rule: &LockedStyleRule,
+pub extern "C" fn Servo_StyleRule_GetSelectorDataAtIndex(
+    rules: &ThinVec<&LockedStyleRule>,
     index: u32,
-    result: &mut nsACString,
+    text: Option<&mut nsACString>,
+    specificity: Option<&mut u64>,
 ) {
-    read_locked_arc(rule, |rule: &StyleRule| {
-        let index = index as usize;
-        if index >= rule.selectors.0.len() {
-            return;
-        }
-        rule.selectors.0[index].to_css(result).unwrap();
-    })
+    let mut selectors: Option<SelectorList> = None;
+    for rule in rules.iter().rev() {
+        selectors = Some(read_locked_arc(rule, |rule| {
+            match selectors {
+                Some(s) => rule.selectors.replace_parent_selector(&s.0),
+                None => rule.selectors.clone(),
+            }
+        }));
+    }
+    debug_assert!(selectors.is_some(), "Empty rule chain?");
+    let Some(selectors) = selectors else { return };
+    let Some(selector) = selectors.0.get(index as usize) else { return };
+    if let Some(text) = text {
+        selector.to_css(text).unwrap();
+    }
+    if let Some(specificity) = specificity {
+        *specificity = selector.specificity() as u64;
+    }
 }
 
 #[no_mangle]
 pub extern "C" fn Servo_StyleRule_GetSelectorCount(rule: &LockedStyleRule) -> u32 {
-    read_locked_arc(rule, |rule: &StyleRule| rule.selectors.0.len() as u32)
-}
-
-#[no_mangle]
-pub extern "C" fn Servo_StyleRule_GetSpecificityAtIndex(
-    rule: &LockedStyleRule,
-    index: u32,
-) -> u64 {
-    read_locked_arc(rule, |rule: &StyleRule| {
-        let index = index as usize;
-        if index >= rule.selectors.0.len() {
-            return 0;
-        }
-        rule.selectors.0[index].specificity() as u64
-    })
+    read_locked_arc(rule, |rule| rule.selectors.0.len() as u32)
 }
 
 #[no_mangle]
@@ -2500,6 +2513,7 @@ pub extern "C" fn Servo_StyleRule_SelectorMatchesElement(
             visited_mode,
             quirks_mode,
             NeedsSelectorFlags::No,
+            IgnoreNthChildForInvalidation::No,
         );
         ctx.with_shadow_host(host, |ctx| {
             matches_selector(selector, 0, None, &element, ctx)
@@ -2519,6 +2533,7 @@ pub extern "C" fn Servo_StyleRule_SetSelectorText(
 
     write_locked_arc(rule, |rule: &mut StyleRule| {
         use style::selector_parser::SelectorParser;
+        use selectors::parser::ParseRelative;
 
         let namespaces = contents.namespaces.read();
         let url_data = contents.url_data.read();
@@ -2529,8 +2544,10 @@ pub extern "C" fn Servo_StyleRule_SetSelectorText(
             for_supports_rule: false,
         };
 
+        // TODO: Maybe allow setting relative selectors from the OM, if we're in a nested style
+        // rule?
         let mut parser_input = ParserInput::new(&value_str);
-        match SelectorList::parse(&parser, &mut Parser::new(&mut parser_input)) {
+        match SelectorList::parse(&parser, &mut Parser::new(&mut parser_input), ParseRelative::No) {
             Ok(selectors) => {
                 rule.selectors = selectors;
                 true
@@ -7284,6 +7301,7 @@ pub unsafe extern "C" fn Servo_ParseFontShorthandForMatching(
     stretch: &mut FontStretch,
     weight: &mut FontWeight,
     size: Option<&mut f32>,
+    small_caps: Option<&mut bool>,
 ) -> bool {
     use style::properties::shorthands::font;
     use style::values::generics::font::FontStyle as GenericFontStyle;
@@ -7371,6 +7389,11 @@ pub unsafe extern "C" fn Servo_ParseFontShorthandForMatching(
                 return false;
             },
         };
+    }
+
+    if let Some(small_caps) = small_caps {
+        use style::computed_values::font_variant_caps::T::SmallCaps;
+        *small_caps = font.font_variant_caps == SmallCaps;
     }
 
     true
@@ -7573,17 +7596,6 @@ pub unsafe extern "C" fn Servo_SharedMemoryBuilder_GetLength(
 #[no_mangle]
 pub unsafe extern "C" fn Servo_SharedMemoryBuilder_Drop(builder: *mut SharedMemoryBuilder) {
     let _ = Box::from_raw(builder);
-}
-
-/// Returns a unique pointer to a clone of the shape image.
-///
-/// Probably temporary, as we move more stuff to cbindgen.
-#[no_mangle]
-#[must_use]
-pub unsafe extern "C" fn Servo_CloneBasicShape(
-    v: &computed::basic_shape::BasicShape,
-) -> *mut computed::basic_shape::BasicShape {
-    Box::into_raw(Box::new(v.clone()))
 }
 
 #[no_mangle]

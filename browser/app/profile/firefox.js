@@ -27,10 +27,6 @@ pref("extensions.logging.enabled", false);
 // Disables strict compatibility, making addons compatible-by-default.
 pref("extensions.strictCompatibility", false);
 
-// Temporary preference to forcibly make themes more safe with Australis even if
-// extensions.checkCompatibility=false has been set.
-pref("extensions.checkCompatibility.temporaryThemeOverride_minAppVersion", "29.0a1");
-
 pref("extensions.webextOptionalPermissionPrompts", true);
 // If enabled, install origin permission verification happens after addons are downloaded.
 pref("extensions.postDownloadThirdPartyPrompt", true);
@@ -42,6 +38,7 @@ pref("extensions.getAddons.search.browseURL", "https://addons.mozilla.org/%LOCAL
 pref("extensions.getAddons.link.url", "https://addons.mozilla.org/%LOCALE%/firefox/");
 pref("extensions.getAddons.langpacks.url", "https://services.addons.mozilla.org/api/v4/addons/language-tools/?app=firefox&type=language&appversion=%VERSION%");
 pref("extensions.getAddons.discovery.api_url", "https://services.addons.mozilla.org/api/v4/discovery/?lang=%LOCALE%&edition=%DISTRIBUTION%");
+pref("extensions.getAddons.browserMappings.url", "https://services.addons.mozilla.org/api/v5/addons/browser-mappings/?browser=%BROWSER%");
 
 // The URL for the privacy policy related to recommended extensions.
 pref("extensions.recommendations.privacyPolicyUrl", "https://www.mozilla.org/privacy/firefox/?utm_source=firefox-browser&utm_medium=firefox-browser&utm_content=privacy-policy-link#addons");
@@ -68,7 +65,6 @@ pref("extensions.webextensions.remote", true);
 // Require signed add-ons by default
 pref("extensions.langpacks.signatures.required", true);
 pref("xpinstall.signatures.required", true);
-pref("xpinstall.signatures.devInfoURL", "https://wiki.mozilla.org/Addons/Extension_Signing");
 
 // Dictionary download preference
 pref("browser.dictionaries.download.url", "https://addons.mozilla.org/%LOCALE%/firefox/language-tools/");
@@ -108,17 +104,13 @@ pref("app.update.log.file", false);
 // the failure.
 pref("app.update.backgroundMaxErrors", 10);
 
-// Ids of the links to the "What's new" update documentation
-pref("app.update.link.updateAvailableWhatsNew", "update-available-whats-new");
-pref("app.update.link.updateManualWhatsNew", "update-manual-whats-new");
-
 // How many times we should let downloads fail before prompting the user to
 // download a fresh installer.
-pref("app.update.download.promptMaxAttempts", 2);
+pref("app.update.download.maxAttempts", 2);
 
 // How many times we should let an elevation prompt fail before prompting the user to
 // download a fresh installer.
-pref("app.update.elevation.promptMaxAttempts", 2);
+pref("app.update.elevate.maxAttempts", 2);
 
 #ifdef NIGHTLY_BUILD
   // Whether to delay popup notifications when an update is available and
@@ -938,8 +930,6 @@ pref("dom.disable_window_flip",                   true);
 
 pref("privacy.popups.showBrowserMessage",   true);
 
-pref("privacy.item.cookies",                false);
-
 pref("privacy.clearOnShutdown.history",     true);
 pref("privacy.clearOnShutdown.formdata",    true);
 pref("privacy.clearOnShutdown.downloads",   true);
@@ -1674,8 +1664,6 @@ pref("browser.newtabpage.activity-stream.logowordmark.alwaysVisible", true);
 // - "key=value" - Search param named "key" with value "value"
 pref("browser.newtabpage.activity-stream.hideTopSitesWithSearchParam", "mfadid=adm");
 
-// Used to display triplet cards on newtab
-pref("trailhead.firstrun.newtab.triplets", "");
 // Separate about welcome
 pref("browser.aboutwelcome.enabled", true);
 // Used to set multistage welcome UX
@@ -1723,7 +1711,6 @@ pref("pdfjs.handleOctetStream", true);
 // Is the sidebar positioned ahead of the content browser
 pref("sidebar.position_start", true);
 
-pref("security.identitypopup.recordEventTelemetry", true);
 pref("security.protectionspopup.recordEventTelemetry", true);
 pref("security.app_menu.recordEventTelemetry", true);
 
@@ -1800,15 +1787,9 @@ pref("identity.mobilepromo.ios", "https://www.mozilla.org/firefox/ios/?utm_sourc
   pref("identity.fxaccounts.migrateToDevEdition", false);
 #endif
 
-// If activated, send tab will use the new FxA commands backend.
-pref("identity.fxaccounts.commands.enabled", true);
 // How often should we try to fetch missed FxA commands on sync (in seconds).
 // Default is 24 hours.
 pref("identity.fxaccounts.commands.missed.fetch_interval", 86400);
-
-// Whether we should run a test-pattern through EME GMPs before assuming they'll
-// decode H.264.
-pref("media.gmp.trial-create.enabled", true);
 
 // Note: when media.gmp-*.visible is true, provided we're running on a
 // supported platform/OS version, the corresponding CDM appears in the
@@ -2183,8 +2164,8 @@ pref("browser.migrate.vivaldi.enabled", true);
 pref("browser.migrate.content-modal.enabled", true);
 pref("browser.migrate.content-modal.import-all.enabled", true);
 
-// Values can be: "default", "autoclose", "standalone".
-pref("browser.migrate.content-modal.about-welcome-behavior", "default");
+// Values can be: "default", "autoclose", "standalone", "legacy".
+pref("browser.migrate.content-modal.about-welcome-behavior", "legacy");
 
 // The maximum age of history entries we'll import, in days.
 pref("browser.migrate.history.maxAgeInDays", 180);
@@ -2290,10 +2271,6 @@ pref("screenshots.browser.component.enabled", false);
 // DoH Rollout: whether to clear the mode value at shutdown.
 pref("doh-rollout.clearModeOnShutdown", false);
 
-// URL for Learn More link for browser error logging in preferences
-pref("browser.chrome.errorReporter.infoURL",
-     "https://support.mozilla.org/1/firefox/%VERSION%/%OS%/%LOCALE%/nightly-error-collection");
-
 // Normandy client preferences
 pref("app.normandy.api_url", "https://normandy.cdn.mozilla.net/api/v1");
 pref("app.normandy.dev_mode", false);
@@ -2374,9 +2351,6 @@ pref("browser.toolbars.bookmarks.showOtherBookmarks", true);
 pref("identity.fxaccounts.toolbar.enabled", true);
 pref("identity.fxaccounts.toolbar.accessed", false);
 pref("identity.fxaccounts.toolbar.defaultVisible", false);
-
-// Prefs for different services supported by Firefox Account
-pref("identity.fxaccounts.service.monitorLoginUrl", "https://monitor.firefox.com/");
 
 // Check bundled omni JARs for corruption.
 pref("corroborator.enabled", true);

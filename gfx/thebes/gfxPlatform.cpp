@@ -3302,7 +3302,7 @@ bool gfxPlatform::IsInLayoutAsapMode() {
 static int LayoutFrameRateFromPrefs() {
   auto val = StaticPrefs::layout_frame_rate();
   if (nsContentUtils::ShouldResistFingerprinting(
-          "The frame rate is a global property.")) {
+          "The frame rate is a global property.", RFPTarget::Unknown)) {
     val = 60;
   }
   return val;
@@ -3689,8 +3689,7 @@ bool gfxPlatform::FallbackFromAcceleration(FeatureStatus aStatus,
 #ifdef XP_WIN
   // Before we disable D3D11 and HW_COMPOSITING, we should check if we can
   // fallback from WebRender to Software WebRender + D3D11 compositing.
-  if (StaticPrefs::gfx_webrender_fallback_software_d3d11_AtStartup() &&
-      swglFallbackAllowed && gfxVars::AllowSoftwareWebRenderD3D11() &&
+  if (swglFallbackAllowed && gfxVars::AllowSoftwareWebRenderD3D11() &&
       gfxConfig::IsEnabled(Feature::D3D11_COMPOSITING) &&
       !gfxVars::UseSoftwareWebRender()) {
     // Fallback to Software WebRender + D3D11 compositing.
@@ -3699,8 +3698,7 @@ bool gfxPlatform::FallbackFromAcceleration(FeatureStatus aStatus,
     return true;
   }
 
-  if (StaticPrefs::gfx_webrender_fallback_software_d3d11_AtStartup() &&
-      swglFallbackAllowed && gfxVars::AllowSoftwareWebRenderD3D11() &&
+  if (swglFallbackAllowed && gfxVars::AllowSoftwareWebRenderD3D11() &&
       gfxVars::UseSoftwareWebRender()) {
     // Fallback from Software WebRender + D3D11 to Software WebRender.
     gfxCriticalNote << "Fallback SW-WR + D3D11 to SW-WR";

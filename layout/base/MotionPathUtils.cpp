@@ -30,6 +30,11 @@ using nsStyleTransformMatrix::TransformReferenceBox;
 // https://drafts.fxtf.org/motion-1/#valdef-offset-path-coord-box
 static const nsIFrame* GetOffsetPathReferenceBox(const nsIFrame* aFrame,
                                                  nsRect& aOutputRect) {
+  const StyleOffsetPath& offsetPath = aFrame->StyleDisplay()->mOffsetPath;
+  if (offsetPath.IsNone()) {
+    return nullptr;
+  }
+
   if (aFrame->HasAnyStateBits(NS_FRAME_SVG_LAYOUT)) {
     MOZ_ASSERT(aFrame->GetContent()->IsSVGElement());
     auto* viewportElement =
@@ -39,14 +44,11 @@ static const nsIFrame* GetOffsetPathReferenceBox(const nsIFrame* aFrame,
   }
 
   const nsIFrame* containingBlock = aFrame->GetContainingBlock();
-  // FIXME: Bug 1581237: We should use <coord-box> as the box of its containing.
-  // Also, we will add <coord-box> into offset-path syntax in Bug 1598156.
-  // For now, we always use the default value, border-box.
-  // block.
-  // https://drafts.fxtf.org/motion-1/#valdef-offset-path-coord-box
-  constexpr StyleGeometryBox styleCoordBox = StyleGeometryBox::BorderBox;
-  aOutputRect =
-      nsLayoutUtils::ComputeHTMLReferenceRect(containingBlock, styleCoordBox);
+  const StyleCoordBox coordBox = offsetPath.IsCoordBox()
+                                     ? offsetPath.AsCoordBox()
+                                     : offsetPath.AsOffsetPath().coord_box;
+  aOutputRect = nsLayoutUtils::ComputeHTMLReferenceRect(
+      containingBlock, nsLayoutUtils::CoordBoxToGeometryBox(coordBox));
   return containingBlock;
 }
 
@@ -82,12 +84,15 @@ RayReferenceData::RayReferenceData(const nsIFrame* aFrame) {
           .Size());
 }
 
-// The distance is measured between the initial position and the intersection of
-// the ray with the box.
+// The distance is measured between the origin and the intersection of the ray
+// with the reference box of the containing block.
+// Note: |aOrigin| and |aContaingBlock| should be in the same coordinate system
+// (i.e. the nsIFrame::mRect of the containing block).
 // https://drafts.fxtf.org/motion-1/#size-sides
-static CSSCoord ComputeSides(const CSSPoint& aInitialPosition,
-                             const CSSSize& aContainerSize,
+static CSSCoord ComputeSides(const CSSPoint& aOrigin,
+                             const CSSRect& aContainingBlock,
                              const StyleAngle& aAngle) {
+  const CSSPoint& topLeft = aContainingBlock.TopLeft();
   // Given an acute angle |theta| (i.e. |t|) of a right-angled triangle, the
   // hypotenuse |h| is the side that connects the two acute angles. The side
   // |b| adjacent to |theta| is the side of the triangle that connects |theta|
@@ -96,28 +101,29 @@ static CSSCoord ComputeSides(const CSSPoint& aInitialPosition,
   // e.g. if the angle |t| is 0 ~ 90 degrees, and b * tan(theta) <= b',
   //      h = b / cos(t):
   //                       b*tan(t)
-  //       (0, 0) #--------*-----*--# (aContainerSize.width, 0)
+  //    (topLeft) #--------*-----*--# (aContainingBlock.XMost(), topLeft.y)
   //              |        |    /   |
   //              |        |   /    |
   //              |        b  h     |
   //              |        |t/      |
   //              |        |/       |
-  //    (aInitialPosition) *---b'---* (aContainerSize.width, aInitialPosition.y)
+  //             (aOrigin) *---b'---* (aContainingBlock.XMost(), aOrigin.y)
   //              |        |        |
   //              |        |        |
   //              |        |        |
   //              |        |        |
   //              |        |        |
-  //              #-----------------# (aContainerSize.width,
-  //  (0, aContainerSize.height)       aContainerSize.height)
-  double theta = aAngle.ToRadians();
+  //              #-----------------# (aContainingBlock.XMost(),
+  //        (topLeft.x,                aContainingBlock.YMost())
+  //         aContainingBlock.YMost())
+  const double theta = aAngle.ToRadians();
   double sint = std::sin(theta);
   double cost = std::cos(theta);
 
-  double b = cost >= 0 ? aInitialPosition.y.value
-                       : aContainerSize.height - aInitialPosition.y.value;
-  double bPrime = sint >= 0 ? aContainerSize.width - aInitialPosition.x.value
-                            : aInitialPosition.x.value;
+  const double b = cost >= 0 ? aOrigin.y.value - topLeft.y
+                             : aContainingBlock.YMost() - aOrigin.y.value;
+  const double bPrime = sint >= 0 ? aContainingBlock.XMost() - aOrigin.x.value
+                                  : aOrigin.x.value - topLeft.x;
   sint = std::fabs(sint);
   cost = std::fabs(cost);
 
@@ -184,17 +190,18 @@ static CSSCoord ComputeRayPathLength(const StyleRaySize aRaySizeType,
       return 0.0;
     }
 
-    return ComputeSides(aOrigin, aContainingBlock.Size(), aAngle);
+    return ComputeSides(aOrigin, aContainingBlock, aAngle);
   }
 
-  // left: the length between the initial point and the left side.
-  // right: the length between the initial point and the right side.
-  // top: the length between the initial point and the top side.
-  // bottom: the lenght between the initial point and the bottom side.
-  CSSCoord left = std::abs(aOrigin.x);
-  CSSCoord right = std::abs(aContainingBlock.width - aOrigin.x);
-  CSSCoord top = std::abs(aOrigin.y);
-  CSSCoord bottom = std::abs(aContainingBlock.height - aOrigin.y);
+  // left: the length between the origin and the left side.
+  // right: the length between the origin and the right side.
+  // top: the length between the origin and the top side.
+  // bottom: the lenght between the origin and the bottom side.
+  const CSSPoint& topLeft = aContainingBlock.TopLeft();
+  const CSSCoord left = std::abs(aOrigin.x - topLeft.x);
+  const CSSCoord right = std::abs(aContainingBlock.XMost() - aOrigin.x);
+  const CSSCoord top = std::abs(aOrigin.y - topLeft.y);
+  const CSSCoord bottom = std::abs(aContainingBlock.YMost() - aOrigin.y);
 
   switch (aRaySizeType) {
     case StyleRaySize::ClosestSide:
@@ -216,7 +223,7 @@ static CSSCoord ComputeRayPathLength(const StyleRaySize aRaySizeType,
       }
       return sqrt(h.value * h.value + v.value * v.value);
     }
-    default:
+    case StyleRaySize::Sides:
       MOZ_ASSERT_UNREACHABLE("Unsupported ray size");
   }
 
@@ -374,25 +381,34 @@ Maybe<ResolvedMotionPathData> MotionPathUtils::ResolveMotionPath(
 }
 
 static OffsetPathData GenerateOffsetPathData(const nsIFrame* aFrame) {
-  const StyleOffsetPath& path = aFrame->StyleDisplay()->mOffsetPath;
-  switch (path.tag) {
-    case StyleOffsetPath::Tag::Path: {
-      const StyleSVGPathData& pathData = path.AsPath();
-      RefPtr<gfx::Path> gfxPath =
-          aFrame->GetProperty(nsIFrame::OffsetPathCache());
-      MOZ_ASSERT(
-          gfxPath || pathData._0.IsEmpty(),
-          "Should have a valid cached gfx::Path or an empty path string");
-      return OffsetPathData::Path(pathData, gfxPath.forget());
-    }
-    case StyleOffsetPath::Tag::Ray:
-      return OffsetPathData::Ray(*path.AsRay(), RayReferenceData(aFrame));
-    case StyleOffsetPath::Tag::None:
-      return OffsetPathData::None();
-    default:
-      MOZ_ASSERT_UNREACHABLE("Unknown offset-path");
-      return OffsetPathData::None();
+  const StyleOffsetPath& offsetPath = aFrame->StyleDisplay()->mOffsetPath;
+  if (offsetPath.IsNone()) {
+    return OffsetPathData::None();
   }
+
+  // FIXME: Bug 1598156. Handle IsCoordBox().
+  if (offsetPath.IsCoordBox()) {
+    return OffsetPathData::None();
+  }
+
+  const auto& function = offsetPath.AsOffsetPath().path;
+  if (function->IsRay()) {
+    return OffsetPathData::Ray(function->AsRay(), RayReferenceData(aFrame));
+  }
+
+  MOZ_ASSERT(function->IsShape());
+  const StyleBasicShape& shape = function->AsShape();
+  if (shape.IsPath()) {
+    const StyleSVGPathData& pathData = shape.AsPath().path;
+    RefPtr<gfx::Path> gfxPath =
+        aFrame->GetProperty(nsIFrame::OffsetPathCache());
+    MOZ_ASSERT(gfxPath || pathData._0.IsEmpty(),
+               "Should have a valid cached gfx::Path or an empty path string");
+    return OffsetPathData::Path(pathData, gfxPath.forget());
+  }
+
+  // FIXME: Bug 1598156. Handle other basic shapes.
+  return OffsetPathData::None();
 }
 
 /* static*/
@@ -415,27 +431,39 @@ Maybe<ResolvedMotionPathData> MotionPathUtils::ResolveMotionPath(
 }
 
 static OffsetPathData GenerateOffsetPathData(
-    const StyleOffsetPath& aPath, const RayReferenceData& aRayReferenceData,
-    gfx::Path* aCachedMotionPath) {
-  switch (aPath.tag) {
-    case StyleOffsetPath::Tag::Path: {
-      const StyleSVGPathData& pathData = aPath.AsPath();
-      // If aCachedMotionPath is valid, we have a fixed path.
-      // This means we have pre-built it already and no need to update.
-      RefPtr<gfx::Path> path = aCachedMotionPath;
-      if (!path) {
-        RefPtr<gfx::PathBuilder> builder =
-            MotionPathUtils::GetCompositorPathBuilder();
-        path = MotionPathUtils::BuildPath(pathData, builder);
-      }
-      return OffsetPathData::Path(pathData, path.forget());
-    }
-    case StyleOffsetPath::Tag::Ray:
-      return OffsetPathData::Ray(*aPath.AsRay(), aRayReferenceData);
-    case StyleOffsetPath::Tag::None:
-    default:
-      return OffsetPathData::None();
+    const StyleOffsetPath& aOffsetPath,
+    const RayReferenceData& aRayReferenceData, gfx::Path* aCachedMotionPath) {
+  if (aOffsetPath.IsNone()) {
+    return OffsetPathData::None();
   }
+
+  // FIXME: Bug 1598156. Handle IsCoordBox().
+  if (aOffsetPath.IsCoordBox()) {
+    return OffsetPathData::None();
+  }
+
+  const auto& function = aOffsetPath.AsOffsetPath().path;
+  if (function->IsRay()) {
+    return OffsetPathData::Ray(function->AsRay(), aRayReferenceData);
+  }
+
+  MOZ_ASSERT(function->IsShape());
+  const StyleBasicShape& shape = function->AsShape();
+  if (shape.IsPath()) {
+    const StyleSVGPathData& pathData = shape.AsPath().path;
+    // If aCachedMotionPath is valid, we have a fixed path.
+    // This means we have pre-built it already and no need to update.
+    RefPtr<gfx::Path> path = aCachedMotionPath;
+    if (!path) {
+      RefPtr<gfx::PathBuilder> builder =
+          MotionPathUtils::GetCompositorPathBuilder();
+      path = MotionPathUtils::BuildPath(pathData, builder);
+    }
+    return OffsetPathData::Path(pathData, path.forget());
+  }
+
+  // FIXME: Bug 1598156. Handle other basic shapes.
+  return OffsetPathData::None();
 }
 
 /* static */
@@ -463,14 +491,6 @@ Maybe<ResolvedMotionPathData> MotionPathUtils::ResolveMotionPath(
       aAnchor ? *aAnchor : autoOffsetAnchor,
       aPosition ? *aPosition : autoOffsetPosition, aMotionPathData->origin(),
       aRefBox, aMotionPathData->anchorAdjustment());
-}
-
-/* static */
-StyleSVGPathData MotionPathUtils::NormalizeSVGPathData(
-    const StyleSVGPathData& aPath) {
-  StyleSVGPathData n;
-  Servo_SVGPathData_Normalize(&aPath, &n);
-  return n;
 }
 
 /* static */
