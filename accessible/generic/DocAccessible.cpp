@@ -1191,12 +1191,14 @@ void DocAccessible::BindToDocument(LocalAccessible* aAccessible,
 }
 
 void DocAccessible::UnbindFromDocument(LocalAccessible* aAccessible) {
+  Accessible::DebugPrint("jtd unbind ", aAccessible);
   NS_ASSERTION(mAccessibleCache.GetWeak(aAccessible->UniqueID()),
                "Unbinding the unbound accessible!");
 
   // Fire focus event on accessible having DOM focus if last focus was removed
   // from the tree.
   if (FocusMgr()->WasLastFocused(aAccessible)) {
+    printf("jtd unbind clear last focus\n");
     FocusMgr()->ActiveItemChanged(nullptr);
 #ifdef A11Y_LOG
     if (logging::IsEnabled(logging::eFocus)) {

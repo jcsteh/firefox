@@ -32,6 +32,7 @@ LocalAccessible* FocusManager::FocusedLocalAccessible() const {
   if (mActiveItem) {
     if (mActiveItem->IsDefunct()) {
       MOZ_ASSERT_UNREACHABLE("Stored active item is unbound from document");
+      printf("jtd Stored active item is unbound from document\n");
       return nullptr;
     }
 
@@ -261,6 +262,10 @@ void FocusManager::DispatchFocusEvent(DocAccessible* aDocument,
                      AccEvent::eCoalesceOfSameType);
     aDocument->FireDelayedEvent(event);
     mLastFocus = aTarget;
+    Accessible::DebugPrint("jtd DispatchFocusEvent set last to ", mLastFocus);
+    if (mActiveItem) {
+      Accessible::DebugPrint("jtd dispatch active ", mActiveItem);
+    } else printf("jtd dispatch no active\n");
 
 #ifdef A11Y_LOG
     if (logging::IsEnabled(logging::eFocus)) logging::FocusDispatched(aTarget);
@@ -294,8 +299,9 @@ void FocusManager::ProcessDOMFocus(nsINode* aTarget) {
     LocalAccessible* activeItem = target->CurrentItem();
     if (activeItem) {
       mActiveItem = activeItem;
+      Accessible::DebugPrint("jtd ProcessDOMFocus set active to ", mActiveItem);
       target = activeItem;
-    }
+    } else printf("jtd ProcessDOMFocus no active\n");
 
     DispatchFocusEvent(document, target);
   }
@@ -324,6 +330,7 @@ void FocusManager::ProcessFocusEvent(AccEvent* aEvent) {
     if (activeItem) {
       mActiveItem = activeItem;
       target = activeItem;
+      Accessible::DebugPrint("jtd ProcessFocusEvent set active to ", mActiveItem);
       MOZ_ASSERT(!target->IsDefunct());
     }
   }
