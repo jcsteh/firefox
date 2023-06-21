@@ -343,7 +343,7 @@ nsresult XRE_InitChildProcess(int aArgc, char* aArgv[],
 #ifdef XP_DARWIN
   if (aArgc < 1) return NS_ERROR_FAILURE;
 
-#  if defined(MOZ_SANDBOX)
+#  if defined(MOZ_SANDBOX) && defined(XP_MACOSX)
   // Save the original number of arguments to pass to the sandbox
   // setup routine which also uses the crash server argument.
   int allArgc = aArgc;
