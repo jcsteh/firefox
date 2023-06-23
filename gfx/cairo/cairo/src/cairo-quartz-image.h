@@ -39,13 +39,6 @@
 #include "cairo.h"
 
 #if CAIRO_HAS_QUARTZ_IMAGE_SURFACE
-#include "TargetConditionals.h"
-
-#if !TARGET_OS_IPHONE
-#include <Carbon/Carbon.h>
-#else
-#include <CoreGraphics/CoreGraphics.h>
-#endif
 
 CAIRO_BEGIN_DECLS
 
