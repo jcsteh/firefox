@@ -1483,3 +1483,6 @@ toolkit/components/uniffi-bindgen-gecko-js/fixtures/generated
 tools/browsertime/package.json
 tools/browsertime/package-lock.json
 try_task_config.json
+
+# Contains pref files.
+mobile/ios/app/

@@ -5,6 +5,7 @@ lintpref:
         - 'modules/libpref/init'
         - 'browser/app/profile/'
         - 'mobile/android/app/'
+        - 'mobile/ios/app/'
         - 'devtools/client/preferences/'
         - 'browser/branding/'
         - 'mobile/android/installer/'
