@@ -7,7 +7,4 @@
 with Files("**"):
     BUG_COMPONENT = ("Core", "General")
 
-DIRS += [
-    "app",
-    "chrome"
-]
+DIRS += ["app", "chrome"]
