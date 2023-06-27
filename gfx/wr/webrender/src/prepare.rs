@@ -125,6 +125,10 @@ fn can_use_clip_chain_for_quad_path(
         }
 
         match clip_node.item.kind {
+            ClipItemKind::Rectangle { mode: ClipMode::ClipOut, .. } |
+            ClipItemKind::RoundedRectangle { mode: ClipMode::ClipOut, .. } => {
+                return false;
+            }
             ClipItemKind::RoundedRectangle { .. } | ClipItemKind::Rectangle { .. } => {}
             ClipItemKind::BoxShadow { .. } => {
                 // legacy path for box-shadows for now (move them to a separate primitive next)
@@ -677,14 +681,14 @@ fn prepare_interned_prim_for_render(
                     prim_spatial_node_index,
                     pic_context.raster_spatial_node_index,
                 );
+                let prim_is_2d_scale_translation = map_prim_to_surface.is_2d_scale_translation();
                 let prim_is_2d_axis_aligned = map_prim_to_surface.is_2d_axis_aligned();
-                let prim_has_perspective = map_prim_to_surface.is_perspective();
 
                 let strategy = get_prim_render_strategy(
                     &prim_instance.vis.clip_chain,
                     frame_state.clip_store,
                     data_stores,
-                    prim_is_2d_axis_aligned && !prim_has_perspective,
+                    prim_is_2d_scale_translation,
                 );
 
                 let prim_data = &data_stores.prim[*data_handle];
@@ -707,7 +711,7 @@ fn prepare_interned_prim_for_render(
                 if is_opaque {
                     quad_flags |= QuadFlags::IS_OPAQUE;
                 }
-                let needs_scissor = !prim_is_2d_axis_aligned || prim_has_perspective;
+                let needs_scissor = !prim_is_2d_scale_translation;
                 if !needs_scissor {
                     quad_flags |= QuadFlags::APPLY_DEVICE_CLIP;
                 }

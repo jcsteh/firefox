@@ -340,7 +340,6 @@
 #include "nsJSUtils.h"
 #include "nsLayoutUtils.h"
 #include "nsLiteralString.h"
-#include "nsMappedAttributes.h"
 #include "nsMargin.h"
 #include "nsMimeTypes.h"
 #include "nsNameSpaceManager.h"
@@ -1839,7 +1838,7 @@ void nsContentUtils::GetOfflineAppManifest(Document* aDocument, nsIURI** aURI) {
   }
 
   nsAutoString manifestSpec;
-  docElement->GetAttr(kNameSpaceID_None, nsGkAtoms::manifest, manifestSpec);
+  docElement->GetAttr(nsGkAtoms::manifest, manifestSpec);
 
   // Manifest URIs can't have fragment identifiers.
   if (manifestSpec.IsEmpty() || manifestSpec.Contains('#')) {
@@ -1966,7 +1965,6 @@ void nsContentUtils::Shutdown() {
   }
 
   TextControlState::Shutdown();
-  nsMappedAttributes::Shutdown();
 }
 
 /**
@@ -2384,7 +2382,8 @@ bool nsContentUtils::ShouldResistFingerprinting(nsILoadInfo* aLoadInfo,
   // will check the parent's principal
   nsIPrincipal* principal = aLoadInfo->GetLoadingPrincipal();
 
-  MOZ_ASSERT_IF(principal && !principal->IsSystemPrincipal(),
+  MOZ_ASSERT_IF(principal && !principal->IsSystemPrincipal() &&
+                    !principal->GetIsAddonOrExpandedAddonPrincipal(),
                 BasePrincipal::Cast(principal)->OriginAttributesRef() ==
                     aLoadInfo->GetOriginAttributes());
   return ShouldResistFingerprinting_dangerous(principal, "Internal Call",
@@ -3337,7 +3336,7 @@ void nsContentUtils::GenerateStateKey(nsIContent* aContent, Document* aDocument,
 
         // Append the form name
         nsAutoString formName;
-        formElement->GetAttr(kNameSpaceID_None, nsGkAtoms::name, formName);
+        formElement->GetAttr(nsGkAtoms::name, formName);
         KeyAppendString(formName, aKey);
       } else {
         // Not in a form.  Append the control number, if this is a parser
@@ -3359,8 +3358,7 @@ void nsContentUtils::GenerateStateKey(nsIContent* aContent, Document* aDocument,
 
         // Append the control name
         nsAutoString name;
-        aContent->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::name,
-                                       name);
+        aContent->AsElement()->GetAttr(nsGkAtoms::name, name);
         KeyAppendString(name, aKey);
       }
     }
@@ -5886,8 +5884,7 @@ void nsContentUtils::TriggerLink(nsIContent* aContent, nsIURI* aLinkURI,
     if ((!aContent->IsHTMLElement(nsGkAtoms::a) &&
          !aContent->IsHTMLElement(nsGkAtoms::area) &&
          !aContent->IsSVGElement(nsGkAtoms::a)) ||
-        !aContent->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::download,
-                                        fileName) ||
+        !aContent->AsElement()->GetAttr(nsGkAtoms::download, fileName) ||
         NS_FAILED(aContent->NodePrincipal()->CheckMayLoad(aLinkURI, true))) {
       fileName.SetIsVoid(true);  // No actionable download attribute was found.
     }

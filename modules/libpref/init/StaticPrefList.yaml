@@ -1149,6 +1149,12 @@
   value: 32
   mirror: always
 
+# Min font device pixel size at which to turn on high quality.
+- name: browser.display.auto_quality_min_font_size
+  type: RelaxedAtomicUint32
+  value: 20
+  mirror: always
+
 - name: browser.display.background_color
   type: String
   value: "#FFFFFF"
@@ -2623,7 +2629,7 @@
 # If true, event is first captured then bubbled on target element
 - name: dom.events.phases.correctOrderOnTarget
   type: RelaxedAtomicBool
-  value: false
+  value: @IS_NIGHTLY_BUILD@
   mirror: always
 
 # This pref controls whether or not the `protected` dataTransfer state is
@@ -4075,6 +4081,11 @@
   value: 5
   mirror: always
 
+- name: dom.storage_access.frame_only
+  type: bool
+  value: false
+  mirror: always
+
 # Whether the Storage API is enabled.
 - name: dom.storageManager.enabled
   type: RelaxedAtomicBool
@@ -4205,7 +4216,7 @@
 
 - name: dom.textMetrics.baselines.enabled
   type: RelaxedAtomicBool
-  value: false
+  value: true
   mirror: always
 
 - name: dom.textMetrics.emHeight.enabled
@@ -7792,7 +7803,7 @@
 # isolated web content processes, where we don't need these mitigations.
 - name: javascript.options.spectre.disable_for_isolated_content
   type: bool
-  value: false
+  value: @IS_NIGHTLY_BUILD@
   mirror: always
 
 # Whether the W^X policy is enforced to mark JIT code pages as either writable
@@ -8567,12 +8578,6 @@
   value: 3
   mirror: always
 
-# font-visibility setting when Resist Fingerprinting is enabled
-- name: layout.css.font-visibility.resistFingerprinting
-  type: int32_t
-  value: 1
-  mirror: always
-
 # Max font-visibility setting for Private Browsing contexts
 # (The actual value used in a private-browsing context will be the lesser of
 # the appropriate standard/trackingprotection/RFP value from above, and the
@@ -8591,6 +8596,13 @@
   type: bool
   value: @IS_NOT_RELEASE_OR_BETA@
   mirror: always
+
+# Is support for (linear|radial|conic)-gradient color interpolation methods enabled?
+- name: layout.css.gradient-color-interpolation-method.enabled
+  type: RelaxedAtomicBool
+  value: false
+  mirror: always
+  rust: true
 
 # Is support for caching an grid item's block axis measurement enabled?
 - name: layout.css.grid-item-baxis-measurement.enabled
@@ -11784,8 +11796,7 @@
   mirror: always
 
 # Enables `<link rel="modulepreload">` tag and `Link: rel=modulepreload`
-# response header handling. The latter is not yet implemented, see:
-# https://bugzilla.mozilla.org/show_bug.cgi?id=1773056.
+# response header handling.
 - name: network.modulepreload
   type: RelaxedAtomicBool
   value: true
@@ -12660,6 +12671,13 @@
 - name: network.jar.max_available_size
   type: RelaxedAtomicUint32
   value: 256*1024*1024 # 256 Mb
+  mirror: always
+
+# Whether JAR entries that defate to a different size than RealSize/orglen
+# are considered corrupted or not
+- name: network.jar.require_size_match
+  type: RelaxedAtomicBool
+  value: true
   mirror: always
 
 # When this pref is true we clear the Content-Encoding header for
@@ -14464,6 +14482,11 @@
   value: false
   mirror: always
 
+- name: toolkit.scrollbox.smoothScroll
+  type: RelaxedAtomicBool
+  value: true
+  mirror: always
+
 - name: toolkit.scrollbox.horizontalScrollDistance
   type: RelaxedAtomicInt32
   value: 5
@@ -15390,30 +15413,6 @@
   mirror: always
 
 #ifdef MOZ_WAYLAND
-# Whether to override the DMABuf blocklist.
-- name: widget.dmabuf.force-enabled
-  type: bool
-  value: false
-  mirror: once
-
-#ifdef NIGHTLY_BUILD
-# Keep those pref hidden on non-nightly builds to avoid people accidentally
-# turning it on.
-
-# Use DMABuf for content textures.
-# For testing purposes only.
-- name: widget.dmabuf-textures.enabled
-  type: RelaxedAtomicBool
-  value: false
-  mirror: always
-#endif
-
-# Use DMABuf backend for WebGL.
-- name: widget.dmabuf-webgl.enabled
-  type: RelaxedAtomicBool
-  value: true
-  mirror: always
-
 # Force fractional scaling using wp_viewporter. Valid values: 0.5 - 8
 - name: widget.wayland.fractional_buffer_scale
   type: float
@@ -15441,6 +15440,29 @@
 #endif
 
 #ifdef MOZ_WIDGET_GTK
+# Whether to override the DMABuf blocklist.
+- name: widget.dmabuf.force-enabled
+  type: bool
+  value: false
+  mirror: once
+
+#ifdef NIGHTLY_BUILD
+# Keep those pref hidden on non-nightly builds to avoid people accidentally
+# turning it on.
+
+# Use DMABuf for content textures.
+# For testing purposes only.
+- name: widget.dmabuf-textures.enabled
+  type: RelaxedAtomicBool
+  value: false
+  mirror: always
+#endif
+
+# Use DMABuf backend for WebGL.
+- name: widget.dmabuf-webgl.enabled
+  type: RelaxedAtomicBool
+  value: true
+  mirror: always
 
 # Use gdk_window_move_to_rect to move Wayland popups when available.
 - name: widget.wayland.use-move-to-rect
@@ -15663,6 +15685,16 @@
   type: bool
   value: true
   mirror: once
+
+# Whether the clipboard cached are used while getting system clipboard data.
+- name: widget.clipboard.use-cached-data.enabled
+  type: bool
+#if defined(XP_MACOSX)
+  value: true
+#else
+  value: false
+#endif
+  mirror: always
 
 #---------------------------------------------------------------------------
 # Prefs starting with "zoom."

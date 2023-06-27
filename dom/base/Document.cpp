@@ -68,6 +68,7 @@
 #include "mozilla/ExtensionPolicyService.h"
 #include "mozilla/FullscreenChange.h"
 #include "mozilla/GlobalStyleSheetCache.h"
+#include "mozilla/MappedDeclarationsBuilder.h"
 #include "mozilla/HTMLEditor.h"
 #include "mozilla/HoldDropJSObjects.h"
 #include "mozilla/IdentifierMapEntry.h"
@@ -389,6 +390,7 @@
 #include "nsImportModule.h"
 #include "nsLanguageAtomService.h"
 #include "nsLayoutUtils.h"
+#include "nsMimeTypes.h"
 #include "nsNetCID.h"
 #include "nsNetUtil.h"
 #include "nsNodeInfoManager.h"
@@ -3402,6 +3404,39 @@ bool Document::IsCallerChromeOrAddon(JSContext* aCx, JSObject* aObject) {
                        principal->GetIsAddonOrExpandedAddonPrincipal());
 }
 
+static void CheckIsBadPolicy(nsILoadInfo::CrossOriginOpenerPolicy aPolicy,
+                             BrowsingContext* aContext, nsIChannel* aChannel) {
+#if defined(EARLY_BETA_OR_EARLIER)
+  auto requireCORP =
+      nsILoadInfo::OPENER_POLICY_SAME_ORIGIN_EMBEDDER_POLICY_REQUIRE_CORP;
+
+  if (aContext->GetOpenerPolicy() == aPolicy ||
+      (aContext->GetOpenerPolicy() != requireCORP && aPolicy != requireCORP)) {
+    return;
+  }
+
+  nsCOMPtr<nsIURI> uri;
+  bool hasURI = NS_SUCCEEDED(aChannel->GetOriginalURI(getter_AddRefs(uri)));
+
+  bool isViewSource = hasURI && uri->SchemeIs("view-source");
+
+  nsCString contentType;
+  nsCOMPtr<nsIPropertyBag2> bag = do_QueryInterface(aChannel);
+  bool isPDFJS = bag &&
+                 NS_SUCCEEDED(bag->GetPropertyAsACString(u"contentType"_ns,
+                                                         contentType)) &&
+                 contentType.EqualsLiteral(APPLICATION_PDF);
+
+  MOZ_DIAGNOSTIC_ASSERT(!isViewSource,
+                        "Bug 1834864: Assert due to view-source.");
+  MOZ_DIAGNOSTIC_ASSERT(!isPDFJS, "Bug 1834864: Assert due to  pdfjs.");
+  MOZ_DIAGNOSTIC_ASSERT(aPolicy == requireCORP,
+                        "Assert due to clearing REQUIRE_CORP.");
+  MOZ_DIAGNOSTIC_ASSERT(aContext->GetOpenerPolicy() == requireCORP,
+                        "Assert due to setting REQUIRE_CORP.");
+#endif  // defined(EARLY_BETA_OR_EARLIER)
+}
+
 nsresult Document::StartDocumentLoad(const char* aCommand, nsIChannel* aChannel,
                                      nsILoadGroup* aLoadGroup,
                                      nsISupports* aContainer,
@@ -3505,6 +3540,8 @@ nsresult Document::StartDocumentLoad(const char* aCommand, nsIChannel* aChannel,
   if (IsTopLevelContentDocument() && httpChan &&
       NS_SUCCEEDED(httpChan->GetCrossOriginOpenerPolicy(&policy)) && docShell &&
       docShell->GetBrowsingContext()) {
+    CheckIsBadPolicy(policy, docShell->GetBrowsingContext(), aChannel);
+
     // Setting the opener policy on a discarded context has no effect.
     Unused << docShell->GetBrowsingContext()->SetOpenerPolicy(policy);
   }
@@ -4360,7 +4397,7 @@ void Document::LocalizationLinkAdded(Element* aLinkElement) {
   }
 
   nsAutoString href;
-  aLinkElement->GetAttr(kNameSpaceID_None, nsGkAtoms::href, href);
+  aLinkElement->GetAttr(nsGkAtoms::href, href);
 
   if (!mDocumentL10n) {
     Element* elem = GetDocumentElement();
@@ -4397,7 +4434,7 @@ void Document::LocalizationLinkRemoved(Element* aLinkElement) {
 
   if (mDocumentL10n) {
     nsAutoString href;
-    aLinkElement->GetAttr(kNameSpaceID_None, nsGkAtoms::href, href);
+    aLinkElement->GetAttr(nsGkAtoms::href, href);
     uint32_t remaining =
         mDocumentL10n->RemoveResourceId(NS_ConvertUTF16toUTF8(href));
     if (remaining == 0) {
@@ -8653,11 +8690,43 @@ already_AddRefed<Attr> Document::CreateAttributeNS(
   return attribute.forget();
 }
 
-void Document::ResolveScheduledSVGPresAttrs() {
-  for (SVGElement* svg : mLazySVGPresElements) {
-    svg->UpdateContentDeclarationBlock();
+void Document::ScheduleForPresAttrEvaluation(Element* aElement) {
+  MOZ_ASSERT(aElement->IsInComposedDoc());
+  DebugOnly<bool> inserted = mLazyPresElements.EnsureInserted(aElement);
+  MOZ_ASSERT(inserted);
+  if (aElement->HasServoData()) {
+    // TODO(emilio): RESTYLE_SELF is too strong, there should be no need to
+    // re-selector-match, but right now this is needed to pick up the new mapped
+    // attributes. We need something like RESTYLE_STYLE_ATTRIBUTE but for mapped
+    // attributes.
+    nsLayoutUtils::PostRestyleEvent(aElement, RestyleHint::RESTYLE_SELF,
+                                    nsChangeHint(0));
   }
-  mLazySVGPresElements.Clear();
+}
+
+void Document::UnscheduleForPresAttrEvaluation(Element* aElement) {
+  mLazyPresElements.Remove(aElement);
+}
+
+void Document::DoResolveScheduledPresAttrs() {
+  MOZ_ASSERT(!mLazyPresElements.IsEmpty());
+  for (Element* el : mLazyPresElements) {
+    MOZ_ASSERT(el->IsInComposedDoc(),
+               "Un-schedule when removing from the document");
+    MOZ_ASSERT(el->IsPendingMappedAttributeEvaluation());
+    if (auto* svg = SVGElement::FromNode(el)) {
+      // SVG does its own (very similar) thing, for now at least.
+      svg->UpdateMappedDeclarationBlock();
+    } else {
+      MappedDeclarationsBuilder builder(*el, *this,
+                                        el->GetMappedAttributeStyle());
+      auto function = el->GetAttributeMappingFunction();
+      function(builder);
+      el->SetMappedDeclarationBlock(builder.TakeDeclarationBlock());
+    }
+    MOZ_ASSERT(!el->IsPendingMappedAttributeEvaluation());
+  }
+  mLazyPresElements.Clear();
 }
 
 already_AddRefed<nsSimpleContentList> Document::BlockedNodesByClassifier()
@@ -9479,7 +9548,7 @@ nsIHTMLCollection* Document::Embeds() {
 static bool MatchLinks(Element* aElement, int32_t aNamespaceID, nsAtom* aAtom,
                        void* aData) {
   return aElement->IsAnyOfHTMLElements(nsGkAtoms::a, nsGkAtoms::area) &&
-         aElement->HasAttr(kNameSpaceID_None, nsGkAtoms::href);
+         aElement->HasAttr(nsGkAtoms::href);
 }
 
 nsIHTMLCollection* Document::Links() {
@@ -9517,7 +9586,7 @@ nsIHTMLCollection* Document::Applets() {
 static bool MatchAnchors(Element* aElement, int32_t aNamespaceID, nsAtom* aAtom,
                          void* aData) {
   return aElement->IsHTMLElement(nsGkAtoms::a) &&
-         aElement->HasAttr(kNameSpaceID_None, nsGkAtoms::name);
+         aElement->HasAttr(nsGkAtoms::name);
 }
 
 nsIHTMLCollection* Document::Anchors() {
@@ -11061,7 +11130,7 @@ void Document::ProcessMETATag(HTMLMetaElement* aMetaElement) {
   if (aMetaElement->AttrValueIs(kNameSpaceID_None, nsGkAtoms::name,
                                 nsGkAtoms::handheldFriendly, eIgnoreCase)) {
     nsAutoString result;
-    aMetaElement->GetAttr(kNameSpaceID_None, nsGkAtoms::content, result);
+    aMetaElement->GetAttr(nsGkAtoms::content, result);
     if (!result.IsEmpty()) {
       nsContentUtils::ASCIIToLower(result);
       SetHeaderData(nsGkAtoms::handheldFriendly, result);
@@ -11147,7 +11216,7 @@ void Document::Sanitize() {
         HTMLFormElement::FromNodeOrNull(nodes->Item(i));
     if (!form) continue;
 
-    form->GetAttr(kNameSpaceID_None, nsGkAtoms::autocomplete, value);
+    form->GetAttr(nsGkAtoms::autocomplete, value);
     if (value.LowerCaseEqualsLiteral("off")) form->Reset();
   }
 }
@@ -15382,9 +15451,17 @@ void Document::RequestFullscreenInContentProcess(
   PendingFullscreenChangeList::Add(std::move(aRequest));
   // If we are not the top level process, dispatch an event to make
   // our parent process go fullscreen first.
-  nsContentUtils::DispatchEventOnlyToChrome(
-      this, ToSupports(this), u"MozDOMFullscreen:Request"_ns, CanBubble::eYes,
-      Cancelable::eNo, /* DefaultAction */ nullptr);
+  Dispatch(
+      TaskCategory::Other,
+      NS_NewRunnableFunction(
+          "Document::RequestFullscreenInContentProcess", [self = RefPtr{this}] {
+            if (!self->HasPendingFullscreenRequests()) {
+              return;
+            }
+            nsContentUtils::DispatchEventOnlyToChrome(
+                self, ToSupports(self), u"MozDOMFullscreen:Request"_ns,
+                CanBubble::eYes, Cancelable::eNo, /* DefaultAction */ nullptr);
+          }));
 }
 
 void Document::RequestFullscreenInParentProcess(
@@ -17131,21 +17208,23 @@ Document::GetContentBlockingEvents() {
 StorageAccessAPIHelper::PerformPermissionGrant
 Document::CreatePermissionGrantPromise(
     nsPIDOMWindowInner* aInnerWindow, nsIPrincipal* aPrincipal,
-    bool aHasUserInteraction, const Maybe<nsCString>& aTopLevelBaseDomain) {
+    bool aHasUserInteraction, const Maybe<nsCString>& aTopLevelBaseDomain,
+    bool aFrameOnly) {
   MOZ_ASSERT(aInnerWindow);
   MOZ_ASSERT(aPrincipal);
   RefPtr<Document> self(this);
   RefPtr<nsPIDOMWindowInner> inner(aInnerWindow);
   RefPtr<nsIPrincipal> principal(aPrincipal);
 
-  return [inner, self, principal, aHasUserInteraction, aTopLevelBaseDomain]() {
+  return [inner, self, principal, aHasUserInteraction, aTopLevelBaseDomain,
+          aFrameOnly]() {
     // Create the user prompt
     RefPtr<StorageAccessAPIHelper::StorageAccessPermissionGrantPromise::Private>
         p = new StorageAccessAPIHelper::StorageAccessPermissionGrantPromise::
             Private(__func__);
     RefPtr<StorageAccessPermissionRequest> sapr =
         StorageAccessPermissionRequest::Create(
-            inner, principal, aTopLevelBaseDomain,
+            inner, principal, aTopLevelBaseDomain, aFrameOnly,
             // Allow
             [p] {
               Telemetry::AccumulateCategorical(
@@ -17370,7 +17449,7 @@ already_AddRefed<mozilla::dom::Promise> Document::RequestStorageAccess(
   // on work changing state to reflect the result of the API. If it resolves,
   // the request was granted. If it rejects it was denied.
   StorageAccessAPIHelper::RequestStorageAccessAsyncHelper(
-      this, inner, bc, NodePrincipal(), true,
+      this, inner, bc, NodePrincipal(), true, true,
       ContentBlockingNotifier::eStorageAccessAPI, true)
       ->Then(
           GetCurrentSerialEventTarget(), __func__,
@@ -17534,7 +17613,7 @@ already_AddRefed<mozilla::dom::Promise> Document::RequestStorageAccessForOrigin(
             // with a user-prompt. This is the part that is async in the
             // typical requestStorageAccess function.
             return StorageAccessAPIHelper::RequestStorageAccessAsyncHelper(
-                self, inner, bc, principal, hasUserActivation,
+                self, inner, bc, principal, hasUserActivation, false,
                 ContentBlockingNotifier::ePrivilegeStorageAccessForOriginAPI,
                 true);
           },
@@ -17696,7 +17775,7 @@ already_AddRefed<Promise> Document::RequestStorageAccessUnderSite(
             }
             return self->CreatePermissionGrantPromise(
                 self->GetInnerWindow(), self->NodePrincipal(), true,
-                Some(serializedSite))();
+                Some(serializedSite), false)();
           },
           [](const ContentChild::TestStorageAccessPermissionPromise::
                  RejectValueType& aResult) {
@@ -17869,7 +17948,7 @@ already_AddRefed<Promise> Document::CompleteStorageAccessRequestFromSite(
             // either by prompt doorhanger or autogrant takes place. We already
             // gathered an equivalent grant in requestStorageAccessUnderSite.
             return StorageAccessAPIHelper::RequestStorageAccessAsyncHelper(
-                self, inner, bc, principal, true,
+                self, inner, bc, principal, true, false,
                 ContentBlockingNotifier::eStorageAccessAPI, false);
           },
           // If the IPC rejects, we should reject our promise here which will

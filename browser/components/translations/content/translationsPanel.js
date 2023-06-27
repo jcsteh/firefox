@@ -679,10 +679,10 @@ var TranslationsPanel = new (class {
       await this.#getCachedDetectedLanguages();
 
     const { panel } = this.elements;
-    const alwaysTranslateMenuItems = panel.querySelectorAll(
+    const alwaysTranslateMenuItems = panel.ownerDocument.querySelectorAll(
       ".always-translate-language-menuitem"
     );
-    const neverTranslateMenuItems = panel.querySelectorAll(
+    const neverTranslateMenuItems = panel.ownerDocument.querySelectorAll(
       ".never-translate-language-menuitem"
     );
 
@@ -727,7 +727,7 @@ var TranslationsPanel = new (class {
    */
   async #updateSettingsMenuSiteCheckboxStates() {
     const { panel } = this.elements;
-    const neverTranslateSiteMenuItems = panel.querySelectorAll(
+    const neverTranslateSiteMenuItems = panel.ownerDocument.querySelectorAll(
       ".never-translate-site-menuitem"
     );
     const neverTranslateSite =
@@ -747,10 +747,10 @@ var TranslationsPanel = new (class {
 
     const { panel } = this.elements;
 
-    const alwaysTranslateMenuItems = panel.querySelectorAll(
+    const alwaysTranslateMenuItems = panel.ownerDocument.querySelectorAll(
       ".always-translate-language-menuitem"
     );
-    const neverTranslateMenuItems = panel.querySelectorAll(
+    const neverTranslateMenuItems = panel.ownerDocument.querySelectorAll(
       ".never-translate-language-menuitem"
     );
 
@@ -956,8 +956,10 @@ var TranslationsPanel = new (class {
   openSettingsPopup(button) {
     this.#updateSettingsMenuLanguageCheckboxStates();
     this.#updateSettingsMenuSiteCheckboxStates();
-    const popup = button.querySelector("menupopup");
-    popup.openPopup(button);
+    const popup = button.ownerDocument.getElementById(
+      "translations-panel-settings-menupopup"
+    );
+    popup.openPopup(button, "after_end");
   }
 
   /**
@@ -1145,7 +1147,9 @@ var TranslationsPanel = new (class {
           // the icon.
           error ||
           // Finally check that this is a supported language that we should translate.
-          (hasSupportedLanguage && !(await shouldNeverTranslate()))
+          (hasSupportedLanguage &&
+            !(await shouldNeverTranslate()) &&
+            (await TranslationsParent.getIsTranslationsEngineSupported()))
         ) {
           if (handleEventId !== this.handleEventId) {
             // A new handleEvent was received, this one is stale.
@@ -1156,11 +1160,31 @@ var TranslationsPanel = new (class {
             // The translation is active, update the urlbar button.
             button.setAttribute("translationsactive", true);
             if (isEngineReady) {
+              const displayNames = new Services.intl.DisplayNames(undefined, {
+                type: "language",
+              });
+
+              document.l10n.setAttributes(
+                button,
+                "urlbar-translations-button-translated",
+                {
+                  fromLanguage: displayNames.of(
+                    requestedTranslationPair.fromLanguage
+                  ),
+                  toLanguage: displayNames.of(
+                    requestedTranslationPair.toLanguage
+                  ),
+                }
+              );
               // Show the locale of the page in the button.
               buttonLocale.hidden = false;
               buttonCircleArrows.hidden = true;
               buttonLocale.innerText = requestedTranslationPair.toLanguage;
             } else {
+              document.l10n.setAttributes(
+                button,
+                "urlbar-translations-button-loading"
+              );
               // Show the spinning circle arrows to indicate that the engine is
               // still loading.
               buttonCircleArrows.hidden = false;
@@ -1169,6 +1193,7 @@ var TranslationsPanel = new (class {
           } else {
             // The translation is not active, update the urlbar button.
             button.removeAttribute("translationsactive");
+            document.l10n.setAttributes(button, "urlbar-translations-button");
             buttonLocale.hidden = true;
             buttonCircleArrows.hidden = true;
           }

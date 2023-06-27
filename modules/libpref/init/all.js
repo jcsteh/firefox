@@ -168,9 +168,6 @@ pref("dom.text-recognition.enabled", true);
 // of content viewers to cache based on the amount of available memory.
 pref("browser.sessionhistory.max_total_viewers", -1);
 
-// min font device pixel size at which to turn on high quality
-pref("browser.display.auto_quality_min_font_size", 20);
-
 // See http://whatwg.org/specs/web-apps/current-work/#ping
 pref("browser.send_pings", false);
 pref("browser.send_pings.max_per_link", 1);           // limit the number of pings that are sent per link click
@@ -199,10 +196,6 @@ pref("mathml.disabled",    false);
 
 // Enable scale transform for stretchy MathML operators. See bug 414277.
 pref("mathml.scale_stretchy_operators.enabled", true);
-
-// Used by ChannelMediaResource to run data callbacks from HTTP channel
-// off the main thread.
-pref("media.omt_data_delivery.enabled", true);
 
 // We'll throttle the download if the download rate is throttle-factor times
 // the estimated playback rate, AND we satisfy the cache readahead_limit
@@ -284,8 +277,6 @@ pref("media.videocontrols.keyboard-tab-to-all-controls", true);
   #endif
 
   pref("media.peerconnection.sdp.disable_stereo_fmtp", false);
-  pref("media.webrtc.debug.trace_mask", 0);
-  pref("media.webrtc.debug.multi_log", false);
   pref("media.webrtc.debug.log_file", "");
   pref("media.webrtc.debug.aec_dump_max_size", 4194304); // 4MB
 
@@ -595,7 +586,6 @@ pref("gfx.use_text_smoothing_setting", false);
 // Number of characters to consider emphasizing for rich autocomplete results
 pref("toolkit.autocomplete.richBoundaryCutoff", 200);
 
-pref("toolkit.scrollbox.smoothScroll", true);
 pref("toolkit.scrollbox.scrollIncrement", 20);
 pref("toolkit.scrollbox.clickToScroll.scrollDelay", 150);
 
