@@ -247,11 +247,7 @@ pref("media.videocontrols.picture-in-picture.video-toggle.has-used", false);
 pref("media.videocontrols.picture-in-picture.display-text-tracks.toggle.enabled", true);
 pref("media.videocontrols.picture-in-picture.display-text-tracks.size", "medium");
 pref("media.videocontrols.picture-in-picture.improved-video-controls.enabled", true);
-#ifdef NIGHTLY_BUILD
-  pref("media.videocontrols.picture-in-picture.respect-disablePictureInPicture", true);
-#else
-  pref("media.videocontrols.picture-in-picture.respect-disablePictureInPicture", false);
-#endif
+pref("media.videocontrols.picture-in-picture.respect-disablePictureInPicture", true);
 pref("media.videocontrols.keyboard-tab-to-all-controls", true);
 
 #ifdef MOZ_WEBRTC
@@ -1390,9 +1386,6 @@ pref("network.IDN.extra_blocked_chars", "");
 // IPv4 only. Works around broken DNS servers which can't handle IPv6 lookups
 // and/or allows the user to disable IPv6 on a per-domain basis. See bug 68796.
 pref("network.dns.ipv4OnlyDomains", "");
-
-// This preference can be used to turn off IPv6 name lookups. See bug 68796.
-pref("network.dns.disableIPv6", false);
 
 // This is the number of dns cache entries allowed
 pref("network.dnsCacheEntries", 400);
@@ -3663,6 +3656,8 @@ pref("browser.translations.useHTML", false);
 // so that the page automatically performs a translation if one is detected as being
 // required.
 pref("browser.translations.autoTranslate", false);
+// Automatically popup an offer to translate on sites.
+pref("browser.translations.automaticallyPopup", true);
 // Simulate the behavior of using a device that does not support the translations engine.
 // Requires restart.
 pref("browser.translations.simulateUnsupportedEngine", false);
@@ -3672,6 +3667,13 @@ pref("browser.translations.simulateUnsupportedEngine", false);
 // between 0ms and the timeoutMS provided.
 pref("browser.translations.chaos.errors", false);
 pref("browser.translations.chaos.timeoutMS", 0);
+
+// A pref to manage the use of fastText for language detection in Translations.
+// The feature was initially built using fastText, but we are now putting it
+// behind a pref while we investigate some performance improvements.
+// In the meantime, we will use CLD2, which is already available in tree.
+// See https://bugzilla.mozilla.org/show_bug.cgi?id=1836974
+pref("browser.translations.languageIdentification.useFastText", false);
 
 // When a user cancels this number of authentication dialogs coming from
 // a single web page in a row, all following authentication dialogs will

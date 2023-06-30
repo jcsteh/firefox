@@ -85,6 +85,10 @@ ITEM_VALUE(CSSInvertedColors,           1llu << 55)
 // `video-dynamic-range` CSS media feature
 ITEM_VALUE(CSSVideoDynamicRange,        1llu << 56)
 ITEM_VALUE(CSSPointerCapabilities,      1llu << 57)
+// WebGL
+ITEM_VALUE(WebGLRenderCapability,       1llu << 58)
+ITEM_VALUE(WebGLRenderInfo,             1llu << 59)
+ITEM_VALUE(SiteSpecificZoom,            1llu << 60)
 
 // !!! Don't forget to update kDefaultFingerintingProtections in nsRFPService.cpp
 // if necessary.
@@ -99,10 +103,3 @@ ITEM_VALUE(CSSPointerCapabilities,      1llu << 57)
  * this value in the overrides pref is undefined behavior and may do anything.)
  */
 ITEM_VALUE(IsAlwaysEnabledForPrecompute, 0)
-
-/*
- * This value is the default argument value, to allow all callsites to ShouldRFP
- * continue working. We will eventually remove the default argument, and then also
- * remove this enum value.
- */
-ITEM_VALUE(Unknown, 0xffffffff'ffffffff)

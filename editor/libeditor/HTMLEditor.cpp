@@ -436,7 +436,7 @@ nsresult HTMLEditor::Init(Document& aDocument,
   if (NS_WARN_IF(!document)) {
     return NS_ERROR_FAILURE;
   }
-  if (!IsInPlaintextMode() && !IsInteractionAllowed()) {
+  if (!IsPlaintextMailComposer() && !IsInteractionAllowed()) {
     mDisabledLinkHandling = true;
     mOldLinkHandlingEnabled = document->LinkHandlingEnabled();
     document->SetLinkHandlingEnabled(false);
@@ -1343,7 +1343,7 @@ nsresult HTMLEditor::HandleKeyPressEvent(WidgetKeyboardEvent* aKeyboardEvent) {
 
       // If we're in the plaintext mode, and not tabbable editor, let's
       // insert a horizontal tabulation.
-      if (IsInPlaintextMode()) {
+      if (IsPlaintextMailComposer()) {
         if (aKeyboardEvent->IsShift() || aKeyboardEvent->IsControl() ||
             aKeyboardEvent->IsAlt() || aKeyboardEvent->IsMeta() ||
             aKeyboardEvent->IsOS()) {
@@ -6140,7 +6140,7 @@ nsresult HTMLEditor::SetBlockBackgroundColorWithCSSAsSubAction(
   CommitComposition();
 
   // XXX Shouldn't we do this before calling `CommitComposition()`?
-  if (IsInPlaintextMode()) {
+  if (IsPlaintextMailComposer()) {
     return NS_OK;
   }
 
@@ -6697,6 +6697,93 @@ nsresult HTMLEditor::GetReturnInParagraphCreatesNewParagraph(
     bool* aCreatesNewParagraph) {
   *aCreatesNewParagraph = mCRInParagraphCreatesParagraph;
   return NS_OK;
+}
+
+NS_IMETHODIMP HTMLEditor::GetWrapWidth(int32_t* aWrapColumn) {
+  if (NS_WARN_IF(!aWrapColumn)) {
+    return NS_ERROR_INVALID_ARG;
+  }
+  *aWrapColumn = WrapWidth();
+  return NS_OK;
+}
+
+//
+// See if the style value includes this attribute, and if it does,
+// cut out everything from the attribute to the next semicolon.
+//
+static void CutStyle(const char* stylename, nsString& styleValue) {
+  // Find the current wrapping type:
+  int32_t styleStart = styleValue.LowerCaseFindASCII(stylename);
+  if (styleStart >= 0) {
+    int32_t styleEnd = styleValue.Find(u";", styleStart);
+    if (styleEnd > styleStart) {
+      styleValue.Cut(styleStart, styleEnd - styleStart + 1);
+    } else {
+      styleValue.Cut(styleStart, styleValue.Length() - styleStart);
+    }
+  }
+}
+
+NS_IMETHODIMP HTMLEditor::SetWrapWidth(int32_t aWrapColumn) {
+  AutoEditActionDataSetter editActionData(*this, EditAction::eSetWrapWidth);
+  if (NS_WARN_IF(!editActionData.CanHandle())) {
+    return NS_ERROR_NOT_INITIALIZED;
+  }
+
+  mWrapColumn = aWrapColumn;
+
+  // Make sure we're a plaintext editor, otherwise we shouldn't
+  // do the rest of this.
+  if (!IsPlaintextMailComposer()) {
+    return NS_OK;
+  }
+
+  // Ought to set a style sheet here...
+  RefPtr<Element> rootElement = GetRoot();
+  if (NS_WARN_IF(!rootElement)) {
+    return NS_ERROR_NOT_INITIALIZED;
+  }
+
+  // Get the current style for this root element:
+  nsAutoString styleValue;
+  rootElement->GetAttr(nsGkAtoms::style, styleValue);
+
+  // We'll replace styles for these values:
+  CutStyle("white-space", styleValue);
+  CutStyle("width", styleValue);
+  CutStyle("font-family", styleValue);
+
+  // If we have other style left, trim off any existing semicolons
+  // or white-space, then add a known semicolon-space:
+  if (!styleValue.IsEmpty()) {
+    styleValue.Trim("; \t", false, true);
+    styleValue.AppendLiteral("; ");
+  }
+
+  // Make sure we have fixed-width font.  This should be done for us,
+  // but it isn't, see bug 22502, so we have to add "font: -moz-fixed;".
+  // Only do this if we're wrapping.
+  if (IsWrapHackEnabled() && aWrapColumn >= 0) {
+    styleValue.AppendLiteral("font-family: -moz-fixed; ");
+  }
+
+  // and now we're ready to set the new white-space/wrapping style.
+  if (aWrapColumn > 0) {
+    // Wrap to a fixed column.
+    styleValue.AppendLiteral("white-space: pre-wrap; width: ");
+    styleValue.AppendInt(aWrapColumn);
+    styleValue.AppendLiteral("ch;");
+  } else if (!aWrapColumn) {
+    styleValue.AppendLiteral("white-space: pre-wrap;");
+  } else {
+    styleValue.AppendLiteral("white-space: pre;");
+  }
+
+  nsresult rv = rootElement->SetAttr(kNameSpaceID_None, nsGkAtoms::style,
+                                     styleValue, true);
+  NS_WARNING_ASSERTION(NS_SUCCEEDED(rv),
+                       "Element::SetAttr(nsGkAtoms::style) failed");
+  return rv;
 }
 
 Element* HTMLEditor::GetFocusedElement() const {

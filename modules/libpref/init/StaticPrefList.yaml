@@ -6398,10 +6398,6 @@
 # The first enables WR+additional features, and the second just enables WR.
 # For developer convenience, building with --enable-webrender=true or just
 # --enable-webrender will set gfx.webrender.enabled to true by default.
-#
-# We also have a pref gfx.webrender.all.qualified which is not exposed via
-# about:config. That pref enables WR but only on qualified hardware. This is
-# the pref we'll eventually flip to deploy WebRender to the target population.
 - name: gfx.webrender.all
   type: bool
   value: false
@@ -8781,7 +8777,7 @@
 # Whether Properties and Values is enabled
 - name: layout.css.properties-and-values.enabled
   type: RelaxedAtomicBool
-  value: false
+  value: @IS_NIGHTLY_BUILD@
   mirror: always
   rust: true
 
@@ -10907,14 +10903,13 @@
   value: true
   mirror: always
 
-# setSinkId will be enabled in bug 1498512. Till then the
-# implementation will remain hidden behind this pref (Bug 1152401, Bug 934425).
+# Is the Audio Output Devices API enabled?
 - name: media.setsinkid.enabled
   type: bool
 #if defined(MOZ_WIDGET_ANDROID)
   value: false # bug 1473346
 #else
-  value: @IS_NIGHTLY_BUILD@
+  value: true
 #endif
   mirror: always
 
@@ -11341,6 +11336,15 @@
 
 # Whether to use challenges in the most secure order. See bug 650091.
 - name: network.auth.choose_most_secure_challenge
+  type: RelaxedAtomicBool
+  value: true
+  mirror: always
+
+# Whether to allow truncated brotli with empty output. This also fixes
+# throwing an erroring when receiving highly compressed brotli files when
+# no content type is specified (Bug 1715401). This pref can be removed after
+# some time (Bug 1841061)
+- name: network.compress.allow_truncated_empty_brotli
   type: RelaxedAtomicBool
   value: true
   mirror: always
@@ -12530,6 +12534,19 @@
   value: false
   mirror: always
 
+# When a Http/3 connection failed, whether to retry with a different IP address.
+- name: network.http.http3.retry_different_ip_family
+  type: RelaxedAtomicBool
+  value: true
+  mirror: always
+
+# This is for testing purpose. When true, nsUDPSocket::SendWithAddress will
+# return NS_ERROR_CONNECTION_REFUSED for address "::1".
+- name: network.http.http3.block_loopback_ipv6_addr
+  type: RelaxedAtomicBool
+  value: false
+  mirror: always
+
 # When true, a http request will be upgraded to https when HTTPS RR is
 # available.
 - name: network.dns.upgrade_with_https_rr
@@ -12616,6 +12633,18 @@
 - name: network.dns.force_use_https_rr
   type: RelaxedAtomicBool
   value: false
+  mirror: always
+
+# This preference can be used to turn off IPv6 name lookups. See bug 68796.
+- name: network.dns.disableIPv6
+  type: RelaxedAtomicBool
+  value: false
+  mirror: always
+
+# Whether to add additional record IPs to the cache
+- name: network.trr.add_additional_records
+  type: RelaxedAtomicBool
+  value: true
   mirror: always
 
 # When this pref is true, AddStorageEntry will return an error if the
