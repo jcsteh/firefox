@@ -216,7 +216,6 @@ UNIFIED_SOURCES += [
     'skia/src/effects/imagefilters/SkComposeImageFilter.cpp',
     'skia/src/effects/SkDashPathEffect.cpp',
     'skia/src/encode/SkEncoder.cpp',
-    'skia/src/encode/SkICC.cpp',
     'skia/src/encode/SkImageEncoder.cpp',
     'skia/src/image/SkImage.cpp',
     'skia/src/image/SkImage_Base.cpp',
@@ -615,3 +614,7 @@ if CONFIG['CPU_ARCH'] in ('mips32', 'mips64'):
     # The skia code uses `mips` as a variable, but it's a builtin preprocessor
     # macro on mips that expands to `1`.
     DEFINES['mips'] = False
+
+# Work around bug 1841199.
+if CONFIG['CPU_ARCH'] in ('mips32', 'mips64', 'ppc64'):
+    DEFINES['musttail'] = 'nomusttail'
