@@ -52,6 +52,7 @@ const EXPECTED_SPONSORED_URLBAR_RESULT = {
     sponsoredBlockId: 1,
     sponsoredAdvertiser: "TestAdvertiser",
     sponsoredIabCategory: "22 - Shopping",
+    descriptionL10n: { id: "urlbar-result-action-sponsored" },
     helpUrl: QuickSuggest.HELP_URL,
     helpL10n: {
       id: UrlbarPrefs.get("resultMenu")
@@ -3868,13 +3869,43 @@ async function checkSearch({ name, searchString, expectedResults }) {
   // in true for `isPrivate` so we don't attempt to record the impression ping
   // because otherwise the following PingCentre error is logged:
   // "Structured Ingestion ping failure with error: undefined"
-  let isPrivate = true;
+  context.isPrivate = true;
   if (UrlbarProviderQuickSuggest._resultFromLastQuery) {
     UrlbarProviderQuickSuggest._resultFromLastQuery.isVisible = true;
   }
-  UrlbarProviderQuickSuggest.onEngagement(isPrivate, "engagement", context, {
-    selIndex: -1,
+  const controller = UrlbarTestUtils.newMockController({
+    input: {
+      isPrivate: true,
+      onFirstResult() {
+        return false;
+      },
+      getSearchSource() {
+        return "dummy-search-source";
+      },
+      window: {
+        location: {
+          href: AppConstants.BROWSER_CHROME_URL,
+        },
+      },
+    },
   });
+  controller.setView({
+    get visibleResults() {
+      return context.results;
+    },
+    controller: {
+      removeResult() {},
+    },
+    acknowledgeDismissal() {},
+  });
+  UrlbarProviderQuickSuggest.onEngagement(
+    "engagement",
+    context,
+    {
+      selIndex: -1,
+    },
+    controller
+  );
 }
 
 async function checkTelemetryEvents(expectedEvents) {

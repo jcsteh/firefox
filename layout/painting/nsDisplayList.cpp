@@ -41,6 +41,7 @@
 #include "mozilla/ViewportUtils.h"
 #include "nsCSSRendering.h"
 #include "nsCSSRenderingGradients.h"
+#include "nsCaseTreatment.h"
 #include "nsRefreshDriver.h"
 #include "nsRegion.h"
 #include "nsStyleStructInlines.h"
@@ -1383,8 +1384,9 @@ void nsDisplayListBuilder::MarkFramesForDisplayList(
       nsIContent* content = e->GetContent();
       if (content && content->IsInNativeAnonymousSubtree() &&
           content->IsElement()) {
-        auto* classList = content->AsElement()->ClassList();
-        if (classList->Contains(u"moz-accessiblecaret"_ns)) {
+        const nsAttrValue* classes = content->AsElement()->GetClasses();
+        if (classes &&
+            classes->Contains(nsGkAtoms::mozAccessiblecaret, eCaseMatters)) {
           continue;
         }
       }
@@ -2401,7 +2403,7 @@ struct FramesWithDepth {
       // first
       return mDepth > aOther.mDepth;
     }
-    return this < &aOther;
+    return false;
   }
   bool operator==(const FramesWithDepth& aOther) const {
     return this == &aOther;
@@ -2418,7 +2420,7 @@ static void FlushFramesArray(nsTArray<FramesWithDepth>& aSource,
   if (aSource.IsEmpty()) {
     return;
   }
-  aSource.Sort();
+  aSource.StableSort();
   uint32_t length = aSource.Length();
   for (uint32_t i = 0; i < length; i++) {
     aDest->AppendElements(std::move(aSource[i].mFrames));
@@ -2474,7 +2476,7 @@ void nsDisplayList::HitTest(nsDisplayListBuilder* aBuilder, const nsRect& aRect,
         continue;
       }
       AutoTArray<nsIFrame*, 1> neverUsed;
-      // Start gethering leaves of the 3D rendering context, and
+      // Start gathering leaves of the 3D rendering context, and
       // append leaves at the end of mItemBuffer.  Leaves are
       // processed at following iterations.
       aState->mInPreserves3D = true;
@@ -8067,20 +8069,22 @@ static Maybe<wr::WrClipChainId> CreateSimpleClipRegion(
   wr::WrClipId clipId{};
 
   switch (shape.tag) {
+    case StyleBasicShape::Tag::Xywh:
     case StyleBasicShape::Tag::Inset: {
-      const nsRect insetRect = ShapeUtils::ComputeInsetRect(shape, refBox) +
-                               aDisplayItem.ToReferenceFrame();
+      const nsRect rect = ShapeUtils::ComputeRect(shape, refBox) +
+                          aDisplayItem.ToReferenceFrame();
+      const auto& round =
+          shape.IsInset() ? shape.AsInset().round : shape.AsXywh().round;
 
       nscoord radii[8] = {0};
-
-      if (ShapeUtils::ComputeInsetRadii(shape, refBox, insetRect, radii)) {
+      if (ShapeUtils::ComputeRectRadii(round, refBox, rect, radii)) {
         clipId = aBuilder.DefineRoundedRectClip(
             Nothing(),
-            wr::ToComplexClipRegion(insetRect, radii, appUnitsPerDevPixel));
+            wr::ToComplexClipRegion(rect, radii, appUnitsPerDevPixel));
       } else {
         clipId = aBuilder.DefineRectClip(
             Nothing(), wr::ToLayoutRect(LayoutDeviceRect::FromAppUnits(
-                           insetRect, appUnitsPerDevPixel)));
+                           rect, appUnitsPerDevPixel)));
       }
 
       break;

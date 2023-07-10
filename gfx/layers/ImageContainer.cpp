@@ -36,10 +36,6 @@
 #  include "MacIOSurfaceImage.h"
 #endif
 
-#ifdef XP_MACOSX
-#  include "mozilla/gfx/QuartzSupport.h"
-#endif
-
 #ifdef XP_WIN
 #  include <d3d10_1.h>
 

@@ -37,6 +37,7 @@ ChromeUtils.defineESModuleGetters(this, {
   FirefoxViewNotificationManager:
     "resource:///modules/firefox-view-notification-manager.sys.mjs",
   HomePage: "resource:///modules/HomePage.sys.mjs",
+  isProductURL: "chrome://global/content/shopping/ShoppingProduct.mjs",
   LightweightThemeConsumer:
     "resource://gre/modules/LightweightThemeConsumer.sys.mjs",
   Log: "resource://gre/modules/Log.sys.mjs",
@@ -2045,6 +2046,8 @@ var gBrowserInit = {
 
     CaptivePortalWatcher.delayedStartup();
 
+    ShoppingSidebarManager.init();
+
     SessionStore.promiseAllWindowsRestored.then(() => {
       this._schedulePerWindowIdleTasks();
       document.documentElement.setAttribute("sessionrestored", "true");
@@ -2463,6 +2466,8 @@ var gBrowserInit = {
     NewTabPagePreloading.removePreloadedBrowser(window);
 
     FirefoxViewHandler.uninit();
+
+    ShoppingSidebarManager.uninit();
 
     // Now either cancel delayedStartup, or clean up the services initialized from
     // it.
@@ -4481,107 +4486,13 @@ function toOpenWindowByType(inType, uri, features) {
 }
 
 /**
- * Open a new browser window.
+ * Open a new browser window. See `BrowserWindowTracker.openWindow` for
+ * options.
  *
- * @param {Object} options
- *        {
- *          private: A boolean indicating if the window should be
- *                   private
- *          remote:  A boolean indicating if the window should run
- *                   remote browser tabs or not. If omitted, the window
- *                   will choose the profile default state.
- *          fission: A boolean indicating if the window should run
- *                   with fission enabled or not. If omitted, the window
- *                   will choose the profile default state.
- *        }
  * @return a reference to the new window.
  */
-function OpenBrowserWindow(options) {
-  var telemetryObj = {};
-  TelemetryStopwatch.start("FX_NEW_WINDOW_MS", telemetryObj);
-
-  var defaultArgs = BrowserHandler.defaultArgs;
-  var wintype = document.documentElement.getAttribute("windowtype");
-
-  var extraFeatures = "";
-  if (options && options.private && PrivateBrowsingUtils.enabled) {
-    extraFeatures = ",private";
-    if (!PrivateBrowsingUtils.permanentPrivateBrowsing) {
-      // Force the new window to load about:privatebrowsing instead of the default home page
-      defaultArgs = "about:privatebrowsing";
-    }
-  } else {
-    extraFeatures = ",non-private";
-  }
-
-  if (options && options.remote) {
-    extraFeatures += ",remote";
-  } else if (options && options.remote === false) {
-    extraFeatures += ",non-remote";
-  }
-
-  if (options && options.fission) {
-    extraFeatures += ",fission";
-  } else if (options && options.fission === false) {
-    extraFeatures += ",non-fission";
-  }
-
-  // If the window is maximized, we want to skip the animation, since we're
-  // going to be taking up most of the screen anyways, and we want to optimize
-  // for showing the user a useful window as soon as possible.
-  if (window.windowState == window.STATE_MAXIMIZED) {
-    extraFeatures += ",suppressanimation";
-  }
-
-  // if and only if the current window is a browser window and it has a document with a character
-  // set, then extract the current charset menu setting from the current document and use it to
-  // initialize the new browser window...
-  var win;
-  if (
-    window &&
-    wintype == "navigator:browser" &&
-    window.content &&
-    window.content.document
-  ) {
-    var DocCharset = window.content.document.characterSet;
-    let charsetArg = "charset=" + DocCharset;
-
-    // we should "inherit" the charset menu setting in a new window
-    win = window.openDialog(
-      AppConstants.BROWSER_CHROME_URL,
-      "_blank",
-      "chrome,all,dialog=no" + extraFeatures,
-      defaultArgs,
-      charsetArg
-    );
-  } else {
-    // forget about the charset information.
-    win = window.openDialog(
-      AppConstants.BROWSER_CHROME_URL,
-      "_blank",
-      "chrome,all,dialog=no" + extraFeatures,
-      defaultArgs
-    );
-  }
-
-  win.addEventListener(
-    "MozAfterPaint",
-    () => {
-      TelemetryStopwatch.finish("FX_NEW_WINDOW_MS", telemetryObj);
-      if (
-        Services.prefs.getIntPref("browser.startup.page") == 1 &&
-        defaultArgs == HomePage.get()
-      ) {
-        // A notification for when a user has triggered their homepage. This is used
-        // to display a doorhanger explaining that an extension has modified the
-        // homepage, if necessary.
-        Services.obs.notifyObservers(win, "browser-open-homepage-start");
-      }
-    },
-    { once: true }
-  );
-
-  return win;
+function OpenBrowserWindow(options = {}) {
+  return BrowserWindowTracker.openWindow({ openerWindow: window, ...options });
 }
 
 /**
@@ -5998,6 +5909,7 @@ var TabsProgressListener = {
 
     FullZoom.onLocationChange(aLocationURI, false, aBrowser);
     CaptivePortalWatcher.onLocationChange(aBrowser);
+    ShoppingSidebarManager.onLocationChange(aBrowser, aLocationURI);
   },
 
   onLinkIconAvailable(browser, dataURI, iconURI) {
@@ -6522,7 +6434,7 @@ function onViewToolbarsPopupShowing(aEvent, aInsertPoint) {
     document.getElementById("toolbar-context-selectAllTabs").disabled =
       gBrowser.allTabsSelected();
     document.getElementById("toolbar-context-undoCloseTab").disabled =
-      SessionStore.getClosedTabCountForWindow(window) == 0;
+      SessionStore.getClosedTabCount() == 0;
     return;
   }
 
@@ -8195,33 +8107,58 @@ function restoreLastClosedTabOrWindowOrSession() {
 }
 
 /**
- * Re-open a closed tab.
- * @param aIndex
- *        The index of the tab (via SessionStore.getClosedTabDataForWindow)
+ * Re-open a closed tab into the current window.
+ * @param [aIndex]
+ *        The index of the tab (via SessionStore.getClosedTabData).
+ *        When undefined, the first n closed tabs will be re-opened, where n is provided by getLastClosedTabCount.
+ * @param {string} [sourceWindowSSId]
+ *        An optional sessionstore id to identify the source window for the tab.
+ *        I.e. the window the tab belonged to when closed.
+ *        When undefined we'll use the current window
  * @returns a reference to the reopened tab.
  */
-function undoCloseTab(aIndex) {
-  // wallpaper patch to prevent an unnecessary blank tab (bug 343895)
-  let blankTabToRemove = null;
-  if (gBrowser.tabs.length == 1 && gBrowser.selectedTab.isEmpty) {
-    blankTabToRemove = gBrowser.selectedTab;
+function undoCloseTab(aIndex, sourceWindowSSId) {
+  // the window we'll open the tab into
+  let targetWindow = window;
+  // the window the tab was closed from
+  let sourceWindow;
+  if (sourceWindowSSId) {
+    sourceWindow = SessionStore.getWindowById(sourceWindowSSId);
+    if (!sourceWindow) {
+      throw new Error(
+        "sourceWindowSSId argument to undoCloseTab didn't resolve to a window"
+      );
+    }
+  } else {
+    sourceWindow = window;
   }
 
-  let closedTabCount = SessionStore.getLastClosedTabCount(window);
+  // wallpaper patch to prevent an unnecessary blank tab (bug 343895)
+  let blankTabToRemove = null;
+  if (
+    targetWindow.gBrowser.visibleTabs.length == 1 &&
+    targetWindow.gBrowser.selectedTab.isEmpty
+  ) {
+    blankTabToRemove = targetWindow.gBrowser.selectedTab;
+  }
+
+  // We are specifically interested in the lastClosedTabCount for the source window.
+  // When aIndex is undefined, we restore all the lastClosedTabCount tabs.
+  let lastClosedTabCount = SessionStore.getLastClosedTabCount(sourceWindow);
   let tab = null;
   // aIndex is undefined if the function is called without a specific tab to restore.
   let tabsToRemove =
-    aIndex !== undefined ? [aIndex] : new Array(closedTabCount).fill(0);
+    aIndex !== undefined ? [aIndex] : new Array(lastClosedTabCount).fill(0);
   let tabsRemoved = false;
   for (let index of tabsToRemove) {
-    if (SessionStore.getClosedTabCountForWindow(window) > index) {
-      tab = SessionStore.undoCloseTab(window, index);
+    if (SessionStore.getClosedTabCountForWindow(sourceWindow) > index) {
+      tab = SessionStore.undoCloseTab(sourceWindow, index, targetWindow);
       tabsRemoved = true;
     }
   }
 
   if (tabsRemoved && blankTabToRemove) {
-    gBrowser.removeTab(blankTabToRemove);
+    targetWindow.gBrowser.removeTab(blankTabToRemove);
   }
 
   return tab;
@@ -9912,7 +9849,11 @@ var FirefoxViewHandler = {
     const viewURL = NimbusFeatures.firefoxViewNext.getVariable("enabled")
       ? "about:firefoxview-next"
       : "about:firefoxview";
-    if (this.tab && this.tab.linkedBrowser.currentURI.spec != viewURL) {
+    // Need to account for navigation to Firefox View pages
+    if (
+      this.tab &&
+      this.tab.linkedBrowser.currentURI.spec.split("#")[0] != viewURL
+    ) {
       gBrowser.removeTab(this.tab);
       this.tab = null;
     }
@@ -10012,5 +9953,55 @@ var FirefoxViewHandler = {
   },
   _toggleNotificationDot(shouldShow) {
     this.button?.toggleAttribute("attention", shouldShow);
+  },
+};
+
+var ShoppingSidebarManager = {
+  init() {
+    this._updateEnabledState = this._updateEnabledState.bind(this);
+    NimbusFeatures.shopping2023.onUpdate(this._updateEnabledState);
+    this._updateEnabledState();
+  },
+
+  uninit() {
+    NimbusFeatures.shopping2023.offUpdate(this._updateEnabledState);
+  },
+
+  _updateEnabledState() {
+    this._enabled = NimbusFeatures.shopping2023.getVariable("enabled");
+
+    if (!this._enabled) {
+      document.querySelectorAll("shopping-sidebar").forEach(sidebar => {
+        sidebar.remove();
+      });
+    }
+  },
+
+  _isProductPage(locationURI) {
+    return isProductURL(locationURI);
+  },
+
+  onLocationChange(aBrowser, aLocationURI) {
+    if (!this._enabled) {
+      return;
+    }
+
+    let browserPanel = gBrowser.getPanel(aBrowser);
+    let sidebar = browserPanel.querySelector("shopping-sidebar");
+    if (this._isProductPage(aLocationURI)) {
+      if (!sidebar) {
+        sidebar = document.createXULElement("shopping-sidebar");
+        sidebar.setAttribute("style", "width: 320px");
+        sidebar.setAttribute("url", aLocationURI.asciiSpec);
+        sidebar.hidden = false;
+        browserPanel.appendChild(sidebar);
+      } else {
+        sidebar.setAttribute("url", aLocationURI.asciiSpec);
+        sidebar.hidden = false;
+      }
+    } else if (sidebar && !sidebar.hidden) {
+      sidebar.setAttribute("url", null);
+      sidebar.hidden = true;
+    }
   },
 };

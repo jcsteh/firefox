@@ -48,9 +48,9 @@ enum class LayersBackend : int8_t;
 
 namespace dom {
 class
-    HTMLImageElementOrSVGImageElementOrHTMLCanvasElementOrHTMLVideoElementOrOffscreenCanvasOrImageBitmap;
+    HTMLImageElementOrSVGImageElementOrHTMLCanvasElementOrHTMLVideoElementOrOffscreenCanvasOrImageBitmapOrVideoFrame;
 using CanvasImageSource =
-    HTMLImageElementOrSVGImageElementOrHTMLCanvasElementOrHTMLVideoElementOrOffscreenCanvasOrImageBitmap;
+    HTMLImageElementOrSVGImageElementOrHTMLCanvasElementOrHTMLVideoElementOrOffscreenCanvasOrImageBitmapOrVideoFrame;
 class ImageBitmap;
 class ImageData;
 class UTF8StringOrCanvasGradientOrCanvasPattern;
@@ -311,6 +311,24 @@ class CanvasRenderingContext2D : public nsICanvasRenderingContextInternal,
   void SetFontKerning(const CanvasFontKerning& aFontKerning) {
     if (CurrentState().fontKerning != aFontKerning) {
       CurrentState().fontKerning = aFontKerning;
+      CurrentState().fontGroup = nullptr;
+    }
+  }
+
+  CanvasFontStretch FontStretch() { return CurrentState().fontStretch; }
+  void SetFontStretch(const CanvasFontStretch& aFontStretch) {
+    if (CurrentState().fontStretch != aFontStretch) {
+      CurrentState().fontStretch = aFontStretch;
+      CurrentState().fontGroup = nullptr;
+    }
+  }
+
+  CanvasFontVariantCaps FontVariantCaps() {
+    return CurrentState().fontVariantCaps;
+  }
+  void SetFontVariantCaps(const CanvasFontVariantCaps& aFontVariantCaps) {
+    if (CurrentState().fontVariantCaps != aFontVariantCaps) {
+      CurrentState().fontVariantCaps = aFontVariantCaps;
       CurrentState().fontGroup = nullptr;
     }
   }
@@ -961,6 +979,8 @@ class CanvasRenderingContext2D : public nsICanvasRenderingContextInternal,
     CanvasTextBaseline textBaseline = CanvasTextBaseline::Alphabetic;
     CanvasDirection textDirection = CanvasDirection::Inherit;
     CanvasFontKerning fontKerning = CanvasFontKerning::Auto;
+    CanvasFontStretch fontStretch = CanvasFontStretch::Normal;
+    CanvasFontVariantCaps fontVariantCaps = CanvasFontVariantCaps::Normal;
     CanvasTextRendering textRendering = CanvasTextRendering::Auto;
 
     gfx::Float letterSpacing = 0.0f;

@@ -1181,7 +1181,7 @@ export var UrlbarUtils = {
         }
         if (result.payload.suggestion) {
           let type = result.payload.trending ? "trending" : "searchsuggestion";
-          if (result.payload.isRichSuggestion) {
+          if (result.isRichSuggestion) {
             type += "_rich";
           }
           return type;
@@ -1290,7 +1290,7 @@ export var UrlbarUtils = {
         let group = result.payload.trending
           ? "trending_search"
           : "search_suggest";
-        if (result.payload.isRichSuggestion) {
+        if (result.isRichSuggestion) {
           group += "_rich";
         }
         return group;
@@ -1376,7 +1376,7 @@ export var UrlbarUtils = {
           let type = result.payload.trending
             ? "trending_search"
             : "search_suggest";
-          if (result.payload.isRichSuggestion) {
+          if (result.isRichSuggestion) {
             type += "_rich";
           }
           return type;
@@ -1532,9 +1532,6 @@ UrlbarUtils.RESULT_PAYLOAD_SCHEMA = {
       isGeneralPurposeEngine: {
         type: "boolean",
       },
-      isRichSuggestion: {
-        type: "boolean",
-      },
       keyword: {
         type: "string",
       },
@@ -1586,12 +1583,41 @@ UrlbarUtils.RESULT_PAYLOAD_SCHEMA = {
             type: "string",
           },
           args: {
-            type: "array",
+            type: "object",
+            additionalProperties: true,
+          },
+        },
+      },
+      // l10n { id, args }
+      bottomTextL10n: {
+        type: "object",
+        required: ["id"],
+        properties: {
+          id: {
+            type: "string",
+          },
+          args: {
+            type: "object",
+            additionalProperties: true,
           },
         },
       },
       description: {
         type: "string",
+      },
+      // l10n { id, args }
+      descriptionL10n: {
+        type: "object",
+        required: ["id"],
+        properties: {
+          id: {
+            type: "string",
+          },
+          args: {
+            type: "object",
+            additionalProperties: true,
+          },
+        },
       },
       displayUrl: {
         type: "string",
@@ -1611,7 +1637,8 @@ UrlbarUtils.RESULT_PAYLOAD_SCHEMA = {
             type: "string",
           },
           args: {
-            type: "array",
+            type: "object",
+            additionalProperties: true,
           },
         },
       },
@@ -1643,6 +1670,9 @@ UrlbarUtils.RESULT_PAYLOAD_SCHEMA = {
         type: "string",
       },
       sendAttributionRequest: {
+        type: "boolean",
+      },
+      shouldShowUrl: {
         type: "boolean",
       },
       source: {
@@ -1820,7 +1850,8 @@ UrlbarUtils.RESULT_PAYLOAD_SCHEMA = {
             type: "string",
           },
           args: {
-            type: "array",
+            type: "object",
+            additionalProperties: true,
           },
         },
       },
@@ -1844,7 +1875,8 @@ UrlbarUtils.RESULT_PAYLOAD_SCHEMA = {
             type: "string",
           },
           args: {
-            type: "array",
+            type: "object",
+            additionalProperties: true,
           },
         },
       },
@@ -2217,8 +2249,6 @@ export class UrlbarProvider {
   /**
    * Called when the user starts and ends an engagement with the urlbar.
    *
-   * @param {boolean} isPrivate
-   *   True if the engagement is in a private context.
    * @param {string} state
    *   The state of the engagement, one of the following strings:
    *
@@ -2267,8 +2297,10 @@ export class UrlbarProvider {
    *       The name of the provider that produced the picked result.
    *
    *   For "abandonment", only `searchString` is defined.
+   * @param {UrlbarController} controller
+   *  The associated controller.
    */
-  onEngagement(isPrivate, state, queryContext, details) {}
+  onEngagement(state, queryContext, details, controller) {}
 
   /**
    * Called when a result from the provider is selected. "Selected" refers to
@@ -2414,6 +2446,11 @@ export class UrlbarProvider {
  */
 export class SkippableTimer {
   /**
+   * This can be used to track whether the timer completed.
+   */
+  done = false;
+
+  /**
    * Creates a skippable timer for the given callback and time.
    *
    * @param {object} options An object that configures the timer
@@ -2463,6 +2500,7 @@ export class SkippableTimer {
     });
 
     this.promise = Promise.race([timerPromise, firePromise]).then(() => {
+      this.done = true;
       // If we've been canceled, don't call back.
       if (callback && !this._canceled) {
         callback();

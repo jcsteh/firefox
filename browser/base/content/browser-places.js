@@ -552,10 +552,9 @@ var PlacesCommandHook = {
   },
 
   async searchBookmarks() {
-    let win = BrowserWindowTracker.getTopWindow();
-    if (!win) {
-      win = await BrowserUIUtils.openNewBrowserWindow();
-    }
+    let win =
+      BrowserWindowTracker.getTopWindow() ??
+      (await BrowserWindowTracker.promiseOpenWindow());
     win.gURLBar.search(UrlbarTokenizer.RESTRICT.BOOKMARK, {
       searchModeEntry: "bookmarkmenu",
     });
@@ -592,7 +591,7 @@ class HistoryMenu extends PlacesMenu {
 
   _getClosedTabCount() {
     try {
-      return SessionStore.getClosedTabCountForWindow(window);
+      return SessionStore.getClosedTabCount();
     } catch (ex) {
       // SessionStore doesn't track the hidden window, so just return zero then.
       return 0;

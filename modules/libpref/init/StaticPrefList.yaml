@@ -1835,12 +1835,6 @@
 # Prefs starting with "canvas."
 #---------------------------------------------------------------------------
 
-# Limit for the canvas image cache. 0 means unlimited.
-- name: canvas.image.cache.limit
-  type: int32_t
-  value: 0
-  mirror: always
-
 # Add support for canvas path objects
 - name: canvas.path.enabled
   type: RelaxedAtomicBool
@@ -2351,7 +2345,7 @@
 # Disable custom highlight API; implementation pending.
 - name: dom.customHighlightAPI.enabled
   type: RelaxedAtomicBool
-  value: false
+  value: @IS_NIGHTLY_BUILD@
   mirror: always
   rust: true
 
@@ -2533,6 +2527,12 @@
 # Additionally, "input" events may expose clipboard content when inputType
 # is "insertFromPaste" or something.
 - name: dom.event.clipboardevents.enabled
+  type: bool
+  value: true
+  mirror: always
+
+# Whether Shift+Right click force-opens the context menu
+- name: dom.event.contextmenu.shift_suppresses_event
   type: bool
   value: true
   mirror: always
@@ -4063,7 +4063,7 @@
 # Storage-access API.
 - name: dom.storage_access.enabled
   type: bool
-  value: false
+  value: true
   mirror: always
 
 # Forward-Declared Storage-access API.
@@ -5396,7 +5396,7 @@
 
 - name: full-screen-api.enabled
   type: bool
-  value: false
+  value: true
   mirror: always
 
 - name: full-screen-api.allow-trusted-requests-only
@@ -7046,13 +7046,6 @@
   value: false
   mirror: always
 
-# Decodes images into shared memory to allow direct use in separate
-# rendering processes. Only applicable with WebRender.
-- name: image.mem.shared
-  type: RelaxedAtomicBool
-  value: true
-  mirror: always
-
 # Force unmapping of unused shared surfaces after a timeout period or when we
 # encounter virtual memory pressure. By default this is only enabled on 32-bit
 # Firefox.
@@ -7574,6 +7567,12 @@
     type: bool
     value: false
     mirror: always
+
+  # Experimental support for ArrayBuffer.prototype.transfer{,ToFixedLength}() in JavaScript.
+-   name: javascript.options.experimental.arraybuffer_transfer
+    type: bool
+    value: false
+    mirror: always
 #endif  // NIGHTLY_BUILD
 
 #ifdef NIGHTLY_BUILD
@@ -7809,10 +7808,14 @@
   mirror: always
 
 # Whether the W^X policy is enforced to mark JIT code pages as either writable
-# or executable but never both at the same time.
+# or executable but never both at the same time. OpenBSD defaults to W^X.
 - name: javascript.options.content_process_write_protect_code
   type: bool
+#if defined(XP_OPENBSD)
+  value: true
+#else
   value: false
+#endif
   mirror: always
 
 # Whether to use the XPCOM thread pool for JS helper tasks.
@@ -8426,6 +8429,13 @@
   type: bool
   value: false
   mirror: always
+
+# Is support for xywh() enabled?
+- name: layout.css.basic-shape-xywh.enabled
+  type: RelaxedAtomicBool
+  value: @IS_NIGHTLY_BUILD@
+  mirror: always
+  rust: true
 
 # Should stray control characters be rendered visibly?
 - name: layout.css.control-characters.visible
@@ -9187,6 +9197,19 @@
   value: false
   mirror: always
 
+- name: layout.scrollbars.click_and_hold_track.continue_to_end
+  type: bool
+# On Linux, click-and-hold on the scrollbar track should continue scrolling
+# until the mouse is released. On the other platforms we want to stop
+# scrolling as soon as the scrollbar thumb has reached the current mouse
+# position.
+#ifdef MOZ_WIDGET_GTK
+  value: true
+#else
+  value: false
+#endif
+  mirror: always
+
 # Whether anchor is kept selected.
 - name: layout.selectanchor
   type: bool
@@ -9339,6 +9362,13 @@
   type: bool
   value: false
   mirror: always
+
+# Is support for -webkit-slider* pseudos enabled?
+- name: layout.css.webkit-range-pseudos.enabled
+  type: RelaxedAtomicBool
+  value: @IS_NIGHTLY_BUILD@
+  mirror: always
+  rust: true
 
 # Is 'content:none' supported on (non-pseudo) elements?
 - name: layout.css.element-content-none.enabled
@@ -12721,16 +12751,6 @@
   value: true
   mirror: always
 
-# When this pref is true we clear the Content-Encoding header for
-# application/x-gzip Content-Type responses, see bug 1030660.
-#
-# Assuming there are no regressions, this pref and related code should be
-# removed.
-- name: network.http.clear_bogus_content_encoding
-  type: RelaxedAtomicBool
-  value: false
-  mirror: always
-
 # When this pref is true, we will use the HTTPS acceptable content encoding
 # list for trustworthy domains such as http://localhost
 - name: network.http.encoding.trustworthy_is_https
@@ -13726,12 +13746,12 @@
 
 -   name: security.sandbox.gpu.shadow-stack.enabled
     type: RelaxedAtomicBool
-    value: @IS_NIGHTLY_BUILD@
+    value: true
     mirror: always
 
 -   name: security.sandbox.gmp.shadow-stack.enabled
     type: RelaxedAtomicBool
-    value: @IS_NIGHTLY_BUILD@
+    value: true
     mirror: always
 
   # Whether a Low Privilege AppContainer (LPAC) is enabled for the relevant

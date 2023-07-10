@@ -6,7 +6,7 @@
 
 EXTRA_JS_MODULES += [
     "AndroidLog.jsm",
-    "BrowserUsageTelemetry.jsm",
+    "BrowserUsageTelemetry.sys.mjs",
     "ChildCrashHandler.sys.mjs",
     "DelayedInit.jsm",
     "GeckoViewActorChild.sys.mjs",
@@ -32,7 +32,7 @@ EXTRA_JS_MODULES += [
     "GeckoViewStorageController.sys.mjs",
     "GeckoViewTab.sys.mjs",
     "GeckoViewTelemetry.jsm",
-    "GeckoViewTestUtils.jsm",
+    "GeckoViewTestUtils.sys.mjs",
     "GeckoViewUtils.sys.mjs",
     "GeckoViewWebExtension.sys.mjs",
     "LoadURIDelegate.sys.mjs",

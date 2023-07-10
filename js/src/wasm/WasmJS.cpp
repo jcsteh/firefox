@@ -396,6 +396,13 @@ static bool ThrowBadImportType(JSContext* cx, const CacheableName& field,
   return false;
 }
 
+// For now reject cross-compartment wrappers. These have more complicated realm
+// semantics (we use nonCCWRealm in a few places) and may require unwrapping to
+// test for specific function types.
+static bool IsCallableNonCCW(const Value& v) {
+  return IsCallable(v) && !IsCrossCompartmentWrapper(&v.toObject());
+}
+
 bool js::wasm::GetImports(JSContext* cx, const Module& module,
                           HandleObject importObj, ImportValues* imports) {
   if (!module.imports().empty() && !importObj) {
@@ -439,10 +446,7 @@ bool js::wasm::GetImports(JSContext* cx, const Module& module,
 
     switch (import.kind) {
       case DefinitionKind::Function: {
-        // For now reject cross-compartment wrappers. These have more
-        // complicated realm semantics (we use nonCCWRealm in a few places) and
-        // may require unwrapping to test for specific function types.
-        if (!IsCallable(v) || IsCrossCompartmentWrapper(&v.toObject())) {
+        if (!IsCallableNonCCW(v)) {
           return ThrowBadImportType(cx, import.field, "Function");
         }
 
@@ -475,8 +479,9 @@ bool js::wasm::GetImports(JSContext* cx, const Module& module,
           return ThrowBadImportType(cx, import.field, "Memory");
         }
 
-        MOZ_ASSERT(!imports->memory);
-        imports->memory = &v.toObject().as<WasmMemoryObject>();
+        if (!imports->memories.append(&v.toObject().as<WasmMemoryObject>())) {
+          return false;
+        }
         break;
       }
       case DefinitionKind::Tag: {
@@ -1394,9 +1399,8 @@ bool WasmModuleObject::imports(JSContext* cx, unsigned argc, Value* vp) {
         break;
       }
       case DefinitionKind::Memory: {
-        DebugOnly<size_t> memoryIndex = numMemoryImport++;
-        MOZ_ASSERT(memoryIndex == 0);
-        const MemoryDesc& memory = *metadata.memory;
+        size_t memoryIndex = numMemoryImport++;
+        const MemoryDesc& memory = metadata.memories[memoryIndex];
         typeObj =
             MemoryTypeToObject(cx, memory.isShared(), memory.indexType(),
                                memory.initialPages(), memory.maximumPages());
@@ -1502,7 +1506,7 @@ bool WasmModuleObject::exports(JSContext* cx, unsigned argc, Value* vp) {
         break;
       }
       case DefinitionKind::Memory: {
-        const MemoryDesc& memory = *metadata.memory;
+        const MemoryDesc& memory = metadata.memories[exp.memoryIndex()];
         typeObj =
             MemoryTypeToObject(cx, memory.isShared(), memory.indexType(),
                                memory.initialPages(), memory.maximumPages());
@@ -1883,7 +1887,7 @@ WasmInstanceObject* WasmInstanceObject::create(
     JSContext* cx, const SharedCode& code,
     const DataSegmentVector& dataSegments,
     const ElemSegmentVector& elemSegments, uint32_t instanceDataLength,
-    Handle<WasmMemoryObject*> memory, SharedTableVector&& tables,
+    Handle<WasmMemoryObjectVector> memories, SharedTableVector&& tables,
     const JSObjectVector& funcImports, const GlobalDescVector& globals,
     const ValVector& globalImportValues,
     const WasmGlobalObjectVector& globalObjs,
@@ -1961,7 +1965,7 @@ WasmInstanceObject* WasmInstanceObject::create(
     MOZ_ASSERT(obj->isNewborn());
 
     // Create this just before constructing Instance to avoid rooting hazards.
-    instance = Instance::create(cx, obj, code, instanceDataLength, memory,
+    instance = Instance::create(cx, obj, code, instanceDataLength,
                                 std::move(tables), std::move(maybeDebug));
     if (!instance) {
       return nullptr;
@@ -1972,8 +1976,8 @@ WasmInstanceObject* WasmInstanceObject::create(
     MOZ_ASSERT(!obj->isNewborn());
   }
 
-  if (!instance->init(cx, funcImports, globalImportValues, globalObjs, tagObjs,
-                      dataSegments, elemSegments)) {
+  if (!instance->init(cx, funcImports, globalImportValues, memories, globalObjs,
+                      tagObjs, dataSegments, elemSegments)) {
     return nullptr;
   }
 
@@ -2887,7 +2891,9 @@ bool WasmMemoryObject::addMovingGrowObserver(JSContext* cx,
     return false;
   }
 
-  if (!observers->putNew(instance)) {
+  // A memory can be imported multiple times into an instance, but we only
+  // register the instance as an observer once.
+  if (!observers->put(instance)) {
     ReportOutOfMemory(cx);
     return false;
   }
@@ -2958,7 +2964,7 @@ uint64_t WasmMemoryObject::grow(Handle<WasmMemoryObject*> memory,
   if (memory->hasObservers()) {
     for (InstanceSet::Range r = memory->observers().all(); !r.empty();
          r.popFront()) {
-      r.front()->instance().onMovingGrowMemory();
+      r.front()->instance().onMovingGrowMemory(memory);
     }
   }
 
@@ -4237,11 +4243,13 @@ bool WasmFunctionType(JSContext* cx, unsigned argc, Value* vp) {
   return CallNonGenericMethod<IsWasmFunction, WasmFunctionTypeImpl>(cx, args);
 }
 
-JSFunction* WasmFunctionCreate(JSContext* cx, HandleFunction func,
-                               wasm::ValTypeVector&& params,
-                               wasm::ValTypeVector&& results,
-                               HandleObject proto) {
-  MOZ_RELEASE_ASSERT(!IsWasmExportedFunction(func));
+static JSFunction* WasmFunctionCreate(JSContext* cx, HandleObject func,
+                                      wasm::ValTypeVector&& params,
+                                      wasm::ValTypeVector&& results,
+                                      HandleObject proto) {
+  MOZ_ASSERT(IsCallableNonCCW(ObjectValue(*func)));
+  MOZ_RELEASE_ASSERT(!func->is<JSFunction>() ||
+                     !IsWasmExportedFunction(&func->as<JSFunction>()));
 
   // We want to import the function to a wasm module and then export it again so
   // that it behaves exactly like a normal wasm function and can be used like
@@ -4366,13 +4374,12 @@ bool WasmFunctionConstruct(JSContext* cx, unsigned argc, Value* vp) {
 
   // Get the target function
 
-  if (!args[1].isObject() || !args[1].toObject().is<JSFunction>() ||
-      IsWasmFunction(args[1])) {
+  if (!IsCallableNonCCW(args[1]) || IsWasmFunction(args[1])) {
     JS_ReportErrorNumberUTF8(cx, GetErrorMessage, nullptr,
                              JSMSG_WASM_BAD_FUNCTION_VALUE);
     return false;
   }
-  RootedFunction func(cx, &args[1].toObject().as<JSFunction>());
+  RootedObject func(cx, &args[1].toObject());
 
   RootedObject proto(
       cx, GetWasmConstructorPrototype(cx, args, JSProto_WasmFunction));

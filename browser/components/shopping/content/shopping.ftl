@@ -10,12 +10,21 @@ shopping-page-title = { -brand-product-name } Shopping
 
 ## Strings for the product review snippets card
 
-shopping-highlights-heading = Snippets from recent reviews
+shopping-highlights-label =
+  .label = Snippets from recent reviews
 
 shopping-highlight-price = Price
 shopping-highlight-quality = Quality
 shopping-highlight-shipping = Shipping
 shopping-highlight-competitiveness = Competitiveness
 shopping-highlight-packaging = Packaging
+
+## Strings for the settings card
+
+shopping-settings-label =
+  .label = Settings
+shopping-settings-recommendations-toggle =
+  .label = Show products recommended by { -brand-product-name }
+shopping-settings-opt-out-button = Turn off review quality check
 
 ##
