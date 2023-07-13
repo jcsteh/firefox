@@ -638,8 +638,8 @@ LayoutDeviceIntPoint nsWindow::WidgetToScreenOffset() {
     temp = [nsAppShell::gWindow convertPoint:temp toWindow:nil];
   }
 
-  offset.x += temp.x;
-  offset.y += temp.y;
+  offset.x += static_cast<int32_t>(temp.x);
+  offset.y += static_cast<int32_t>(temp.y);
 
   return offset;
 }
