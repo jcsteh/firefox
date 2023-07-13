@@ -52,8 +52,7 @@
 #include "builtin/MapObject.h"
 #include "builtin/Promise.h"
 #include "builtin/TestingUtility.h"  // js::ParseCompileOptions, js::ParseDebugMetadata
-#include "frontend/BytecodeCompilation.h"  // frontend::CompileGlobalScriptToExtensibleStencil, frontend::DelazifyCanonicalScriptedFunction
-#include "frontend/BytecodeCompiler.h"  // frontend::ParseModuleToExtensibleStencil
+#include "frontend/BytecodeCompiler.h"  // frontend::{CompileGlobalScriptToExtensibleStencil,ParseModuleToExtensibleStencil}
 #include "frontend/CompilationStencil.h"  // frontend::CompilationStencil
 #include "frontend/FrontendContext.h"     // AutoReportFrontendContext
 #include "gc/Allocator.h"
@@ -2016,9 +2015,10 @@ static bool WasmGcReadField(JSContext* cx, unsigned argc, Value* vp) {
     return false;
   }
 
-  uint32_t fieldIndex;
-  if (!JS::ToUint32(cx, args[1], &fieldIndex)) {
-    ReportUsageErrorASCII(cx, callee, "Second argument must be an integer");
+  int32_t fieldIndex;
+  if (!JS::ToInt32(cx, args[1], &fieldIndex) || fieldIndex < 0) {
+    ReportUsageErrorASCII(cx, callee,
+                          "Second argument must be a non-negative integer");
     return false;
   }
 

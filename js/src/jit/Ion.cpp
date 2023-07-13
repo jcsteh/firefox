@@ -238,6 +238,14 @@ bool JitRuntime::generateTrampolines(JSContext* cx) {
   generateExceptionTailStub(masm, &profilerExitTail, &bailoutTail);
   rangeRecorder.recordOffset("Trampoline: ExceptionTailStub");
 
+  JitSpew(JitSpew_Codegen, "# Emitting Ion generic call stub");
+  generateIonGenericCallStub(masm, IonGenericCallKind::Call);
+  rangeRecorder.recordOffset("Trampoline: IonGenericCall");
+
+  JitSpew(JitSpew_Codegen, "# Emitting Ion generic construct stub");
+  generateIonGenericCallStub(masm, IonGenericCallKind::Construct);
+  rangeRecorder.recordOffset("Trampoline: IonGenericConstruct");
+
   Linker linker(masm);
   trampolineCode_ = linker.newCode(cx, CodeKind::Other);
   if (!trampolineCode_) {
@@ -1850,7 +1858,7 @@ static MethodStatus Compile(JSContext* cx, HandleScript script,
   }
 
   OptimizationLevel optimizationLevel =
-      IonOptimizations.levelForScript(script, osrPc);
+      IonOptimizations.levelForScript(cx, script, osrPc);
   if (optimizationLevel == OptimizationLevel::DontCompile) {
     return Method_Skipped;
   }

@@ -9,9 +9,6 @@ const { Spotlight } = ChromeUtils.import(
 const { PanelTestProvider } = ChromeUtils.importESModule(
   "resource://activity-stream/lib/PanelTestProvider.sys.mjs"
 );
-const { BrowserWindowTracker } = ChromeUtils.importESModule(
-  "resource:///modules/BrowserWindowTracker.sys.mjs"
-);
 const { SpecialMessageActions } = ChromeUtils.importESModule(
   "resource://messaging-system/lib/SpecialMessageActions.sys.mjs"
 );
@@ -81,7 +78,9 @@ add_task(async function test_embedded_import() {
 
   await migrationWizardReady;
 
-  let [panelList] = win.document.querySelector("migration-wizard").children;
+  let panelList = win.document
+    .querySelector("migration-wizard")
+    .openOrClosedShadowRoot.querySelector("panel-list");
   Assert.equal(panelList.tagName, "PANEL-LIST");
   Assert.equal(panelList.firstChild.tagName, "PANEL-ITEM");
 
