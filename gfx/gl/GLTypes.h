@@ -55,6 +55,14 @@ typedef signed long int GLsizeiptr;
 
 #endif /* #if !defined(__gltypes_h_) && !defined(__gl_h_) */
 
+// FIXME: Ask Kelsey about this - why doesn't iOS have GLdouble and GLclampd?
+#ifdef XP_IOS
+#  ifndef GLdouble_defined
+typedef double GLdouble;
+#  endif
+typedef double GLclampd;
+#endif
+
 #include <stdint.h>
 
 // ARB_sync
