@@ -766,7 +766,7 @@ bool GeckoChildProcessHost::AsyncLaunch(std::vector<std::string> aExtraOpts) {
                     if (mNodeChannel) {
                       mNodeChannel->SetOtherPid(
                           base::GetProcId(this->mChildProcessHandle));
-#ifdef XP_MACOSX
+#ifdef XP_DARWIN
                       mNodeChannel->SetMachTaskPort(this->mChildTask);
 #endif
                     }
