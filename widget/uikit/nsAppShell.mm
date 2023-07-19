@@ -28,7 +28,7 @@ using namespace mozilla;
 using namespace mozilla::widget;
 
 nsAppShell* nsAppShell::gAppShell = NULL;
-UIWindow* nsAppShell::gWindow = nil;
+UIViewController* nsAppShell::gRootViewController = nil;
 NSMutableArray* nsAppShell::gTopLevelViews = [[NSMutableArray alloc] init];
 
 #define ALOG(args...)    \
@@ -42,10 +42,11 @@ NSMutableArray* nsAppShell::gTopLevelViews = [[NSMutableArray alloc] init];
 @implementation ViewController
 
 - (void)loadView {
+  nsAppShell::gRootViewController = self;
   ALOG("[ViewController loadView]");
   CGRect r = {{0, 0}, {100, 100}};
   self.view = [[UIView alloc] initWithFrame:r];
-  [self.view setBackgroundColor:[UIColor lightGrayColor]];
+  [self.view setBackgroundColor:[UIColor whiteColor]];
   // add all of the top level views as children
   for (UIView* v in nsAppShell::gTopLevelViews) {
     ALOG("[ViewController.view addSubView:%p]", v);
@@ -70,18 +71,6 @@ NSMutableArray* nsAppShell::gTopLevelViews = [[NSMutableArray alloc] init];
 - (BOOL)application:(UIApplication*)application
     didFinishLaunchingWithOptions:(NSDictionary*)launchOptions {
   ALOG("[AppShellDelegate application:didFinishLaunchingWithOptions:]");
-  // We only create one window, since we can only display one window at
-  // a time anyway. Also, iOS 4 fails to display UIWindows if you
-  // create them before calling UIApplicationMain, so this makes more sense.
-  nsAppShell::gWindow =
-      [[[UIWindow alloc] initWithFrame:[[UIScreen mainScreen] applicationFrame]] retain];
-  self.window = nsAppShell::gWindow;
-
-  self.window.rootViewController = [[ViewController alloc] init];
-
-  // just to make things more visible for now
-  nsAppShell::gWindow.backgroundColor = [UIColor blueColor];
-  [nsAppShell::gWindow makeKeyAndVisible];
 
   return YES;
 }

@@ -37,7 +37,7 @@ class nsAppShell : public nsBaseAppShell {
   static void OnMemoryPressureChanged(dispatch_source_memorypressure_flags_t aPressureLevel);
 
   static nsAppShell* gAppShell;
-  static UIWindow* gWindow;
+  static UIViewController* gRootViewController;
   static NSMutableArray* gTopLevelViews;
 
  protected:

@@ -420,11 +420,11 @@ nsresult nsWindow::Create(nsIWidget* aParent, nsNativeWidget aNativeParent,
 
   // for toplevel windows, bounds are fixed to full screen size
   if (parent == nullptr) {
-    if (nsAppShell::gWindow == nil) {
+    if (nsAppShell::gRootViewController == nil) {
       RefPtr<widget::Screen> screen = widget::ScreenManager::GetSingleton().GetPrimaryScreen();
       mBounds = screen->GetRect();
     } else {
-      CGRect cgRect = [nsAppShell::gWindow bounds];
+      CGRect cgRect = [nsAppShell::gRootViewController.view.window bounds];
       mBounds.x = cgRect.origin.x;
       mBounds.y = cgRect.origin.y;
       mBounds.width = cgRect.size.width;
@@ -457,8 +457,8 @@ nsresult nsWindow::Create(nsIWidget* aParent, nsNativeWidget aNativeParent,
 
   if (nativeParent) {
     [nativeParent addSubview:mNativeView];
-  } else if (nsAppShell::gWindow) {
-    [nsAppShell::gWindow.rootViewController.view addSubview:mNativeView];
+  } else if (nsAppShell::gRootViewController) {
+    [nsAppShell::gRootViewController.view addSubview:mNativeView];
   } else {
     [nsAppShell::gTopLevelViews addObject:mNativeView];
   }
@@ -489,8 +489,7 @@ void nsWindow::Show(bool aState) {
   if (aState != mVisible) {
     mNativeView.hidden = aState ? NO : YES;
     if (aState) {
-      UIView* parentView =
-          mParent ? mParent->mNativeView : nsAppShell::gWindow.rootViewController.view;
+      UIView* parentView = mParent ? mParent->mNativeView : nsAppShell::gRootViewController.view;
       [parentView bringSubviewToFront:mNativeView];
       [mNativeView setNeedsDisplay];
     }
@@ -558,7 +557,8 @@ void nsWindow::SetSizeMode(nsSizeMode aMode) {
   mSizeMode = static_cast<nsSizeMode>(aMode);
   if (aMode == nsSizeMode_Maximized || aMode == nsSizeMode_Fullscreen) {
     // Resize to fill screen
-    nsBaseWidget::InfallibleMakeFullScreen(true);
+    // nsBaseWidget::InfallibleMakeFullScreen(true);
+    [mNativeView setFrame:mNativeView.window.screen.applicationFrame];
   }
   ReportSizeModeEvent(aMode);
 }
@@ -633,9 +633,9 @@ LayoutDeviceIntPoint nsWindow::WidgetToScreenOffset() {
 
   CGPoint temp = [mNativeView convertPoint:temp toView:nil];
 
-  if (!mParent && nsAppShell::gWindow) {
+  if (!mParent && mNativeView.window) {
     // convert to screen coords
-    temp = [nsAppShell::gWindow convertPoint:temp toWindow:nil];
+    temp = [mNativeView.window convertPoint:temp toWindow:nil];
   }
 
   offset.x += static_cast<int32_t>(temp.x);
