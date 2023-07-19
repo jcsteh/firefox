@@ -73,7 +73,7 @@ class nsAutoRetainUIKitObject {
  @public
   nsWindow* mGeckoChild;  // weak ref
   BOOL mWaitingForPaint;
-  NSMutableDictionary<UITouch*, NSNumber*>* mTouches;
+  NSMapTable<UITouch*, NSNumber*>* mTouches;
   int mNextTouchID;
 
   // The CALayer that wraps Gecko's rendered contents. It's a sublayer of
@@ -130,7 +130,7 @@ class nsAutoRetainUIKitObject {
   tapRecognizer.numberOfTapsRequired = 1;
   [self addGestureRecognizer:tapRecognizer];
 
-  mTouches = [[NSMutableDictionary alloc] init];
+  mTouches = [[NSMapTable alloc] init];
   mNextTouchID = 0;
   return self;
 }
@@ -180,7 +180,7 @@ class nsAutoRetainUIKitObject {
         UIKitPointsToDevPixels([touch locationInView:self], [self contentScaleFactor]);
     LayoutDeviceIntPoint radius = UIKitPointsToDevPixels(
         CGPointMake([touch majorRadius], [touch majorRadius]), [self contentScaleFactor]);
-    NSNumber* value = mTouches[touch];
+    NSNumber* value = [mTouches objectForKey:touch];
     if (value == nil) {
       // This shouldn't happen.
       NS_ASSERTION(false, "Got a touch that we didn't know about");
@@ -199,14 +199,7 @@ class nsAutoRetainUIKitObject {
   if (!mGeckoChild) return;
 
   for (UITouch* touch : touches) {
-    // XXX: mTouches is a NSMutableDictionary, which wants a key that obeys the
-    // NSCopying protocol, but UITouch does not. This would normally be an error on
-    // CI, but downgrade to a warning until someone figures out how to actually
-    // address this.
-#pragma clang diagnostic push
-#pragma clang diagnostic warning "-Wincompatible-pointer-types"
-    mTouches[touch] = [NSNumber numberWithInt:mNextTouchID];
-#pragma clang diagnostic pop
+    [mTouches setObject:[NSNumber numberWithInt:mNextTouchID] forKey:touch];
     mNextTouchID++;
   }
   [self sendTouchEvent:eTouchStart touches:[event allTouches] widget:mGeckoChild];
@@ -215,7 +208,9 @@ class nsAutoRetainUIKitObject {
 - (void)touchesCancelled:(NSSet<UITouch*>*)touches withEvent:(UIEvent*)event {
   ALOG("[ChildView[%p] touchesCancelled", self);
   [self sendTouchEvent:eTouchCancel touches:touches widget:mGeckoChild];
-  [mTouches removeObjectsForKeys:touches.allObjects];
+  for (UITouch* touch in touches.allObjects) {
+    [mTouches removeObjectForKey:touch];
+  }
   if (mTouches.count == 0) {
     mNextTouchID = 0;
   }
@@ -226,7 +221,9 @@ class nsAutoRetainUIKitObject {
   if (!mGeckoChild) return;
 
   [self sendTouchEvent:eTouchEnd touches:touches widget:mGeckoChild];
-  [mTouches removeObjectsForKeys:touches.allObjects];
+  for (UITouch* touch in touches.allObjects) {
+    [mTouches removeObjectForKey:touch];
+  }
   if (mTouches.count == 0) {
     mNextTouchID = 0;
   }
