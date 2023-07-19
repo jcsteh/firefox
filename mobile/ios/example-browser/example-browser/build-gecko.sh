@@ -7,7 +7,7 @@ set -e
 
 if test "${ACTION}" != "clean"; then
     echo "Building in ${GECKO_OBJDIR}"
-    # make -j8 -s -C $GECKO_OBJDIR binaries
+    make -j8 -s -C $GECKO_OBJDIR binaries
 
     echo "Copying files from ${GECKO_OBJDIR}/dist/bin"
     echo "Copying files to $BUILT_PRODUCTS_DIR/$CONTENTS_FOLDER_PATH/Frameworks"
