@@ -266,6 +266,19 @@ nsLookAndFeel::NativeGetInt(IntID aID, int32_t& aResult) {
     case IntID::ScrollArrowStyle:
       aResult = eScrollArrow_None;
       break;
+    case IntID::UseOverlayScrollbars:
+    case IntID::AllowOverlayScrollbarsOverlap:
+      aResult = 1;
+      break;
+    case IntID::ScrollbarDisplayOnMouseMove:
+      aResult = 0;
+      break;
+    case IntID::ScrollbarFadeBeginDelay:
+      aResult = 450;
+      break;
+    case IntID::ScrollbarFadeDuration:
+      aResult = 200;
+      break;
     case IntID::TreeOpenDelay:
       aResult = 1000;
       break;
