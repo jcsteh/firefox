@@ -5847,13 +5847,13 @@
   value: false
   mirror: always
 
-#ifdef XP_MACOSX
+#ifdef XP_DARWIN
   # Create specialized video-only layers for video content in
   # fullscreen windows. Consistently works well on Apple Silicon,
   # some issues remain on Intel hardware.
 -   name: gfx.core-animation.specialize-video
     type: RelaxedAtomicBool
-#if defined(MOZ_AARCH64)
+#if defined(MOZ_AARCH64) && defined(XP_MACOSX)
     value: true
 #else
     value: false
@@ -5861,7 +5861,7 @@
     mirror: always
 #endif
 
-#if defined(XP_MACOSX) && defined(NIGHTLY_BUILD)
+#if defined(XP_DARWIN) && defined(NIGHTLY_BUILD)
   # Spoof the timing of the video sample instead of marking the untimed
   # sample to be displayed immediately.
 -   name: gfx.core-animation.specialize-video.spoof-timing
@@ -5883,7 +5883,7 @@
     mirror: always
 #endif
 
-#ifdef XP_MACOSX
+#ifdef XP_DARWIN
 -   name: gfx.core-animation.low-power-telemetry-frames
     type: int32_t
     value: 600
@@ -6447,7 +6447,7 @@
 
 - name: gfx.webrender.compositor
   type: bool
-#if defined(XP_WIN) || defined(XP_MACOSX)
+#if defined(XP_WIN) || defined(XP_MACOSX) || defined(XP_IOS)
   value: true
 #else
   value: false
@@ -6635,7 +6635,7 @@
     mirror: always
 #endif
 
-#ifdef XP_MACOSX
+#if defined(XP_MACOSX) || defined(XP_IOS)
   # Files show up in $HOME/Desktop/nativelayerdumps-PID/frame-123.html
 -   name: gfx.webrender.debug.dump-native-layer-tree-to-file
     type: RelaxedAtomicBool

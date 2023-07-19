@@ -16,7 +16,13 @@
 #include "mozilla/StaticMutex.h"
 #include "mozilla/StaticPrefs_gfx.h"
 
-#include "GLContextCGL.h"
+#ifdef XP_MACOSX
+#  include "GLContextCGL.h"
+#else
+#  include "GLContextEAGL.h"
+#  include <OpenGLES/EAGLIOSurface.h>
+#endif
+
 #include "MozFramebuffer.h"
 #include "ScopedGLHelpers.h"
 
@@ -28,7 +34,11 @@ using gfx::IntRect;
 using gfx::IntRegion;
 using gfx::IntSize;
 using gl::GLContext;
+#ifdef XP_MACOSX
 using gl::GLContextCGL;
+#else
+using gl::GLContextEAGL;
+#endif
 
 /* static */ RefPtr<SurfacePool> SurfacePool::Create(size_t aPoolSizeLimit) {
   return new SurfacePoolCA(aPoolSizeLimit);
@@ -284,8 +294,13 @@ Maybe<GLuint> SurfacePoolCA::LockedPool::GetFramebufferForSurface(
       "Framebuffer creation", GRAPHICS_TileAllocation,
       nsPrintfCString("%dx%d", entry.mSize.width, entry.mSize.height));
 
+#ifdef MOZ_WIDGET_COCOA
   RefPtr<GLContextCGL> cgl = GLContextCGL::Cast(aGL);
   MOZ_RELEASE_ASSERT(cgl, "Unexpected GLContext type");
+#else
+  RefPtr<GLContextEAGL> eagl = GLContextEAGL::Cast(aGL);
+  MOZ_RELEASE_ASSERT(eagl, "Unexpected GLContext type");
+#endif
 
   if (!aGL->MakeCurrent()) {
     // Context may have been destroyed.
@@ -295,9 +310,22 @@ Maybe<GLuint> SurfacePoolCA::LockedPool::GetFramebufferForSurface(
   GLuint tex = aGL->CreateTexture();
   {
     const gl::ScopedBindTexture bindTex(aGL, tex, LOCAL_GL_TEXTURE_RECTANGLE_ARB);
+#ifdef MOZ_WIDGET_COCOA
     CGLTexImageIOSurface2D(cgl->GetCGLContext(), LOCAL_GL_TEXTURE_RECTANGLE_ARB, LOCAL_GL_RGBA,
                            entry.mSize.width, entry.mSize.height, LOCAL_GL_BGRA,
                            LOCAL_GL_UNSIGNED_INT_8_8_8_8_REV, entry.mIOSurface.get(), 0);
+#else
+    // FIXME: This doesn't appear to exist in the iOS simulator. It seems ANGLE
+    // uses other APIs in the simulator(?)
+    [eagl->GetEAGLContext() texImageIOSurface:entry.mIOSurface.get()
+                                       target:LOCAL_GL_TEXTURE_RECTANGLE_ARB
+                               internalFormat:LOCAL_GL_RGBA
+                                        width:entry.mSize.width
+                                       height:entry.mSize.height
+                                       format:LOCAL_GL_BGRA
+                                         type:LOCAL_GL_UNSIGNED_INT_8_8_8_8_REV
+                                        plane:0];
+#endif
   }
 
   auto fb = CreateFramebufferForTexture(aGL, entry.mSize, tex, aNeedsDepthBuffer);

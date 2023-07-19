@@ -23,6 +23,8 @@
 #include "GLBlitHelper.h"
 #ifdef MOZ_WIDGET_COCOA
 #  include "GLContextCGL.h"
+#elif defined(MOZ_WIDGET_UIKIT)
+#  include "GLContextEAGL.h"
 #else
 #  include "GLContextEGL.h"
 #endif
@@ -38,7 +40,9 @@
 #  include "nsCocoaFeatures.h"
 #endif
 #include "ScopedGLHelpers.h"
-#include "SDKDeclarations.h"
+#ifdef MOZ_WIDGET_COCOA
+#  include "SDKDeclarations.h"
+#endif
 
 @interface CALayer (PrivateSetContentsOpaque)
 - (void)setContentsOpaque:(BOOL)opaque;
@@ -153,6 +157,8 @@ struct MOZ_STACK_CLASS AutoCATransaction final {
   AutoCATransaction() {
 #ifdef MOZ_WIDGET_COCOA
     [NSAnimationContext beginGrouping];
+#elif defined(MOZ_WIDGET_UIKIT)
+    [CATransaction begin];
 #endif
     // By default, mutating a CALayer property triggers an animation which smoothly transitions the
     // property to the new value. We don't need these animations, and this call turns them off:
@@ -161,6 +167,8 @@ struct MOZ_STACK_CLASS AutoCATransaction final {
   ~AutoCATransaction() {
 #ifdef MOZ_WIDGET_COCOA
     [NSAnimationContext endGrouping];
+#elif defined(MOZ_WIDGET_UIKIT)
+    [CATransaction commit];
 #endif
   }
 };
@@ -182,9 +190,9 @@ static CALayer* MakeOffscreenRootCALayer() {
   // down (rather than just flipping the entire layer tree upside down).
   AutoCATransaction transaction;
   CALayer* layer = [CALayer layer];
-  layer.position = NSZeroPoint;
-  layer.bounds = NSZeroRect;
-  layer.anchorPoint = NSZeroPoint;
+  layer.position = CGPointZero;
+  layer.bounds = CGRectZero;
+  layer.anchorPoint = CGPointZero;
   layer.contentsGravity = kCAGravityTopLeft;
   layer.masksToBounds = YES;
   layer.geometryFlipped = YES;
@@ -340,6 +348,7 @@ bool NativeLayerRootCA::CommitToScreen() {
 }
 
 UniquePtr<NativeLayerRootSnapshotter> NativeLayerRootCA::CreateSnapshotter() {
+#ifdef MOZ_WIDGET_COCOA
   MutexAutoLock lock(mMutex);
   MOZ_RELEASE_ASSERT(
       !mWeakSnapshotter,
@@ -350,14 +359,19 @@ UniquePtr<NativeLayerRootSnapshotter> NativeLayerRootCA::CreateSnapshotter() {
     mWeakSnapshotter = cr.get();
   }
   return cr;
+#else
+  return nullptr;
+#endif
 }
 
+#ifdef MOZ_WIDGET_COCOA
 void NativeLayerRootCA::OnNativeLayerRootSnapshotterDestroyed(
     NativeLayerRootSnapshotterCA* aNativeLayerRootSnapshotter) {
   MutexAutoLock lock(mMutex);
   MOZ_RELEASE_ASSERT(mWeakSnapshotter == aNativeLayerRootSnapshotter);
   mWeakSnapshotter = nullptr;
 }
+#endif
 
 void NativeLayerRootCA::CommitOffscreen() {
   MutexAutoLock lock(mMutex);
@@ -426,7 +440,7 @@ void NativeLayerRootCA::Representation::Commit(WhichRepresentation aRepresentati
     mustRebuild |= layer->WillUpdateAffectLayers(aRepresentation);
     layer->ApplyChanges(aRepresentation, NativeLayerCA::UpdateType::All);
     CALayer* caLayer = layer->UnderlyingCALayer(aRepresentation);
-    if (!caLayer.masksToBounds || !NSIsEmptyRect(caLayer.bounds)) {
+    if (!caLayer.masksToBounds || !CGRectIsEmpty(caLayer.bounds)) {
       // This layer has an extent. If it didn't before, we need to rebuild.
       mustRebuild |= !layer->HasExtent();
       layer->SetHasExtent(true);
@@ -456,6 +470,7 @@ void NativeLayerRootCA::Representation::Commit(WhichRepresentation aRepresentati
   mMutatedLayerStructure = false;
 }
 
+#ifdef MOZ_WIDGET_COCOA
 /* static */ UniquePtr<NativeLayerRootSnapshotterCA> NativeLayerRootSnapshotterCA::Create(
     NativeLayerRootCA* aLayerRoot, CALayer* aRootCALayer) {
   if (NS_IsMainThread()) {
@@ -479,6 +494,7 @@ void NativeLayerRootCA::Representation::Commit(WhichRepresentation aRepresentati
   return UniquePtr<NativeLayerRootSnapshotterCA>(
       new NativeLayerRootSnapshotterCA(aLayerRoot, std::move(gl), aRootCALayer));
 }
+#endif
 
 void NativeLayerRootCA::DumpLayerTreeToFile(const char* aPath) {
   MutexAutoLock lock(mMutex);
@@ -593,6 +609,7 @@ VideoLowPowerType NativeLayerRootCA::CheckVideoLowPower() {
 
   CALayer* topContentCALayer = topCALayer.sublayers[0];
   if (![topContentCALayer isKindOfClass:[AVSampleBufferDisplayLayer class]]) {
+#ifdef XP_MACOSX
     // We didn't create a AVSampleBufferDisplayLayer for the top video layer.
     // Try to figure out why by following some of the logic in
     // NativeLayerCA::ShouldSpecializeVideo.
@@ -607,7 +624,7 @@ VideoLowPowerType NativeLayerRootCA::CheckVideoLowPower() {
     // The only remaining reason is that the surface wasn't eligible. We
     // assert this instead of if-ing it, to ensure that we always have a
     // return value from this clause.
-#ifdef DEBUG
+#  ifdef DEBUG
     MOZ_ASSERT(topLayer->mTextureHost);
     MacIOSurface* macIOSurface = topLayer->mTextureHost->GetSurface();
     CFTypeRefPtr<IOSurfaceRef> surface = macIOSurface->GetIOSurfaceRef();
@@ -616,8 +633,12 @@ VideoLowPowerType NativeLayerRootCA::CheckVideoLowPower() {
                  pixelFormat == kCVPixelFormatType_420YpCbCr8BiPlanarFullRange ||
                  pixelFormat == kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange ||
                  pixelFormat == kCVPixelFormatType_420YpCbCr10BiPlanarFullRange));
-#endif
+#  endif
     return VideoLowPowerType::FailSurface;
+#else
+    // What to do on iOS?
+    return VideoLowPowerType::FailPref;
+#endif
   }
 
   AVSampleBufferDisplayLayer* topVideoLayer = (AVSampleBufferDisplayLayer*)topContentCALayer;
@@ -629,6 +650,7 @@ VideoLowPowerType NativeLayerRootCA::CheckVideoLowPower() {
   return VideoLowPowerType::LowPower;
 }
 
+#ifdef MOZ_WIDGET_COCOA
 NativeLayerRootSnapshotterCA::NativeLayerRootSnapshotterCA(NativeLayerRootCA* aLayerRoot,
                                                            RefPtr<GLContext>&& aGL,
                                                            CALayer* aRootCALayer)
@@ -760,6 +782,7 @@ NativeLayerRootSnapshotterCA::CreateAsyncReadbackBuffer(const IntSize& aSize) {
   mGL->fBufferData(LOCAL_GL_PIXEL_PACK_BUFFER, bufferByteCount, nullptr, LOCAL_GL_STREAM_READ);
   return MakeAndAddRef<AsyncReadbackBufferNLRS>(mGL, aSize, bufferHandle);
 }
+#endif
 
 NativeLayerCA::NativeLayerCA(const IntSize& aSize, bool aIsOpaque,
                              SurfacePoolHandleCA* aSurfacePoolHandle)
@@ -888,6 +911,7 @@ bool NativeLayerCA::IsVideoAndLocked(const MutexAutoLock& aProofOfLock) {
 }
 
 bool NativeLayerCA::ShouldSpecializeVideo(const MutexAutoLock& aProofOfLock) {
+#ifdef MOZ_WIDGET_COCOA
   if (!IsVideoAndLocked(aProofOfLock)) {
     // Only videos are eligible.
     return false;
@@ -941,6 +965,9 @@ bool NativeLayerCA::ShouldSpecializeVideo(const MutexAutoLock& aProofOfLock) {
 
   // It will only detach if we're fullscreen.
   return mRootWindowIsFullscreen;
+#else
+  return false;
+#endif
 }
 
 void NativeLayerCA::SetRootWindowIsFullscreen(bool aFullscreen) {
@@ -1448,8 +1475,10 @@ static NSString* NSStringForOSType(OSType type) {
   CFRelease(surfaceValues);
 
   if (aBuffer) {
+#ifdef MOZ_WIDGET_COCOA
     CGColorSpaceRef colorSpace = CVImageBufferGetColorSpace(aBuffer);
     NSLog(@"ColorSpace is %@.\n", colorSpace);
+#endif
 
     CFDictionaryRef bufferAttachments =
         CVBufferGetAttachments(aBuffer, kCVAttachmentMode_ShouldPropagate);
@@ -1499,7 +1528,7 @@ bool NativeLayerCA::Representation::EnqueueSurface(IOSurfaceRef aSurfaceRef) {
     return false;
   }
 
-#ifdef NIGHTLY_BUILD
+#if defined(NIGHTLY_BUILD) && defined(MOZ_WIDGET_COCOA)
   if (StaticPrefs::gfx_core_animation_specialize_video_check_color_space()) {
     // Ensure the resulting pixel buffer has a color space. If it doesn't, then modify
     // the surface and create the buffer again.
@@ -1730,11 +1759,9 @@ bool NativeLayerCA::Representation::ApplyChanges(
     mOpaquenessTintLayer.anchorPoint = CGPointZero;
     mOpaquenessTintLayer.contentsGravity = kCAGravityTopLeft;
     if (aIsOpaque) {
-      mOpaquenessTintLayer.backgroundColor =
-          [[[NSColor greenColor] colorWithAlphaComponent:0.5] CGColor];
+      mOpaquenessTintLayer.backgroundColor = CGColorCreateSRGB(0, 1, 0, 0.5);
     } else {
-      mOpaquenessTintLayer.backgroundColor =
-          [[[NSColor redColor] colorWithAlphaComponent:0.5] CGColor];
+      mOpaquenessTintLayer.backgroundColor = CGColorCreateSRGB(1, 0, 0, 0.5);
     }
     [mWrappingCALayer addSublayer:mOpaquenessTintLayer];
   } else if (!shouldTintOpaqueness && mOpaquenessTintLayer) {

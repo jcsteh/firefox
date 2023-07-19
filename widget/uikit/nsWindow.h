@@ -15,6 +15,10 @@
 @class UIView;
 @class ChildView;
 
+namespace mozilla::layers {
+class NativeLayerRootCA;
+}
+
 class nsWindow final : public nsBaseWidget {
   typedef nsBaseWidget Inherited;
 
@@ -84,6 +88,27 @@ class nsWindow final : public nsBaseWidget {
                       void* aCallbackData) override;
   */
 
+  RefPtr<mozilla::layers::NativeLayerRoot> GetNativeLayerRoot() override;
+
+  void HandleMainThreadCATransaction();
+
+  // Called when the main thread enters a phase during which visual changes
+  // are imminent and any layer updates on the compositor thread would interfere
+  // with visual atomicity.
+  // "Async" CATransactions are CATransactions which happen on a thread that's
+  // not the main thread.
+  void SuspendAsyncCATransactions();
+
+  // Called when we know that the current main thread paint will be completed once
+  // the main thread goes back to the event loop.
+  void MaybeScheduleUnsuspendAsyncCATransactions();
+
+  // Called from the runnable dispatched by MaybeScheduleUnsuspendAsyncCATransactions().
+  // At this point we know that the main thread is done handling the visual change
+  // (such as a window resize) and we can start modifying CALayers from the
+  // compositor thread again.
+  void UnsuspendAsyncCATransactions();
+
  protected:
   virtual ~nsWindow();
   void BringToFront();
@@ -100,6 +125,10 @@ class nsWindow final : public nsBaseWidget {
   nsTArray<nsWindow*> mChildren;
   nsWindow* mParent;
   InputContext mInputContext;
+
+  RefPtr<mozilla::layers::NativeLayerRootCA> mNativeLayerRoot;
+
+  RefPtr<mozilla::CancelableRunnable> mUnsuspendAsyncCATransactionsRunnable;
 
   void OnSizeChanged(const mozilla::gfx::IntSize& aSize);
 
