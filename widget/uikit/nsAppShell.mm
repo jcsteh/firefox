@@ -288,10 +288,17 @@ bool nsAppShell::ProcessNextNativeEvent(bool aMayWait) {
 NS_IMETHODIMP
 nsAppShell::Run(void) {
   ALOG("nsAppShell::Run");
-  char argv[1][4] = {"app"};
-  UIApplicationMain(1, (char**)argv, nil, @"AppShellDelegate");
-  // UIApplicationMain doesn't exit. :-(
-  return NS_OK;
+
+  nsresult rv = NS_OK;
+  if (XRE_UseNativeEventProcessing()) {
+    char argv[1][4] = {"app"};
+    UIApplicationMain(1, (char**)argv, nil, @"AppShellDelegate");
+    // UIApplicationMain doesn't exit. :-(
+  } else {
+    rv = nsBaseAppShell::Run();
+  }
+
+  return rv;
 }
 
 NS_IMETHODIMP
