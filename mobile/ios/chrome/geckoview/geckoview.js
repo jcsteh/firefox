@@ -25,10 +25,6 @@ function createBrowser() {
   browser.setAttribute("remoteType", E10SUtils.DEFAULT_REMOTE_TYPE);
   browser.setAttribute("messagemanagergroup", "browsers");
 
-  // The browser starts up as inactive for a tab by default.
-  // See: https://bugzilla.mozilla.org/show_bug.cgi?id=1815015
-  browser.setAttribute("initiallyactive", "false");
-
   // This is only needed for mochitests, so that they honor the
   // prefers-color-scheme.content-override pref. GeckoView doesn't set this
   // pref to anything other than the default value otherwise.
@@ -47,9 +43,7 @@ function startup() {
 
   browser.preserveLayers(true);
 
-  browser.fixupAndLoadURIString("http://example.edu", {
+  browser.fixupAndLoadURIString("https://www.mozilla.org/firefox/channel/", {
     triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal(),
   });
 }
-
-startup();
