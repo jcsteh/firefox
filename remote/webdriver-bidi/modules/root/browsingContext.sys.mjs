@@ -33,6 +33,24 @@ XPCOMUtils.defineLazyGetter(lazy, "logger", () =>
   lazy.Log.get(lazy.Log.TYPES.WEBDRIVER_BIDI)
 );
 
+// Maximal window dimension allowed when emulating a viewport.
+const MAX_WINDOW_SIZE = 10000000;
+
+/**
+ * @typedef {string} ClipRectangleType
+ */
+
+/**
+ * Enum of possible clip rectangle types.
+ *
+ * @readonly
+ * @enum {ClipRectangleType}
+ */
+export const ClipRectangleType = {
+  Element: "element",
+  Viewport: "viewport",
+};
+
 /**
  * @typedef {object} CreateType
  */
@@ -47,6 +65,17 @@ const CreateType = {
   tab: "tab",
   window: "window",
 };
+
+/**
+ * An object that contains details of a viewport.
+ *
+ * @typedef {object} Viewport
+ *
+ * @property {number} height
+ *     The height of the viewport.
+ * @property {number} width
+ *     The width of the viewport.
+ */
 
 /**
  * @typedef {string} WaitCondition
@@ -92,23 +121,106 @@ class BrowsingContextModule extends Module {
   }
 
   /**
+   * Used as an argument for browsingContext.captureScreenshot command, as one of the available variants
+   * {BoxClipRectangle} or {ElementClipRectangle}, to represent a target of the command.
+   *
+   * @typedef ClipRectangle
+   */
+
+  /**
+   * Used as an argument for browsingContext.captureScreenshot command
+   * to represent a viewport which is going to be a target of the command.
+   *
+   * @typedef BoxClipRectangle
+   *
+   * @property {ClipRectangleType} [type=ClipRectangleType.Viewport]
+   * @property {number} x
+   * @property {number} y
+   * @property {number} width
+   * @property {number} height
+   */
+
+  /**
+   * Used as an argument for browsingContext.captureScreenshot command
+   * to represent an element which is going to be a target of the command.
+   *
+   * @typedef ElementClipRectangle
+   *
+   * @property {ClipRectangleType} [type=ClipRectangleType.Element]
+   * @property {SharedReference} element
+   * @property {boolean=} scrollIntoView
+   */
+
+  /**
    * Capture a base64-encoded screenshot of the provided browsing context.
    *
    * @param {object=} options
    * @param {string} options.context
    *     Id of the browsing context to screenshot.
+   * @param {ClipRectangle=} options.clip
+   *     An element or a viewport of which a screenshot should be taken.
+   *     If not present, take a screenshot of the whole viewport.
    *
    * @throws {NoSuchFrameError}
    *     If the browsing context cannot be found.
    */
   async captureScreenshot(options = {}) {
-    const { context: contextId } = options;
+    const { clip = null, context: contextId } = options;
 
     lazy.assert.string(
       contextId,
       `Expected "context" to be a string, got ${contextId}`
     );
     const context = this.#getBrowsingContext(contextId);
+
+    if (clip !== null) {
+      lazy.assert.object(clip, `Expected "clip" to be a object, got ${clip}`);
+
+      const { type } = clip;
+      switch (type) {
+        case ClipRectangleType.Element: {
+          const { element, scrollIntoView = null } = clip;
+
+          lazy.assert.object(
+            element,
+            `Expected "element" to be an object, got ${element}`
+          );
+
+          if (scrollIntoView !== null) {
+            lazy.assert.boolean(
+              scrollIntoView,
+              `Expected "scrollIntoView" to be a boolean, got ${scrollIntoView}`
+            );
+          }
+
+          break;
+        }
+
+        case ClipRectangleType.Viewport: {
+          const { x, y, width, height } = clip;
+
+          lazy.assert.number(x, `Expected "x" to be a number, got ${x}`);
+          lazy.assert.number(y, `Expected "y" to be a number, got ${y}`);
+          lazy.assert.number(
+            width,
+            `Expected "width" to be a number, got ${width}`
+          );
+          lazy.assert.number(
+            height,
+            `Expected "height" to be a number, got ${height}`
+          );
+
+          break;
+        }
+
+        default:
+          throw new lazy.error.InvalidArgumentError(
+            `Expected "type" to be one of ${Object.values(
+              ClipRectangleType
+            )}, got ${type}`
+          );
+      }
+    }
 
     const rect = await this.messageHandler.handleCommand({
       moduleName: "browsingContext",
@@ -117,8 +229,17 @@ class BrowsingContextModule extends Module {
         type: lazy.WindowGlobalMessageHandler.type,
         id: context.id,
       },
+      params: {
+        clip,
+      },
       retryOnAbort: true,
     });
+
+    if (rect.width === 0 || rect.height === 0) {
+      throw new lazy.error.UnableToCaptureScreen(
+        `The dimensions of requested screenshot are incorrect, got width: ${rect.width} and height: ${rect.height}.`
+      );
+    }
 
     const canvas = await lazy.capture.canvas(
       context.topChromeWindow,
@@ -559,6 +680,95 @@ class BrowsingContextModule extends Module {
     return {
       data: btoa(binaryString),
     };
+  }
+
+  /**
+   * Set the top-level browsing context's viewport to a given dimension.
+   *
+   * @param {object=} options
+   * @param {string} options.context
+   *     Id of the browsing context.
+   * @param {Viewport|null} options.viewport
+   *     Dimensions to set the viewport to, or `null` to reset it
+   *     to the original dimensions.
+   *
+   * @throws {InvalidArgumentError}
+   *     Raised if an argument is of an invalid type or value.
+   * @throws UnsupportedOperationError
+   *     Raised when the command is called on Android.
+   */
+  async setViewport(options = {}) {
+    const { context: contextId, viewport } = options;
+
+    if (lazy.AppInfo.isAndroid) {
+      // Bug 1840084: Add Android support for modifying the viewport.
+      throw new lazy.error.UnsupportedOperationError(
+        `Command not yet supported for ${lazy.AppInfo.name}`
+      );
+    }
+
+    lazy.assert.string(
+      contextId,
+      `Expected "context" to be a string, got ${contextId}`
+    );
+
+    const context = this.#getBrowsingContext(contextId);
+    if (context.parent) {
+      throw new lazy.error.InvalidArgumentError(
+        `Browsing Context with id ${contextId} is not top-level`
+      );
+    }
+    const browser = context.embedderElement;
+
+    if (typeof viewport !== "object") {
+      throw new lazy.error.InvalidArgumentError(
+        `Expected "viewport" to be an object or null, got ${viewport}`
+      );
+    }
+
+    let targetHeight, targetWidth;
+    if (viewport !== null) {
+      const { height, width } = viewport;
+
+      targetHeight = lazy.assert.positiveInteger(
+        height,
+        `Expected "height" to be a positive integer, got ${height}`
+      );
+      targetWidth = lazy.assert.positiveInteger(
+        width,
+        `Expected "width" to be a positive integer, got ${width}`
+      );
+
+      if (targetHeight > MAX_WINDOW_SIZE || targetWidth > MAX_WINDOW_SIZE) {
+        throw new lazy.error.UnsupportedOperationError(
+          `"width" or "height" cannot be larger than ${MAX_WINDOW_SIZE} px`
+        );
+      }
+
+      browser.style.setProperty("height", targetHeight + "px");
+      browser.style.setProperty("width", targetWidth + "px");
+    } else {
+      // Reset viewport to the original dimensions
+      targetHeight = browser.parentElement.clientHeight;
+      targetWidth = browser.parentElement.clientWidth;
+
+      browser.style.removeProperty("height");
+      browser.style.removeProperty("width");
+    }
+
+    // Wait until the viewport has been resized
+    await this.messageHandler.forwardCommand({
+      moduleName: "browsingContext",
+      commandName: "_awaitViewportDimensions",
+      destination: {
+        type: lazy.WindowGlobalMessageHandler.type,
+        id: context.id,
+      },
+      params: {
+        height: targetHeight,
+        width: targetWidth,
+      },
+    });
   }
 
   /**

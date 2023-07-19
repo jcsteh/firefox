@@ -127,6 +127,7 @@
 #include "vm/StringType.h"
 #include "wasm/AsmJS.h"
 #include "wasm/WasmBaselineCompile.h"
+#include "wasm/WasmFeatures.h"
 #include "wasm/WasmGcObject.h"
 #include "wasm/WasmInstance.h"
 #include "wasm/WasmIntrinsic.h"
@@ -910,7 +911,7 @@ static bool WasmThreadsEnabled(JSContext* cx, unsigned argc, Value* vp) {
     args.rval().setBoolean(wasm::NAME##Available(cx));                       \
     return true;                                                             \
   }
-JS_FOR_WASM_FEATURES(WASM_FEATURE, WASM_FEATURE, WASM_FEATURE);
+JS_FOR_WASM_FEATURES(WASM_FEATURE);
 #undef WASM_FEATURE
 
 static bool WasmSimdEnabled(JSContext* cx, unsigned argc, Value* vp) {
@@ -1068,7 +1069,7 @@ static bool WasmGlobalFromArrayBuffer(JSContext* cx, unsigned argc, Value* vp) {
     JS_ReportErrorASCII(cx, "argument is not an array buffer");
     return false;
   }
-  RootedArrayBufferObject buffer(
+  Rooted<ArrayBufferObject*> buffer(
       cx, &args.get(1).toObject().as<ArrayBufferObject>());
 
   // Only allow POD to be created from bytes
@@ -5276,6 +5277,7 @@ class CustomSerializableObject : public NativeObject {
   }
 
   static bool ReadTransfer(JSContext* cx, JSStructuredCloneReader* r,
+                           const JS::CloneDataPolicy& cloneDataPolicy,
                            uint32_t tag, void* content, uint64_t extraData,
                            void* closure,
                            JS::MutableHandleObject returnObject) {
@@ -9125,7 +9127,7 @@ gc::ZealModeHelpText),
     JS_FN_HELP("wasm" #NAME "Enabled", Wasm##NAME##Enabled, 0, 0, \
 "wasm" #NAME "Enabled()", \
 "  Returns a boolean indicating whether the WebAssembly " #NAME " proposal is enabled."),
-JS_FOR_WASM_FEATURES(WASM_FEATURE, WASM_FEATURE, WASM_FEATURE)
+JS_FOR_WASM_FEATURES(WASM_FEATURE)
 #undef WASM_FEATURE
 
     JS_FN_HELP("wasmThreadsEnabled", WasmThreadsEnabled, 0, 0,

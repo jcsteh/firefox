@@ -44,7 +44,8 @@ nsHtml5TreeBuilder::nsHtml5TreeBuilder(nsHtml5OplessBuilder* aBuilder)
       mBroken(NS_OK),
       mCurrentHtmlScriptIsAsyncOrDefer(false),
       mPreventScriptExecution(false),
-      mGenerateSpeculativeLoads(false)
+      mGenerateSpeculativeLoads(false),
+      mHasSeenImportMap(false)
 #ifdef DEBUG
       ,
       mActive(false)
@@ -85,7 +86,8 @@ nsHtml5TreeBuilder::nsHtml5TreeBuilder(nsAHtml5TreeOpSink* aOpSink,
       mBroken(NS_OK),
       mCurrentHtmlScriptIsAsyncOrDefer(false),
       mPreventScriptExecution(false),
-      mGenerateSpeculativeLoads(aGenerateSpeculativeLoads)
+      mGenerateSpeculativeLoads(aGenerateSpeculativeLoads),
+      mHasSeenImportMap(false)
 #ifdef DEBUG
       ,
       mActive(false)
@@ -226,13 +228,25 @@ nsIContentHandle* nsHtml5TreeBuilder::createElement(
               tokenizer->getColumnNumber());
           treeOp->Init(mozilla::AsVariant(operation));
 
+          nsHtml5String type =
+              aAttributes->getValue(nsHtml5AttributeName::ATTR_TYPE);
+          nsAutoString typeString;
+          type.ToString(typeString);
+          if (!mHasSeenImportMap) {
+            // If we see an importmap, we don't want to later start speculative
+            // loads for modulepreloads, since such load might finish before
+            // the importmap is created. This also applies to module scripts so
+            // that any modulepreload integrity checks can be performed before
+            // the modules scripts are loaded.
+            mHasSeenImportMap =
+                typeString.LowerCaseFindASCII("importmap") != kNotFound;
+          }
           nsHtml5String url =
               aAttributes->getValue(nsHtml5AttributeName::ATTR_SRC);
-          if (url) {
+          if (url && !(mHasSeenImportMap &&
+                       typeString.LowerCaseFindASCII("module") != kNotFound)) {
             nsHtml5String charset =
                 aAttributes->getValue(nsHtml5AttributeName::ATTR_CHARSET);
-            nsHtml5String type =
-                aAttributes->getValue(nsHtml5AttributeName::ATTR_TYPE);
             nsHtml5String crossOrigin =
                 aAttributes->getValue(nsHtml5AttributeName::ATTR_CROSSORIGIN);
             nsHtml5String integrity =
@@ -338,7 +352,8 @@ nsIContentHandle* nsHtml5TreeBuilder::createElement(
                 // Other "as" values will be supported later.
               }
             } else if (mozilla::StaticPrefs::network_modulepreload() &&
-                       rel.LowerCaseEqualsASCII("modulepreload")) {
+                       rel.LowerCaseEqualsASCII("modulepreload") &&
+                       !mHasSeenImportMap) {
               nsHtml5String url =
                   aAttributes->getValue(nsHtml5AttributeName::ATTR_HREF);
               if (url && url.Length() != 0) {

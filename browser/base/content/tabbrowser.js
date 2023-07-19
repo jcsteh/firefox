@@ -7,7 +7,7 @@
   // start private scope for gBrowser
   /**
    * A set of known icons to use for internal pages. These are hardcoded so we can
-   * start loading them faster than ContentLinkHandler would normally find them.
+   * start loading them faster than FaviconLoader would normally find them.
    */
   const FAVICON_DEFAULTS = {
     "about:newtab": "chrome://branding/content/icon32.png",
@@ -2976,6 +2976,10 @@
         remoteType,
         usingPreloadedContent,
       };
+
+      if (BookmarkingUI.isOnNewTabPage(uri)) {
+        this.getPanel(b).classList.add("newTabBrowserPanel");
+      }
 
       // Hack to ensure that the about:newtab, and about:welcome favicon is loaded
       // instantaneously, to avoid flickering and improve perceived performance.
@@ -6844,6 +6848,13 @@
           if (this.mTab.hasAttribute("muted")) {
             this.mTab.linkedBrowser.mute();
           }
+
+          gBrowser
+            .getPanel(this.mBrowser)
+            .classList.toggle(
+              "newTabBrowserPanel",
+              BookmarkingUI.isOnNewTabPage(aLocation)
+            );
 
           if (gBrowser.isFindBarInitialized(this.mTab)) {
             let findBar = gBrowser.getCachedFindBar(this.mTab);

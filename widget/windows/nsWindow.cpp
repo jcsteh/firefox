@@ -123,6 +123,7 @@
 #include "nsString.h"
 #include "mozilla/Components.h"
 #include "nsNativeThemeWin.h"
+#include "nsXULPopupManager.h"
 #include "nsWindowsDllInterceptor.h"
 #include "nsLayoutUtils.h"
 #include "nsView.h"
@@ -825,15 +826,6 @@ nsWindow::~nsWindow() {
 // when the window is created or resized.
 int32_t nsWindow::GetHeight(int32_t aProposedHeight) { return aProposedHeight; }
 
-static bool ShouldCacheTitleBarInfo(WindowType aWindowType,
-                                    BorderStyle aBorderStyle) {
-  return (aWindowType == WindowType::TopLevel) &&
-         (aBorderStyle == BorderStyle::Default ||
-          aBorderStyle == BorderStyle::All) &&
-         (!nsUXThemeData::sTitlebarInfoPopulatedThemed ||
-          !nsUXThemeData::sTitlebarInfoPopulatedAero);
-}
-
 void nsWindow::SendAnAPZEvent(InputData& aEvent) {
   LRESULT popupHandlingResult;
   if (DealWithPopups(mWnd, MOZ_WM_DMANIP, 0, 0, &popupHandlingResult)) {
@@ -1217,12 +1209,6 @@ nsresult nsWindow::Create(nsIWidget* aParent, nsNativeWidget aNativeParent,
 
   mDefaultIMC.Init(this);
   IMEHandler::InitInputContext(this, mInputContext);
-
-  // Query for command button metric data for rendering the titlebar. We
-  // only do this once on the first window that has an actual titlebar
-  if (ShouldCacheTitleBarInfo(mWindowType, mBorderStyle)) {
-    nsUXThemeData::UpdateTitlebarInfo(mWnd);
-  }
 
   static bool a11yPrimed = false;
   if (!a11yPrimed && mWindowType == WindowType::TopLevel) {
@@ -3281,12 +3267,6 @@ void nsWindow::UpdateOpaqueRegion(const LayoutDeviceIntRegion& aOpaqueRegion) {
     margins.cxLeftWidth = largest.X();
     margins.cxRightWidth = clientBounds.Width() - largest.XMost();
     margins.cyBottomHeight = clientBounds.Height() - largest.YMost();
-    if (mCustomNonClient) {
-      // The minimum glass height must be the caption buttons height,
-      // otherwise the buttons are drawn incorrectly.
-      largest.MoveToY(std::max<uint32_t>(
-          largest.Y(), nsUXThemeData::GetCommandButtonBoxMetrics().cy));
-    }
     margins.cyTopHeight = largest.Y();
   }
 
@@ -6132,6 +6112,10 @@ bool nsWindow::ProcessMessageInternal(UINT msg, WPARAM& wParam, LPARAM& lParam,
           DispatchInputEvent(&event);
           if (sSwitchKeyboardLayout && mLastKeyboardLayout)
             ActivateKeyboardLayout(mLastKeyboardLayout, 0);
+
+#ifdef ACCESSIBILITY
+          a11y::LazyInstantiator::ResetUiaDetectionCache();
+#endif
         }
       }
     } break;
@@ -8188,6 +8172,15 @@ bool nsWindow::DealWithPopups(HWND aWnd, UINT aMessage, WPARAM aWParam,
 
   if (!::IsWindowVisible(aWnd)) {
     return false;
+  }
+
+  if (MOZ_UNLIKELY(aMessage == WM_KILLFOCUS)) {
+    // NOTE: We deal with this here rather than on the switch below because we
+    // want to do this even if there are no menus to rollup (tooltips don't set
+    // the rollup listener etc).
+    if (RefPtr pm = nsXULPopupManager::GetInstance()) {
+      pm->RollupTooltips();
+    }
   }
 
   nsIRollupListener* rollupListener = nsBaseWidget::GetActiveRollupListener();

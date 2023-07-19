@@ -791,6 +791,7 @@ void nsDisplayListBuilder::AddEffectUpdate(dom::RemoteBrowser* aBrowser,
 void nsDisplayListBuilder::EndFrame() {
   NS_ASSERTION(!mInInvalidSubtree,
                "Someone forgot to cleanup mInInvalidSubtree!");
+  mCurrentContainerASR = nullptr;
   mActiveScrolledRoots.Clear();
   mEffectsUpdates.Clear();
   FreeClipChains();
@@ -7677,6 +7678,9 @@ void nsDisplayText::RenderToContext(gfxContext* aCtx,
       // necessary. This is done here because we want selection be
       // compressed at the same time as text.
       gfxPoint pt = nsLayoutUtils::PointToGfxPoint(framePt, A2D);
+      if (f->GetTextRun(nsTextFrame::eInflated)->IsRightToLeft()) {
+        pt.x += gfxFloat(f->GetSize().width) / A2D;
+      }
       gfxMatrix mat = aCtx->CurrentMatrixDouble()
                           .PreTranslate(pt)
                           .PreScale(scaleFactor, 1.0)
@@ -8074,15 +8078,14 @@ static Maybe<wr::WrClipChainId> CreateSimpleClipRegion(
   wr::WrClipId clipId{};
 
   switch (shape.tag) {
-    case StyleBasicShape::Tag::Xywh:
-    case StyleBasicShape::Tag::Inset: {
-      const nsRect rect = ShapeUtils::ComputeRect(shape, refBox) +
-                          aDisplayItem.ToReferenceFrame();
-      const auto& round =
-          shape.IsInset() ? shape.AsInset().round : shape.AsXywh().round;
+    case StyleBasicShape::Tag::Rect: {
+      const nsRect rect =
+          ShapeUtils::ComputeInsetRect(shape.AsRect().rect, refBox) +
+          aDisplayItem.ToReferenceFrame();
 
       nscoord radii[8] = {0};
-      if (ShapeUtils::ComputeRectRadii(round, refBox, rect, radii)) {
+      if (ShapeUtils::ComputeRectRadii(shape.AsRect().round, refBox, rect,
+                                       radii)) {
         clipId = aBuilder.DefineRoundedRectClip(
             Nothing(),
             wr::ToComplexClipRegion(rect, radii, appUnitsPerDevPixel));

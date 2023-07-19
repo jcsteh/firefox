@@ -768,12 +768,10 @@
 
 # If this is true, APZ fully recalculates the scroll thumb size and
 # position in the compositor. This leads to the size and position
-# being more accurate in scenarios such as async zooming, but the
-# recalculation code is error-prone so it's nightly-only for now
-# to give it more baking time.
+# being more accurate in scenarios such as async zooming.
 - name: apz.scrollthumb.recalc
   type: RelaxedAtomicBool
-  value: @IS_NIGHTLY_BUILD@
+  value: true
   mirror: always
 
 - name: apz.test.fails_with_native_injection
@@ -2200,11 +2198,6 @@
   value: true
   mirror: always
 
-- name: dom.allow_XUL_XBL_for_file
-  type: bool
-  value: false
-  mirror: always
-
 # Checks if offscreen animation throttling is enabled.
 - name: dom.animations.offscreen-throttling
   type: bool
@@ -2365,11 +2358,6 @@
   value: true
   mirror: always
 
-- name: dom.crypto.randomUUID.enabled
-  type: RelaxedAtomicBool
-  value: true
-  mirror: always
-
 # Is support for CSSPseudoElement enabled?
 - name: dom.css_pseudo_element.enabled
   type: bool
@@ -2387,12 +2375,6 @@
 # Make sure cases like bug 1795380 work before trying to turn this off. See
 # bug 1680721 for some other context that might be relevant.
 - name: dom.delay.block_external_protocol_in_iframes.enabled
-  type: bool
-  value: true
-  mirror: always
-
-# HTML <dialog> element
-- name: dom.dialog_element.enabled
   type: bool
   value: true
   mirror: always
@@ -2533,12 +2515,6 @@
 
 # Whether Shift+Right click force-opens the context menu
 - name: dom.event.contextmenu.shift_suppresses_event
-  type: bool
-  value: true
-  mirror: always
-
-# Whether touch event listeners are passive by default.
-- name: dom.event.default_to_passive_touch_listeners
   type: bool
   value: true
   mirror: always
@@ -2842,11 +2818,6 @@
 - name: dom.indexedDB.preprocessing
   type: RelaxedAtomicBool
   value: false
-  mirror: always
-
-- name: dom.input_events.beforeinput.enabled
-  type: bool
-  value: true
   mirror: always
 
 # Whether innerWidth / innerHeight return rounded or fractional sizes.
@@ -3587,12 +3558,6 @@
 - name: dom.reporting.delivering.maxReports
   type: uint32_t
   value: 100
-  mirror: always
-
-# Enable requestIdleCallback API
-- name: dom.requestIdleCallback.enabled
-  type: bool
-  value: true
   mirror: always
 
 # Enable Screen Orientation lock
@@ -4649,13 +4614,7 @@
   type: RelaxedAtomicBool
   value: @IS_NOT_MOBILE@
   mirror: always
-
-# Is the 'delegatesFocus' attribute for shadow dom
-- name: dom.shadowdom.delegatesFocus.enabled
-  type: bool
-  value: true
-  mirror: always
-
+  
 # Is the 'assign' API for slot element enabled?
 - name: dom.shadowdom.slot.assign.enabled
   type: bool
@@ -4723,11 +4682,6 @@
   value: true
   mirror: always
 
-- name: dom.webnotifications.allowinsecure
-  type: RelaxedAtomicBool
-  value: false
-  mirror: always
-
 - name: dom.webnotifications.allowcrossoriginiframe
   type: RelaxedAtomicBool
   value: false
@@ -4762,22 +4716,12 @@
 #endif
   mirror: always
 
-- name: dom.webnotifications.serviceworker.enabled
-  type: RelaxedAtomicBool
-  value: true
-  mirror: always
-
 # Is support for Window.event enabled?
 - name: dom.window.event.enabled
   type: bool
   value: true
   mirror: always
-
-- name: dom.window.history.async
-  type: bool
-  value: true
-  mirror: always
-
+  
 - name: dom.window.clientinformation.enabled
   type: bool
   value: true
@@ -4825,12 +4769,6 @@
 
 - name: dom.worklet.enabled
   type: bool
-  value: true
-  mirror: always
-
-# Enable content type normalization of XHR uploads via MIME Sniffing standard
-- name: dom.xhr.standard_content_type_normalization
-  type: RelaxedAtomicBool
   value: true
   mirror: always
 
@@ -6334,6 +6272,11 @@
   type: bool
   value: false
   mirror: once
+
+- name: gfx.x11.glx_sgi_video_sync
+  type: bool
+  value: false
+  mirror: once
 #endif
 
 - name: gfx.testing.device-fail
@@ -6398,20 +6341,11 @@
   value: false
   mirror: once
 
-# We expose two prefs: gfx.webrender.all and gfx.webrender.enabled.
-# The first enables WR+additional features, and the second just enables WR.
-# For developer convenience, building with --enable-webrender=true or just
-# --enable-webrender will set gfx.webrender.enabled to true by default.
+# Whether to use the WebRender hardware backend
 - name: gfx.webrender.all
   type: bool
   value: false
   mirror: once
-
-- name: gfx.webrender.enabled
-  type: bool
-  value: false
-  mirror: once
-  do_not_use_directly: true
 
 #ifdef XP_WIN
 - name: gfx.webrender.force-angle
@@ -7837,6 +7771,24 @@
   value: false
   mirror: always
 
+# Whether to support parsing '//(#@) source(Mapping)?URL=' pragmas.
+- name: javascript.options.source_pragmas
+  type: bool
+  value: true
+  mirror: always
+
+# asm.js
+- name: javascript.options.asmjs
+  type: bool
+  value: true
+  mirror: always
+
+# Whether to throw a TypeError if asm.js code hits validation failure.
+- name: javascript.options.throw_on_asmjs_validation_failure
+  type: bool
+  value: false
+  mirror: always
+
 #---------------------------------------------------------------------------
 # Prefs starting with "layers."
 #---------------------------------------------------------------------------
@@ -8254,6 +8206,13 @@
   mirror: always
   rust: true
 
+# Whether sign/abs functions are enabled in calc().
+- name: layout.css.abs-sign.enabled
+  type: RelaxedAtomicBool
+  value: @IS_NIGHTLY_BUILD@
+  mirror: always
+  rust: true
+
 # Whether infinity / nan constants are enabled in calc().
 - name: layout.css.nan-inf.enabled
   type: RelaxedAtomicBool
@@ -8264,7 +8223,7 @@
 # Whether CSS nesting is enabled.
 - name: layout.css.nesting.enabled
   type: RelaxedAtomicBool
-  value: @IS_NIGHTLY_BUILD@
+  value: true
   mirror: always
   rust: true
 
@@ -8346,16 +8305,6 @@
 
 # Whether we cache inline styles in a document unconditionally or not.
 - name: layout.css.inline-style-caching.always-enabled
-  type: bool
-  value: true
-  mirror: always
-
-# Whether we should return an empty style on invalid pseudo-elements starting
-# with a colon.
-#
-# Old behavior is returning an empty style if the string starts with a double
-# colon, and return the regular style otherwise.
-- name: layout.css.computed-style.new-invalid-pseudo-element-behavior
   type: bool
   value: true
   mirror: always
@@ -9357,7 +9306,7 @@
 # Is support for -webkit-slider* pseudos enabled?
 - name: layout.css.webkit-range-pseudos.enabled
   type: RelaxedAtomicBool
-  value: @IS_NIGHTLY_BUILD@
+  value: false
   mirror: always
   rust: true
 
@@ -9552,6 +9501,16 @@
   value: true
 #endif
   mirror: always
+
+# Whether to disable the MathML3 support for the mathvariant attribute. For
+# MathML Core, support is restricted to the <mi> element and to value "normal".
+# Corresponding automatic italicization on single-char <mi> element is also
+# implemented via text-transform: auto when that flag is enabled.
+- name: mathml.legacy_mathvariant_attribute.disabled
+  type: bool
+  value: @IS_NIGHTLY_BUILD@
+  mirror: always
+  rust: true
 
 #---------------------------------------------------------------------------
 # Prefs starting with "media."
@@ -10827,11 +10786,6 @@
 # navigator.mediaDevices and getUserMedia() support as well.
 # See also media.navigator.enabled
 - name: media.peerconnection.enabled
-  type: bool
-  value: true
-  mirror: always
-
-- name: media.peerconnection.dtmf.enabled
   type: bool
   value: true
   mirror: always
@@ -13529,6 +13483,30 @@
   type: String
   value: ""
   mirror: never
+
+# Main pref to enable / disable the feature.
+- name: privacy.bounceTrackingProtection.enabled
+  type: bool
+  value: false
+  mirror: once
+
+# How long to wait for a client redirect after a navigation ends.
+- name: privacy.bounceTrackingProtection.clientBounceDetectionTimerPeriodMS
+  type: uint32_t
+  value: 10000
+  mirror: always
+
+# Whether only bounces that access storage should be considered trackers.
+- name: privacy.bounceTrackingProtection.requireStatefulBounces
+  type: bool
+  value: false
+  mirror: always
+
+# To be used in test environments to enable observer messages.
+- name: privacy.bounceTrackingProtection.enableTestMode
+  type: bool
+  value: false
+  mirror: always
 
 #---------------------------------------------------------------------------
 # Prefs starting with "prompts."

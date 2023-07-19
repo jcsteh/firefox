@@ -19,6 +19,8 @@
 #include "mozilla/dom/PBrowserParent.h"
 #include "mozilla/dom/PBackgroundSessionStorageCache.h"
 #include "mozilla/dom/PWindowGlobalParent.h"
+#include "mozilla/dom/Promise.h"
+#include "mozilla/dom/Promise-inl.h"
 #include "mozilla/dom/WindowGlobalParent.h"
 #include "mozilla/dom/ContentProcessManager.h"
 #include "mozilla/dom/MediaController.h"
@@ -41,7 +43,6 @@
 #include "nsIPrintSettingsService.h"
 #include "nsISupports.h"
 #include "nsIWebNavigation.h"
-#include "mozilla/MozPromiseInlines.h"
 #include "nsDocShell.h"
 #include "nsFrameLoader.h"
 #include "nsFrameLoaderOwner.h"
@@ -2051,13 +2052,15 @@ CanonicalBrowsingContext::ChangeRemoteness(
     // Mark prepareToChange as unresolved, and wait for it to become resolved.
     if (blocker && blocker->State() != Promise::PromiseState::Resolved) {
       change->mWaitingForPrepareToChange = true;
-      RefPtr<DomPromiseListener> listener = new DomPromiseListener(
-          [change](JSContext* aCx, JS::Handle<JS::Value> aValue) {
+      blocker->AddCallbacksWithCycleCollectedArgs(
+          [change](JSContext*, JS::Handle<JS::Value>, ErrorResult&) {
             change->mWaitingForPrepareToChange = false;
             change->MaybeFinish();
           },
-          [change](nsresult aRv) { change->Cancel(aRv); });
-      blocker->AppendNativeHandler(listener);
+          [change](JSContext*, JS::Handle<JS::Value> aValue, ErrorResult&) {
+            change->Cancel(
+                Promise::TryExtractNSResultFromRejectionValue(aValue));
+          });
     }
   }
 
@@ -3029,6 +3032,14 @@ CanonicalBrowsingContext::GetMostRecentLoadingSessionHistoryEntry() {
 
   RefPtr<SessionHistoryEntry> entry = mLoadingEntries.LastElement().mEntry;
   return entry.forget();
+}
+
+already_AddRefed<BounceTrackingState>
+CanonicalBrowsingContext::GetBounceTrackingState() {
+  if (!mWebProgress) {
+    return nullptr;
+  }
+  return mWebProgress->GetBounceTrackingState();
 }
 
 NS_IMPL_CYCLE_COLLECTION_CLASS(CanonicalBrowsingContext)

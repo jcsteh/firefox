@@ -275,9 +275,19 @@ endif
 # In PROFILE_GEN_CFLAGS, they look like "-mllvm foo", and we want "-C llvm-args=foo", so first turn
 # "-mllvm foo" into "-mllvm:foo" so that it becomes a unique argument, that we can then filter for,
 # excluding other flags, and then turn into the right string.
-rust_pgo_flags += $(patsubst -mllvm:%,-C llvm-args=%,$(filter -mllvm:%,$(subst -mllvm ,-mllvm:,$(PROFILE_GEN_CFLAGS))))
+#
+# Remove -mllvm -pgo-temporal-instrumentation as long as it's not supported by rustc.
+rust_pgo_flags += $(patsubst -mllvm:%,-C llvm-args=%,$(filter-out -mllvm:-pgo-temporal-instrumentation,$(filter -mllvm:%,$(subst -mllvm ,-mllvm:,$(PROFILE_GEN_CFLAGS)))))
 else # MOZ_PROFILE_USE
 rust_pgo_flags := -C profile-use=$(PGO_PROFILE_PATH)
+endif
+endif
+
+# Work around https://github.com/rust-lang/rust/issues/112480
+ifdef MOZ_DEBUG_RUST
+ifneq (,$(filter i686-pc-windows-%,$(RUST_TARGET)))
+RUSTFLAGS += -Zmir-enable-passes=-CheckAlignment
+RUSTC_BOOTSTRAP := 1
 endif
 endif
 

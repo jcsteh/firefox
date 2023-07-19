@@ -62,6 +62,7 @@
 #include "wasm/WasmBuiltins.h"
 #include "wasm/WasmCompile.h"
 #include "wasm/WasmDebug.h"
+#include "wasm/WasmFeatures.h"
 #include "wasm/WasmInstance.h"
 #include "wasm/WasmIntrinsic.h"
 #include "wasm/WasmIonCompile.h"
@@ -101,283 +102,6 @@ using mozilla::CheckedInt;
 using mozilla::Nothing;
 using mozilla::RangedPtr;
 using mozilla::Span;
-
-// About the fuzzer intercession points: If fuzzing has been selected and only a
-// single compiler has been selected then we will disable features that are not
-// supported by that single compiler.  This is strictly a concession to the
-// fuzzer infrastructure.
-
-static inline bool IsFuzzingIon(JSContext* cx) {
-  return IsFuzzing() && !cx->options().wasmBaseline() &&
-         cx->options().wasmIon();
-}
-
-// These functions read flags and apply fuzzing intercession policies.  Never go
-// directly to the flags in code below, always go via these accessors.
-
-static inline bool WasmThreadsFlag(JSContext* cx) {
-  return cx->realm() &&
-         cx->realm()->creationOptions().getSharedMemoryAndAtomicsEnabled();
-}
-
-#define WASM_FEATURE(NAME, LOWER_NAME, COMPILE_PRED, COMPILER_PRED, FLAG_PRED, \
-                     ...)                                                      \
-  static inline bool Wasm##NAME##Flag(JSContext* cx) {                         \
-    return (COMPILE_PRED) && (FLAG_PRED) && cx->options().wasm##NAME();        \
-  }
-JS_FOR_WASM_FEATURES(WASM_FEATURE, WASM_FEATURE, WASM_FEATURE);
-#undef WASM_FEATURE
-
-static inline bool WasmDebuggerActive(JSContext* cx) {
-  if (IsFuzzingIon(cx)) {
-    return false;
-  }
-  return cx->realm() && cx->realm()->debuggerObservesWasm();
-}
-
-/*
- * [SMDOC] Compiler and feature selection; compiler and feature availability.
- *
- * In order to make the computation of whether a wasm feature or wasm compiler
- * is available predictable, we have established some rules, and implemented
- * those rules.
- *
- * Code elsewhere should use the predicates below to test for features and
- * compilers, it should never try to compute feature and compiler availability
- * in other ways.
- *
- * At the outset, there is a set of selected compilers C containing at most one
- * baseline compiler [*] and at most one optimizing compiler [**], and a set of
- * selected features F.  These selections come from defaults and from overrides
- * by command line switches in the shell and javascript.option.wasm_X in the
- * browser.  Defaults for both features and compilers may be platform specific,
- * for example, some compilers may not be available on some platforms because
- * they do not support the architecture at all or they do not support features
- * that must be enabled by default on the platform.
- *
- * [*] Currently we have only one, "baseline" aka "Rabaldr", but other
- *     implementations have additional baseline translators, eg from wasm
- *     bytecode to an internal code processed by an interpreter.
- *
- * [**] Currently we have only one, "ion" aka "Baldr".
- *
- *
- * Compiler availability:
- *
- * The set of features F induces a set of available compilers A: these are the
- * compilers that all support all the features in F.  (Some of these compilers
- * may not be in the set C.)
- *
- * The sets C and A are intersected, yielding a set of enabled compilers E.
- * Notably, the set E may be empty, in which case wasm is effectively disabled
- * (though the WebAssembly object is still present in the global environment).
- *
- * An important consequence is that selecting a feature that is not supported by
- * a particular compiler disables that compiler completely -- there is no notion
- * of a compiler being available but suddenly failing when an unsupported
- * feature is used by a program.  If a compiler is available, it supports all
- * the features that have been selected.
- *
- * Equally important, a feature cannot be enabled by default on a platform if
- * the feature is not supported by all the compilers we wish to have enabled by
- * default on the platform.  We MUST by-default disable features on a platform
- * that are not supported by all the compilers on the platform.
- *
- * In a shell build, the testing functions wasmCompilersPresent,
- * wasmCompileMode, and wasmIonDisabledByFeatures can be used to probe compiler
- * availability and the reasons for a compiler being unavailable.
- *
- *
- * Feature availability:
- *
- * A feature is available if it is selected and there is at least one available
- * compiler that implements it.
- *
- * For example, --wasm-gc selects the GC feature, and if Baseline is available
- * then the feature is available.
- *
- * In a shell build, there are per-feature testing functions (of the form
- * wasmFeatureEnabled) to probe whether specific features are available.
- */
-
-// Compiler availability predicates.  These must be kept in sync with the
-// feature predicates in the next section below.
-//
-// These can't call the feature predicates since the feature predicates call
-// back to these predicates.  So there will be a small amount of duplicated
-// logic here, but as compilers reach feature parity that duplication will go
-// away.
-
-bool wasm::BaselineAvailable(JSContext* cx) {
-  if (!cx->options().wasmBaseline() || !BaselinePlatformSupport()) {
-    return false;
-  }
-  bool isDisabled = false;
-  MOZ_ALWAYS_TRUE(BaselineDisabledByFeatures(cx, &isDisabled));
-  return !isDisabled;
-}
-
-bool wasm::IonAvailable(JSContext* cx) {
-  if (!cx->options().wasmIon() || !IonPlatformSupport()) {
-    return false;
-  }
-  bool isDisabled = false;
-  MOZ_ALWAYS_TRUE(IonDisabledByFeatures(cx, &isDisabled));
-  return !isDisabled;
-}
-
-bool wasm::WasmCompilerForAsmJSAvailable(JSContext* cx) {
-  return IonAvailable(cx);
-}
-
-template <size_t ArrayLength>
-static inline bool Append(JSStringBuilder* reason, const char (&s)[ArrayLength],
-                          char* sep) {
-  if ((*sep && !reason->append(*sep)) || !reason->append(s)) {
-    return false;
-  }
-  *sep = ',';
-  return true;
-}
-
-bool wasm::BaselineDisabledByFeatures(JSContext* cx, bool* isDisabled,
-                                      JSStringBuilder* reason) {
-  // Baseline cannot be used if we are testing serialization.
-  bool testSerialization = WasmTestSerializationFlag(cx);
-  if (reason) {
-    char sep = 0;
-    if (testSerialization && !Append(reason, "testSerialization", &sep)) {
-      return false;
-    }
-  }
-  *isDisabled = testSerialization;
-  return true;
-}
-
-bool wasm::IonDisabledByFeatures(JSContext* cx, bool* isDisabled,
-                                 JSStringBuilder* reason) {
-  // Ion has no debugging support.
-  bool debug = WasmDebuggerActive(cx);
-  if (reason) {
-    char sep = 0;
-    if (debug && !Append(reason, "debug", &sep)) {
-      return false;
-    }
-  }
-  *isDisabled = debug;
-  return true;
-}
-
-bool wasm::AnyCompilerAvailable(JSContext* cx) {
-  return wasm::BaselineAvailable(cx) || wasm::IonAvailable(cx);
-}
-
-// Feature predicates.  These must be kept in sync with the predicates in the
-// section above.
-//
-// The meaning of these predicates is tricky: A predicate is true for a feature
-// if the feature is enabled and/or compiled-in *and* we have *at least one*
-// compiler that can support the feature.  Subsequent compiler selection must
-// ensure that only compilers that actually support the feature are used.
-
-#define WASM_FEATURE(NAME, LOWER_NAME, COMPILE_PRED, COMPILER_PRED, FLAG_PRED, \
-                     ...)                                                      \
-  bool wasm::NAME##Available(JSContext* cx) {                                  \
-    return Wasm##NAME##Flag(cx) && (COMPILER_PRED);                            \
-  }
-JS_FOR_WASM_FEATURES(WASM_FEATURE, WASM_FEATURE, WASM_FEATURE)
-#undef WASM_FEATURE
-
-bool wasm::IsSimdPrivilegedContext(JSContext* cx) {
-  // This may be slightly more lenient than we want in an ideal world, but it
-  // remains safe.
-  return cx->realm() && cx->realm()->principals() &&
-         cx->realm()->principals()->isSystemOrAddonPrincipal();
-}
-
-bool wasm::SimdAvailable(JSContext* cx) {
-  return js::jit::JitSupportsWasmSimd();
-}
-
-bool wasm::ThreadsAvailable(JSContext* cx) {
-  return WasmThreadsFlag(cx) && AnyCompilerAvailable(cx);
-}
-
-bool wasm::HasPlatformSupport(JSContext* cx) {
-#if !MOZ_LITTLE_ENDIAN()
-  return false;
-#else
-
-  if (!HasJitBackend()) {
-    return false;
-  }
-
-  if (gc::SystemPageSize() > wasm::PageSize) {
-    return false;
-  }
-
-  if (!JitOptions.supportsUnalignedAccesses) {
-    return false;
-  }
-
-#  ifndef __wasi__
-  // WASI doesn't support signals so we don't have this function.
-  if (!wasm::EnsureFullSignalHandlers(cx)) {
-    return false;
-  }
-#  endif
-
-  if (!jit::JitSupportsAtomics()) {
-    return false;
-  }
-
-  // Wasm threads require 8-byte lock-free atomics.
-  if (!jit::AtomicOperations::isLockfree8()) {
-    return false;
-  }
-
-  // Test only whether the compilers are supported on the hardware, not whether
-  // they are enabled.
-  return BaselinePlatformSupport() || IonPlatformSupport();
-#endif
-}
-
-bool wasm::HasSupport(JSContext* cx) {
-  // If the general wasm pref is on, it's on for everything.
-  bool prefEnabled = cx->options().wasm();
-  // If the general pref is off, check trusted principals.
-  if (MOZ_UNLIKELY(!prefEnabled)) {
-    prefEnabled = cx->options().wasmForTrustedPrinciples() && cx->realm() &&
-                  cx->realm()->principals() &&
-                  cx->realm()->principals()->isSystemOrAddonPrincipal();
-  }
-  // Do not check for compiler availability, as that may be run-time variant.
-  // For HasSupport() we want a stable answer depending only on prefs.
-  return prefEnabled && HasPlatformSupport(cx);
-}
-
-bool wasm::StreamingCompilationAvailable(JSContext* cx) {
-  // This should match EnsureStreamSupport().
-  return HasSupport(cx) && AnyCompilerAvailable(cx) &&
-         cx->runtime()->offThreadPromiseState.ref().initialized() &&
-         CanUseExtraThreads() && cx->runtime()->consumeStreamCallback &&
-         cx->runtime()->reportStreamErrorCallback;
-}
-
-bool wasm::CodeCachingAvailable(JSContext* cx) {
-  // Fuzzilli breaks the out-of-process compilation mechanism,
-  // so we disable it permanently in those builds.
-#ifdef FUZZING_JS_FUZZILLI
-  return false;
-#else
-
-  // At the moment, we require Ion support for code caching.  The main reason
-  // for this is that wasm::CompileAndSerialize() does not have access to
-  // information about which optimizing compiler it should use.  See comments in
-  // CompileAndSerialize(), below.
-  return StreamingCompilationAvailable(cx) && IonAvailable(cx);
-#endif
-}
 
 // ============================================================================
 // Imports
@@ -1581,7 +1305,7 @@ bool WasmModuleObject::customSections(JSContext* cx, unsigned argc, Value* vp) {
   }
 
   RootedValueVector elems(cx);
-  RootedArrayBufferObject buf(cx);
+  Rooted<ArrayBufferObject*> buf(cx);
   for (const CustomSection& cs : module->customSections()) {
     if (name.length() != cs.name.length()) {
       continue;
@@ -2336,8 +2060,9 @@ bool WasmInstanceObject::getExportedFunction(
   const Instance& instance = instanceObj->instance();
   const FuncExport& funcExport =
       instance.metadata(instance.code().bestTier()).lookupFuncExport(funcIndex);
-  const FuncType& funcType = instance.metadata().getFuncExportType(funcExport);
-  unsigned numArgs = funcType.args().length();
+  const TypeDef& funcTypeDef =
+      instance.metadata().getFuncExportTypeDef(funcExport);
+  unsigned numArgs = funcTypeDef.funcType().args().length();
 
   if (instance.isAsmJS()) {
     // asm.js needs to act like a normal JS function which means having the
@@ -2379,7 +2104,7 @@ bool WasmInstanceObject::getExportedFunction(
     // separate 4kb code page. Most eagerly-accessed functions are not called,
     // so use a shared, provisional (and slow) lazy stub as JitEntry and wait
     // until Instance::callExport() to create the fast entry stubs.
-    if (funcType.canHaveJitEntry()) {
+    if (funcTypeDef.funcType().canHaveJitEntry()) {
       if (!funcExport.hasEagerStubs()) {
         if (!EnsureBuiltinThunksInitialized()) {
           return false;
@@ -2397,6 +2122,8 @@ bool WasmInstanceObject::getExportedFunction(
 
   fun->setExtendedSlot(FunctionExtended::WASM_INSTANCE_SLOT,
                        PrivateValue(const_cast<Instance*>(&instance)));
+  fun->setExtendedSlot(FunctionExtended::WASM_STV_SLOT,
+                       PrivateValue((void*)funcTypeDef.superTypeVector()));
 
   const CodeTier& codeTier =
       instance.code().codeTier(instance.code().bestTier());
@@ -2550,7 +2277,7 @@ void WasmMemoryObject::finalize(JS::GCContext* gcx, JSObject* obj) {
 
 /* static */
 WasmMemoryObject* WasmMemoryObject::create(
-    JSContext* cx, HandleArrayBufferObjectMaybeShared buffer, bool isHuge,
+    JSContext* cx, Handle<ArrayBufferObjectMaybeShared*> buffer, bool isHuge,
     HandleObject proto) {
   AutoSetNewObjectMetadata metadata(cx);
   auto* obj = NewObjectWithGivenProto<WasmMemoryObject>(cx, proto);
@@ -2598,8 +2325,9 @@ bool WasmMemoryObject::construct(JSContext* cx, unsigned argc, Value* vp) {
   }
   MemoryDesc memory(limits);
 
-  RootedArrayBufferObjectMaybeShared buffer(cx);
-  if (!CreateWasmBuffer(cx, memory, &buffer)) {
+  Rooted<ArrayBufferObjectMaybeShared*> buffer(cx,
+                                               CreateWasmBuffer(cx, memory));
+  if (!buffer) {
     return false;
   }
 
@@ -2629,14 +2357,14 @@ static bool IsMemory(HandleValue v) {
 bool WasmMemoryObject::bufferGetterImpl(JSContext* cx, const CallArgs& args) {
   Rooted<WasmMemoryObject*> memoryObj(
       cx, &args.thisv().toObject().as<WasmMemoryObject>());
-  RootedArrayBufferObjectMaybeShared buffer(cx, &memoryObj->buffer());
+  Rooted<ArrayBufferObjectMaybeShared*> buffer(cx, &memoryObj->buffer());
 
   if (memoryObj->isShared()) {
     size_t memoryLength = memoryObj->volatileMemoryLength();
     MOZ_ASSERT(memoryLength >= buffer->byteLength());
 
     if (memoryLength > buffer->byteLength()) {
-      RootedSharedArrayBufferObject newBuffer(
+      Rooted<SharedArrayBufferObject*> newBuffer(
           cx, SharedArrayBufferObject::New(
                   cx, memoryObj->sharedArrayRawBuffer(), memoryLength));
       if (!newBuffer) {
@@ -2929,7 +2657,8 @@ uint64_t WasmMemoryObject::grow(Handle<WasmMemoryObject*> memory,
     return growShared(memory, delta);
   }
 
-  RootedArrayBufferObject oldBuf(cx, &memory->buffer().as<ArrayBufferObject>());
+  Rooted<ArrayBufferObject*> oldBuf(cx,
+                                    &memory->buffer().as<ArrayBufferObject>());
 
 #if !defined(JS_64BIT)
   // TODO (large ArrayBuffer): See more information at the definition of
@@ -2944,16 +2673,16 @@ uint64_t WasmMemoryObject::grow(Handle<WasmMemoryObject*> memory,
     return uint64_t(int64_t(-1));
   }
 
-  RootedArrayBufferObject newBuf(cx);
-
+  ArrayBufferObject* newBuf;
   if (memory->movingGrowable()) {
     MOZ_ASSERT(!memory->isHuge());
-    if (!ArrayBufferObject::wasmMovingGrowToPages(memory->indexType(), newPages,
-                                                  oldBuf, &newBuf, cx)) {
-      return uint64_t(int64_t(-1));
-    }
-  } else if (!ArrayBufferObject::wasmGrowToPagesInPlace(
-                 memory->indexType(), newPages, oldBuf, &newBuf, cx)) {
+    newBuf = ArrayBufferObject::wasmMovingGrowToPages(memory->indexType(),
+                                                      newPages, oldBuf, cx);
+  } else {
+    newBuf = ArrayBufferObject::wasmGrowToPagesInPlace(memory->indexType(),
+                                                       newPages, oldBuf, cx);
+  }
+  if (!newBuf) {
     return uint64_t(int64_t(-1));
   }
 
@@ -2976,11 +2705,12 @@ void WasmMemoryObject::discard(Handle<WasmMemoryObject*> memory,
                                uint64_t byteOffset, uint64_t byteLen,
                                JSContext* cx) {
   if (memory->isShared()) {
-    RootedSharedArrayBufferObject buf(
+    Rooted<SharedArrayBufferObject*> buf(
         cx, &memory->buffer().as<SharedArrayBufferObject>());
     SharedArrayBufferObject::wasmDiscard(buf, byteOffset, byteLen);
   } else {
-    RootedArrayBufferObject buf(cx, &memory->buffer().as<ArrayBufferObject>());
+    Rooted<ArrayBufferObject*> buf(cx,
+                                   &memory->buffer().as<ArrayBufferObject>());
     ArrayBufferObject::wasmDiscard(buf, byteOffset, byteLen);
   }
 }

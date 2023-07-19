@@ -483,8 +483,7 @@ NotificationPermissionRequest::Run() {
 
     if (mPrincipal->SchemeIs("file")) {
       mPermission = NotificationPermission::Granted;
-    } else if (!StaticPrefs::dom_webnotifications_allowinsecure() &&
-               !mWindow->IsSecureContext()) {
+    } else if (!mWindow->IsSecureContext()) {
       mPermission = NotificationPermission::Denied;
       blocked = true;
       nsCOMPtr<Document> doc = mWindow->GetExtantDoc();
@@ -673,17 +672,6 @@ NotificationTask::Run() {
 
 // static
 bool Notification::PrefEnabled(JSContext* aCx, JSObject* aObj) {
-  if (!NS_IsMainThread()) {
-    WorkerPrivate* workerPrivate = GetWorkerPrivateFromContext(aCx);
-    if (!workerPrivate) {
-      return false;
-    }
-
-    if (workerPrivate->IsServiceWorker()) {
-      return StaticPrefs::dom_webnotifications_serviceworker_enabled();
-    }
-  }
-
   return StaticPrefs::dom_webnotifications_enabled();
 }
 

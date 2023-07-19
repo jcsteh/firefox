@@ -16,6 +16,10 @@ namespace mozilla::dom::quota {
 
 class QuotaManager;
 
+// We expect callers to be aware of what thread they're on and either call
+// `RunImmediately` if they're on the owning (PBackground) thread or `Dispatch`
+// if they are not and therefore the runnable needs to be dispatched to the
+// owning thread (PBackground).
 class OriginOperationBase : public BackgroundThreadObject, public Runnable {
  protected:
   nsresult mResultCode;
@@ -41,9 +45,6 @@ class OriginOperationBase : public BackgroundThreadObject, public Runnable {
   State mState;
   bool mActorDestroyed;
 
- protected:
-  bool mNeedsStorageInit;
-
  public:
   void NoteActorDestroyed() {
     AssertIsOnOwningThread();
@@ -57,6 +58,15 @@ class OriginOperationBase : public BackgroundThreadObject, public Runnable {
     return mActorDestroyed;
   }
 
+  void RunImmediately() {
+    AssertIsOnOwningThread();
+    MOZ_ASSERT(GetState() == State_Initial);
+
+    MOZ_ALWAYS_SUCCEEDS(this->Run());
+  }
+
+  void Dispatch();
+
  protected:
   explicit OriginOperationBase(nsISerialEventTarget* aOwningThread,
                                const char* aRunnableName)
@@ -64,8 +74,7 @@ class OriginOperationBase : public BackgroundThreadObject, public Runnable {
         Runnable(aRunnableName),
         mResultCode(NS_OK),
         mState(State_Initial),
-        mActorDestroyed(false),
-        mNeedsStorageInit(false) {}
+        mActorDestroyed(false) {}
 
   // Reference counted.
   virtual ~OriginOperationBase() {

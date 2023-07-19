@@ -42,7 +42,7 @@
 
 #include "debugger/DebugAPI-inl.h"
 #include "vm/ArrayBufferObject-inl.h"
-#include "vm/JSAtom-inl.h"
+#include "vm/JSAtomUtils-inl.h"  // AtomToId
 #include "wasm/WasmInstance-inl.h"
 
 using namespace js;
@@ -591,8 +591,9 @@ bool Module::instantiateMemories(
         return false;
       }
 
-      RootedArrayBufferObjectMaybeShared buffer(cx);
-      if (!CreateWasmBuffer(cx, desc, &buffer)) {
+      Rooted<ArrayBufferObjectMaybeShared*> buffer(cx,
+                                                   CreateWasmBuffer(cx, desc));
+      if (!buffer) {
         return false;
       }
 
