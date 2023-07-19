@@ -88,12 +88,14 @@ GfxInfo::GetAdapterDriverVendor2(nsAString& aAdapterDriverVendor) {
 
 NS_IMETHODIMP
 GfxInfo::GetAdapterDriverVersion(nsAString& aAdapterDriverVersion) {
-  return NS_ERROR_FAILURE;
+  aAdapterDriverVersion = EmptyString();
+  return NS_OK;
 }
 
 NS_IMETHODIMP
 GfxInfo::GetAdapterDriverVersion2(nsAString& aAdapterDriverVersion) {
-  return NS_ERROR_FAILURE;
+  aAdapterDriverVersion = EmptyString();
+  return NS_OK;
 }
 
 NS_IMETHODIMP
@@ -108,22 +110,26 @@ GfxInfo::GetAdapterDriverDate2(nsAString& aAdapterDriverDate) {
 
 NS_IMETHODIMP
 GfxInfo::GetAdapterVendorID(nsAString& aAdapterVendorID) {
-  return NS_ERROR_FAILURE;
+  aAdapterVendorID = EmptyString();
+  return NS_OK;
 }
 
 NS_IMETHODIMP
 GfxInfo::GetAdapterVendorID2(nsAString& aAdapterVendorID) {
-  return NS_ERROR_FAILURE;
+  aAdapterVendorID = EmptyString();
+  return NS_OK;
 }
 
 NS_IMETHODIMP
 GfxInfo::GetAdapterDeviceID(nsAString& aAdapterDeviceID) {
-  return NS_ERROR_FAILURE;
+  aAdapterDeviceID = EmptyString();
+  return NS_OK;
 }
 
 NS_IMETHODIMP
 GfxInfo::GetAdapterDeviceID2(nsAString& aAdapterDeviceID) {
-  return NS_ERROR_FAILURE;
+  aAdapterDeviceID = EmptyString();
+  return NS_OK;
 }
 
 NS_IMETHODIMP
