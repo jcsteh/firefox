@@ -25,15 +25,12 @@ class GLContext;
 }
 }  // namespace mozilla
 
+#  ifdef MOZ_WIDGET_COCOA
 struct _CGLContextObject;
 
 typedef _CGLContextObject* CGLContextObj;
-typedef uint32_t IOSurfaceID;
-
-#  ifdef XP_IOS
-typedef kern_return_t IOReturn;
-typedef int CGLError;
 #  endif
+typedef uint32_t IOSurfaceID;
 
 #  ifdef XP_MACOSX
 #    import <OpenGL/OpenGL.h>
@@ -129,6 +126,7 @@ class MacIOSurface final
     return mozilla::gfx::ColorRange::LIMITED;
   }
 
+#  if defined(MOZ_WIDGET_COCOA)
   // We would like to forward declare NSOpenGLContext, but it is an @interface
   // and this file is also used from c++, so we use a void *.
   CGLError CGLTexImageIOSurface2D(
@@ -138,6 +136,17 @@ class MacIOSurface final
                                   GLenum internalFormat, GLsizei width,
                                   GLsizei height, GLenum format, GLenum type,
                                   GLuint plane) const;
+#  elif defined(MOZ_WIDGET_UIKIT)
+  // We would like to forward declare NSOpenGLContext, but it is an @interface
+  // and this file is also used from c++, so we use a void *.
+  bool EAGLTexImageIOSurface2D(
+      mozilla::gl::GLContext* aGL, size_t plane,
+      mozilla::gfx::SurfaceFormat* aOutReadFormat = nullptr);
+  bool EAGLTexImageIOSurface2D(mozilla::gl::GLContext* aGL, GLenum target,
+                               GLenum internalFormat, GLsizei width,
+                               GLsizei height, GLenum format, GLenum type,
+                               GLuint plane) const;
+#  endif
   already_AddRefed<SourceSurface> GetAsSurface();
 
   // Creates a DrawTarget that wraps the data in the IOSurface. Rendering to

@@ -51,14 +51,14 @@ UNIFIED_SOURCES += [
     "WebRenderTypes.cpp",
 ]
 
-if CONFIG["MOZ_WIDGET_TOOLKIT"] == "cocoa":
+if CONFIG["MOZ_WIDGET_TOOLKIT"] in ("cocoa", "uikit"):
     EXPORTS.mozilla.webrender += [
         "RenderCompositorNative.h",
         "RenderMacIOSurfaceTextureHost.h",
     ]
     UNIFIED_SOURCES += [
         "RenderCompositorNative.cpp",
-        "RenderMacIOSurfaceTextureHost.cpp",
+        "RenderMacIOSurfaceTextureHost.mm",
     ]
 
 if CONFIG["MOZ_WIDGET_TOOLKIT"] == "android":

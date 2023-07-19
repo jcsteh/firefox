@@ -6,21 +6,25 @@
 
 #include "RenderMacIOSurfaceTextureHost.h"
 
-#include "GLContextCGL.h"
+#ifdef MOZ_WIDGET_COCOA
+#  include "GLContextCGL.h"
+#else
+#  include "GLContextEAGL.h"
+#endif
+
 #include "mozilla/gfx/Logging.h"
 #include "ScopedGLHelpers.h"
 
 namespace mozilla {
 namespace wr {
 
-static CGLError CreateTextureForPlane(uint8_t aPlaneID, gl::GLContext* aGL,
-                                      MacIOSurface* aSurface,
+#ifdef MOZ_WIDGET_COCOA
+static CGLError CreateTextureForPlane(uint8_t aPlaneID, gl::GLContext* aGL, MacIOSurface* aSurface,
                                       GLuint* aTexture) {
   MOZ_ASSERT(aGL && aSurface && aTexture);
 
   aGL->fGenTextures(1, aTexture);
-  ActivateBindAndTexParameteri(aGL, LOCAL_GL_TEXTURE0,
-                               LOCAL_GL_TEXTURE_RECTANGLE_ARB, *aTexture);
+  ActivateBindAndTexParameteri(aGL, LOCAL_GL_TEXTURE0, LOCAL_GL_TEXTURE_RECTANGLE_ARB, *aTexture);
   aGL->fTexParameteri(LOCAL_GL_TEXTURE_RECTANGLE_ARB, LOCAL_GL_TEXTURE_WRAP_T,
                       LOCAL_GL_CLAMP_TO_EDGE);
   aGL->fTexParameteri(LOCAL_GL_TEXTURE_RECTANGLE_ARB, LOCAL_GL_TEXTURE_WRAP_S,
@@ -28,8 +32,8 @@ static CGLError CreateTextureForPlane(uint8_t aPlaneID, gl::GLContext* aGL,
 
   CGLError result = kCGLNoError;
   gfx::SurfaceFormat readFormat = gfx::SurfaceFormat::UNKNOWN;
-  result = aSurface->CGLTexImageIOSurface2D(
-      aGL, gl::GLContextCGL::Cast(aGL)->GetCGLContext(), aPlaneID, &readFormat);
+  result = aSurface->CGLTexImageIOSurface2D(aGL, gl::GLContextCGL::Cast(aGL)->GetCGLContext(),
+                                            aPlaneID, &readFormat);
   // If this is a yuv format, the Webrender only supports YUV422 interleaving
   // format.
   MOZ_ASSERT(aSurface->GetFormat() != gfx::SurfaceFormat::YUV422 ||
@@ -37,9 +41,31 @@ static CGLError CreateTextureForPlane(uint8_t aPlaneID, gl::GLContext* aGL,
 
   return result;
 }
+#else
+static bool CreateTextureForPlane(uint8_t aPlaneID, gl::GLContext* aGL, MacIOSurface* aSurface,
+                                  GLuint* aTexture) {
+  MOZ_ASSERT(aGL && aSurface && aTexture);
 
-RenderMacIOSurfaceTextureHost::RenderMacIOSurfaceTextureHost(
-    MacIOSurface* aSurface)
+  aGL->fGenTextures(1, aTexture);
+  ActivateBindAndTexParameteri(aGL, LOCAL_GL_TEXTURE0, LOCAL_GL_TEXTURE_RECTANGLE_ARB, *aTexture);
+  aGL->fTexParameteri(LOCAL_GL_TEXTURE_RECTANGLE_ARB, LOCAL_GL_TEXTURE_WRAP_T,
+                      LOCAL_GL_CLAMP_TO_EDGE);
+  aGL->fTexParameteri(LOCAL_GL_TEXTURE_RECTANGLE_ARB, LOCAL_GL_TEXTURE_WRAP_S,
+                      LOCAL_GL_CLAMP_TO_EDGE);
+
+  bool result = false;
+  gfx::SurfaceFormat readFormat = gfx::SurfaceFormat::UNKNOWN;
+  result = aSurface->EAGLTexImageIOSurface2D(aGL, aPlaneID, &readFormat);
+  // If this is a yuv format, the Webrender only supports YUV422 interleaving
+  // format.
+  MOZ_ASSERT(aSurface->GetFormat() != gfx::SurfaceFormat::YUV422 ||
+             readFormat == gfx::SurfaceFormat::YUV422);
+
+  return result;
+}
+#endif
+
+RenderMacIOSurfaceTextureHost::RenderMacIOSurfaceTextureHost(MacIOSurface* aSurface)
     : mSurface(aSurface), mTextureHandles{0, 0, 0} {
   MOZ_COUNT_CTOR_INHERITED(RenderMacIOSurfaceTextureHost, RenderTextureHost);
 }
@@ -51,18 +77,15 @@ RenderMacIOSurfaceTextureHost::~RenderMacIOSurfaceTextureHost() {
 
 GLuint RenderMacIOSurfaceTextureHost::GetGLHandle(uint8_t aChannelIndex) const {
   MOZ_ASSERT(mSurface);
-  MOZ_ASSERT((mSurface->GetPlaneCount() == 0)
-                 ? (aChannelIndex == mSurface->GetPlaneCount())
-                 : (aChannelIndex < mSurface->GetPlaneCount()));
+  MOZ_ASSERT((mSurface->GetPlaneCount() == 0) ? (aChannelIndex == mSurface->GetPlaneCount())
+                                              : (aChannelIndex < mSurface->GetPlaneCount()));
   return mTextureHandles[aChannelIndex];
 }
 
-gfx::IntSize RenderMacIOSurfaceTextureHost::GetSize(
-    uint8_t aChannelIndex) const {
+gfx::IntSize RenderMacIOSurfaceTextureHost::GetSize(uint8_t aChannelIndex) const {
   MOZ_ASSERT(mSurface);
-  MOZ_ASSERT((mSurface->GetPlaneCount() == 0)
-                 ? (aChannelIndex == mSurface->GetPlaneCount())
-                 : (aChannelIndex < mSurface->GetPlaneCount()));
+  MOZ_ASSERT((mSurface->GetPlaneCount() == 0) ? (aChannelIndex == mSurface->GetPlaneCount())
+                                              : (aChannelIndex < mSurface->GetPlaneCount()));
 
   if (!mSurface) {
     return gfx::IntSize();
@@ -71,12 +94,9 @@ gfx::IntSize RenderMacIOSurfaceTextureHost::GetSize(
                       mSurface->GetDevicePixelHeight(aChannelIndex));
 }
 
-size_t RenderMacIOSurfaceTextureHost::Bytes() {
-  return mSurface->GetAllocSize();
-}
+size_t RenderMacIOSurfaceTextureHost::Bytes() { return mSurface->GetAllocSize(); }
 
-wr::WrExternalImage RenderMacIOSurfaceTextureHost::Lock(uint8_t aChannelIndex,
-                                                        gl::GLContext* aGL) {
+wr::WrExternalImage RenderMacIOSurfaceTextureHost::Lock(uint8_t aChannelIndex, gl::GLContext* aGL) {
   if (mGL.get() != aGL) {
     // release the texture handle in the previous gl context
     DeleteTextureHandle();
@@ -89,7 +109,11 @@ wr::WrExternalImage RenderMacIOSurfaceTextureHost::Lock(uint8_t aChannelIndex,
   }
 
   if (!mTextureHandles[0]) {
+#ifdef MOZ_WIDGET_COCOA
     MOZ_ASSERT(gl::GLContextCGL::Cast(mGL.get())->GetCGLContext());
+#else
+    MOZ_ASSERT(gl::GLContextEAGL::Cast(mGL.get())->GetEAGLContext());
+#endif
 
     // The result of GetPlaneCount() is 0 for single plane format, but it will
     // be 2 if the format has 2 planar data.
@@ -100,9 +124,8 @@ wr::WrExternalImage RenderMacIOSurfaceTextureHost::Lock(uint8_t aChannelIndex,
   }
 
   const auto uvs = GetUvCoords(GetSize(aChannelIndex));
-  return NativeTextureToWrExternalImage(GetGLHandle(aChannelIndex), uvs.first.x,
-                                        uvs.first.y, uvs.second.x,
-                                        uvs.second.y);
+  return NativeTextureToWrExternalImage(GetGLHandle(aChannelIndex), uvs.first.x, uvs.first.y,
+                                        uvs.second.x, uvs.second.y);
 }
 
 void RenderMacIOSurfaceTextureHost::Unlock() {}
@@ -131,23 +154,19 @@ gfx::ColorDepth RenderMacIOSurfaceTextureHost::GetColorDepth() const {
   return mSurface->GetColorDepth();
 }
 
-gfx::YUVRangedColorSpace RenderMacIOSurfaceTextureHost::GetYUVColorSpace()
-    const {
-  return ToYUVRangedColorSpace(mSurface->GetYUVColorSpace(),
-                               mSurface->GetColorRange());
+gfx::YUVRangedColorSpace RenderMacIOSurfaceTextureHost::GetYUVColorSpace() const {
+  return ToYUVRangedColorSpace(mSurface->GetYUVColorSpace(), mSurface->GetColorRange());
 }
 
-bool RenderMacIOSurfaceTextureHost::MapPlane(RenderCompositor* aCompositor,
-                                             uint8_t aChannelIndex,
+bool RenderMacIOSurfaceTextureHost::MapPlane(RenderCompositor* aCompositor, uint8_t aChannelIndex,
                                              PlaneInfo& aPlaneInfo) {
   if (!aChannelIndex) {
     mSurface->Lock();
   }
   aPlaneInfo.mData = mSurface->GetBaseAddressOfPlane(aChannelIndex);
   aPlaneInfo.mStride = mSurface->GetBytesPerRow(aChannelIndex);
-  aPlaneInfo.mSize =
-      gfx::IntSize(mSurface->GetDevicePixelWidth(aChannelIndex),
-                   mSurface->GetDevicePixelHeight(aChannelIndex));
+  aPlaneInfo.mSize = gfx::IntSize(mSurface->GetDevicePixelWidth(aChannelIndex),
+                                  mSurface->GetDevicePixelHeight(aChannelIndex));
   return true;
 }
 
