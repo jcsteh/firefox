@@ -126,27 +126,15 @@ class MacIOSurface final
     return mozilla::gfx::ColorRange::LIMITED;
   }
 
-#  if defined(MOZ_WIDGET_COCOA)
-  // We would like to forward declare NSOpenGLContext, but it is an @interface
-  // and this file is also used from c++, so we use a void *.
-  CGLError CGLTexImageIOSurface2D(
-      mozilla::gl::GLContext* aGL, CGLContextObj ctxt, size_t plane,
-      mozilla::gfx::SurfaceFormat* aOutReadFormat = nullptr);
-  CGLError CGLTexImageIOSurface2D(CGLContextObj ctxt, GLenum target,
-                                  GLenum internalFormat, GLsizei width,
-                                  GLsizei height, GLenum format, GLenum type,
-                                  GLuint plane) const;
-#  elif defined(MOZ_WIDGET_UIKIT)
-  // We would like to forward declare NSOpenGLContext, but it is an @interface
-  // and this file is also used from c++, so we use a void *.
-  bool EAGLTexImageIOSurface2D(
-      mozilla::gl::GLContext* aGL, size_t plane,
-      mozilla::gfx::SurfaceFormat* aOutReadFormat = nullptr);
-  bool EAGLTexImageIOSurface2D(mozilla::gl::GLContext* aGL, GLenum target,
-                               GLenum internalFormat, GLsizei width,
-                               GLsizei height, GLenum format, GLenum type,
-                               GLuint plane) const;
-#  endif
+  // Bind this IOSurface to a texture using the most efficient mechanism
+  // available on the current platform.
+  //
+  // Note that on iOS simulator, due to incomplete support for
+  // texImageIOSurface, this will only use texImage2D to upload, and cannot be
+  // used to read-back the GL texture to an IOSurface.
+  bool BindTexImage(mozilla::gl::GLContext* aGL, size_t aPlane,
+                    mozilla::gfx::SurfaceFormat* aOutReadFormat = nullptr);
+
   already_AddRefed<SourceSurface> GetAsSurface();
 
   // Creates a DrawTarget that wraps the data in the IOSurface. Rendering to

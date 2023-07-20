@@ -18,30 +18,6 @@
 namespace mozilla {
 namespace wr {
 
-#ifdef MOZ_WIDGET_COCOA
-static CGLError CreateTextureForPlane(uint8_t aPlaneID, gl::GLContext* aGL, MacIOSurface* aSurface,
-                                      GLuint* aTexture) {
-  MOZ_ASSERT(aGL && aSurface && aTexture);
-
-  aGL->fGenTextures(1, aTexture);
-  ActivateBindAndTexParameteri(aGL, LOCAL_GL_TEXTURE0, LOCAL_GL_TEXTURE_RECTANGLE_ARB, *aTexture);
-  aGL->fTexParameteri(LOCAL_GL_TEXTURE_RECTANGLE_ARB, LOCAL_GL_TEXTURE_WRAP_T,
-                      LOCAL_GL_CLAMP_TO_EDGE);
-  aGL->fTexParameteri(LOCAL_GL_TEXTURE_RECTANGLE_ARB, LOCAL_GL_TEXTURE_WRAP_S,
-                      LOCAL_GL_CLAMP_TO_EDGE);
-
-  CGLError result = kCGLNoError;
-  gfx::SurfaceFormat readFormat = gfx::SurfaceFormat::UNKNOWN;
-  result = aSurface->CGLTexImageIOSurface2D(aGL, gl::GLContextCGL::Cast(aGL)->GetCGLContext(),
-                                            aPlaneID, &readFormat);
-  // If this is a yuv format, the Webrender only supports YUV422 interleaving
-  // format.
-  MOZ_ASSERT(aSurface->GetFormat() != gfx::SurfaceFormat::YUV422 ||
-             readFormat == gfx::SurfaceFormat::YUV422);
-
-  return result;
-}
-#else
 static bool CreateTextureForPlane(uint8_t aPlaneID, gl::GLContext* aGL, MacIOSurface* aSurface,
                                   GLuint* aTexture) {
   MOZ_ASSERT(aGL && aSurface && aTexture);
@@ -53,9 +29,8 @@ static bool CreateTextureForPlane(uint8_t aPlaneID, gl::GLContext* aGL, MacIOSur
   aGL->fTexParameteri(LOCAL_GL_TEXTURE_RECTANGLE_ARB, LOCAL_GL_TEXTURE_WRAP_S,
                       LOCAL_GL_CLAMP_TO_EDGE);
 
-  bool result = false;
   gfx::SurfaceFormat readFormat = gfx::SurfaceFormat::UNKNOWN;
-  result = aSurface->EAGLTexImageIOSurface2D(aGL, aPlaneID, &readFormat);
+  bool result = aSurface->BindTexImage(aGL, aPlaneID, &readFormat);
   // If this is a yuv format, the Webrender only supports YUV422 interleaving
   // format.
   MOZ_ASSERT(aSurface->GetFormat() != gfx::SurfaceFormat::YUV422 ||
@@ -63,7 +38,6 @@ static bool CreateTextureForPlane(uint8_t aPlaneID, gl::GLContext* aGL, MacIOSur
 
   return result;
 }
-#endif
 
 RenderMacIOSurfaceTextureHost::RenderMacIOSurfaceTextureHost(MacIOSurface* aSurface)
     : mSurface(aSurface), mTextureHandles{0, 0, 0} {

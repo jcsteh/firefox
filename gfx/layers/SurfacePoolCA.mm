@@ -6,6 +6,7 @@
 #include "mozilla/layers/SurfacePoolCA.h"
 
 #import <CoreVideo/CVPixelBuffer.h>
+#include <IOSurface/IOSurfaceTypes.h>
 
 #include <algorithm>
 #include <unordered_set>
@@ -315,8 +316,18 @@ Maybe<GLuint> SurfacePoolCA::LockedPool::GetFramebufferForSurface(
                            entry.mSize.width, entry.mSize.height, LOCAL_GL_BGRA,
                            LOCAL_GL_UNSIGNED_INT_8_8_8_8_REV, entry.mIOSurface.get(), 0);
 #else
-    // FIXME: This doesn't appear to exist in the iOS simulator. It seems ANGLE
-    // uses other APIs in the simulator(?)
+#  if TARGET_OS_SIMULATOR
+    // On the iOS simulator, `texImageIOSurface:` is not available, so we need
+    // to manually copy the texture to the GPU with `fTexImage2D`.
+    IOSurfaceLock(entry.mIOSurface.get(), kIOSurfaceLockReadOnly, nullptr);
+
+    void* textureData = IOSurfaceGetBaseAddress(entry.mIOSurface.get());
+    eagl->fTexImage2D(LOCAL_GL_TEXTURE_RECTANGLE_ARB, 0, LOCAL_GL_RGBA, entry.mSize.width,
+                      entry.mSize.height, 0, LOCAL_GL_BGRA, LOCAL_GL_UNSIGNED_INT_8_8_8_8_REV,
+                      textureData);
+
+    IOSurfaceUnlock(entry.mIOSurface.get(), kIOSurfaceLockReadOnly, nullptr);
+#  else
     [eagl->GetEAGLContext() texImageIOSurface:entry.mIOSurface.get()
                                        target:LOCAL_GL_TEXTURE_RECTANGLE_ARB
                                internalFormat:LOCAL_GL_RGBA
@@ -325,6 +336,7 @@ Maybe<GLuint> SurfacePoolCA::LockedPool::GetFramebufferForSurface(
                                        format:LOCAL_GL_BGRA
                                          type:LOCAL_GL_UNSIGNED_INT_8_8_8_8_REV
                                         plane:0];
+#  endif
 #endif
   }
 

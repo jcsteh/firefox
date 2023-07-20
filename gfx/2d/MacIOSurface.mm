@@ -430,18 +430,9 @@ ColorDepth MacIOSurface::GetColorDepth() const {
   }
 }
 
-#ifdef MOZ_WIDGET_COCOA
-CGLError MacIOSurface::CGLTexImageIOSurface2D(CGLContextObj ctx, GLenum target,
-                                              GLenum internalFormat, GLsizei width, GLsizei height,
-                                              GLenum format, GLenum type, GLuint plane) const {
-  return ::CGLTexImageIOSurface2D(ctx, target, internalFormat, width, height, format, type,
-                                  mIOSurfaceRef.get(), plane);
-}
-
-CGLError MacIOSurface::CGLTexImageIOSurface2D(mozilla::gl::GLContext* aGL, CGLContextObj ctx,
-                                              size_t plane,
-                                              mozilla::gfx::SurfaceFormat* aOutReadFormat) {
-  MOZ_ASSERT(plane >= 0);
+bool MacIOSurface::BindTexImage(mozilla::gl::GLContext* aGL, size_t aPlane,
+                                mozilla::gfx::SurfaceFormat* aOutReadFormat) {
+  MOZ_ASSERT(aPlane >= 0);
   bool isCompatibilityProfile = aGL->IsCompatibilityProfile();
   OSType pixelFormat = GetPixelFormat();
 
@@ -451,12 +442,12 @@ CGLError MacIOSurface::CGLTexImageIOSurface2D(mozilla::gl::GLContext* aGL, CGLCo
   if (pixelFormat == kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange ||
       pixelFormat == kCVPixelFormatType_420YpCbCr8BiPlanarFullRange) {
     MOZ_ASSERT(GetPlaneCount() == 2);
-    MOZ_ASSERT(plane < 2);
+    MOZ_ASSERT(aPlane < 2);
 
     // The LOCAL_GL_LUMINANCE and LOCAL_GL_LUMINANCE_ALPHA are the deprecated
     // format. So, use LOCAL_GL_RED and LOCAL_GL_RB if we use core profile.
     // https://www.khronos.org/opengl/wiki/Image_Format#Legacy_Image_Formats
-    if (plane == 0) {
+    if (aPlane == 0) {
       internalFormat = format = (isCompatibilityProfile) ? (LOCAL_GL_LUMINANCE) : (LOCAL_GL_RED);
     } else {
       internalFormat = format =
@@ -469,12 +460,12 @@ CGLError MacIOSurface::CGLTexImageIOSurface2D(mozilla::gl::GLContext* aGL, CGLCo
   } else if (pixelFormat == kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange ||
              pixelFormat == kCVPixelFormatType_420YpCbCr10BiPlanarFullRange) {
     MOZ_ASSERT(GetPlaneCount() == 2);
-    MOZ_ASSERT(plane < 2);
+    MOZ_ASSERT(aPlane < 2);
 
     // The LOCAL_GL_LUMINANCE and LOCAL_GL_LUMINANCE_ALPHA are the deprecated
     // format. So, use LOCAL_GL_RED and LOCAL_GL_RB if we use core profile.
     // https://www.khronos.org/opengl/wiki/Image_Format#Legacy_Image_Formats
-    if (plane == 0) {
+    if (aPlane == 0) {
       internalFormat = format = (isCompatibilityProfile) ? (LOCAL_GL_LUMINANCE) : (LOCAL_GL_RED);
     } else {
       internalFormat = format =
@@ -486,7 +477,7 @@ CGLError MacIOSurface::CGLTexImageIOSurface2D(mozilla::gl::GLContext* aGL, CGLCo
     }
   } else if (pixelFormat == kCVPixelFormatType_422YpCbCr8_yuvs ||
              pixelFormat == kCVPixelFormatType_422YpCbCr8FullRange) {
-    MOZ_ASSERT(plane == 0);
+    MOZ_ASSERT(aPlane == 0);
     // The YCBCR_422_APPLE ext is only available in compatibility profile. So,
     // we should use RGB_422_APPLE for core profile. The difference between
     // YCBCR_422_APPLE and RGB_422_APPLE is that the YCBCR_422_APPLE converts
@@ -510,7 +501,7 @@ CGLError MacIOSurface::CGLTexImageIOSurface2D(mozilla::gl::GLContext* aGL, CGLCo
     internalFormat = LOCAL_GL_RGB;
     type = LOCAL_GL_UNSIGNED_SHORT_8_8_REV_APPLE;
   } else {
-    MOZ_ASSERT(plane == 0);
+    MOZ_ASSERT(aPlane == 0);
 
     internalFormat = HasAlpha() ? LOCAL_GL_RGBA : LOCAL_GL_RGB;
     format = LOCAL_GL_BGRA;
@@ -521,137 +512,51 @@ CGLError MacIOSurface::CGLTexImageIOSurface2D(mozilla::gl::GLContext* aGL, CGLCo
     }
   }
 
-  auto err = CGLTexImageIOSurface2D(ctx, LOCAL_GL_TEXTURE_RECTANGLE_ARB, internalFormat,
-                                    GetDevicePixelWidth(plane), GetDevicePixelHeight(plane), format,
-                                    type, plane);
+  size_t width = GetDevicePixelWidth(aPlane);
+  size_t height = GetDevicePixelHeight(aPlane);
+
+#ifdef MOZ_WIDGET_COCOA
+  auto err = ::CGLTexImageIOSurface2D(gl::GLContextCGL::Cast(aGL)->GetCGLContext(),
+                                      LOCAL_GL_TEXTURE_RECTANGLE_ARB, internalFormat, width, height,
+                                      format, type, mIOSurfaceRef.get(), aPlane);
   if (err) {
     const auto formatChars = (const char*)&pixelFormat;
     const char formatStr[] = {formatChars[3], formatChars[2], formatChars[1], formatChars[0], 0};
     const nsPrintfCString errStr("CGLTexImageIOSurface2D(context, target, 0x%04x,"
                                  " %u, %u, 0x%04x, 0x%04x, iosurfPtr, %u) -> %i",
-                                 internalFormat, uint32_t(GetDevicePixelWidth(plane)),
-                                 uint32_t(GetDevicePixelHeight(plane)), format, type,
-                                 (unsigned int)plane, err);
+                                 internalFormat, uint32_t(width), uint32_t(height), format, type,
+                                 (unsigned int)aPlane, err);
     gfxCriticalError() << errStr.get() << " (iosurf format: " << formatStr << ")";
   }
-  return err;
-}
+  return !err;
 #else
-bool MacIOSurface::EAGLTexImageIOSurface2D(mozilla::gl::GLContext* aGL, GLenum target,
-                                           GLenum internalFormat, GLsizei width, GLsizei height,
-                                           GLenum format, GLenum type, GLuint plane) const {
+#  if TARGET_OS_SIMULATOR
+  // On the iOS simulator, `texImageIOSurface` is not available, so we need to
+  // manually copy the texture to the GPU with `fTexImage2D`.
+  //
+  // XXX: While this is based on the logic from ANGLE, it is untested, and may
+  // be very wrong.
+  IOSurfaceLock(mIOSurfaceRef.get(), kIOSurfaceLockReadOnly, nullptr);
+
+  void* textureData = IOSurfaceGetBaseAddress(mIOSurfaceRef.get());
+  aGL->fTexImage2D(LOCAL_GL_TEXTURE_RECTANGLE_ARB, 0, internalFormat, width, height, 0, format,
+                   type, textureData);
+
+  IOSurfaceUnlock(mIOSurfaceRef.get(), kIOSurfaceLockReadOnly, nullptr);
+  return true;
+#  else
   EAGLContext* ctx = gl::GLContextEAGL::Cast(aGL)->GetEAGLContext();
-  // FIXME: This appears to not be available in the iOS simulator - only on real
-  // iOS. ANGLE has a workaround:
-  // https://source.chromium.org/chromium/chromium/src/+/main:third_party/angle/src/libANGLE/renderer/gl/eagl/IOSurfaceSurfaceEAGL.mm;l=190-230;drc=f507fe05cd854e9024a0cd983e9468a9fb282fb0
   return [ctx texImageIOSurface:mIOSurfaceRef.get()
-                         target:target
+                         target:LOCAL_GL_TEXTURE_RECTANGLE_ARB
                  internalFormat:internalFormat
                           width:width
                          height:height
                          format:format
                            type:type
-                          plane:plane];
-}
-
-bool MacIOSurface::EAGLTexImageIOSurface2D(mozilla::gl::GLContext* aGL, size_t plane,
-                                           mozilla::gfx::SurfaceFormat* aOutReadFormat) {
-  MOZ_ASSERT(plane >= 0);
-  bool isCompatibilityProfile = aGL->IsCompatibilityProfile();
-  OSType pixelFormat = GetPixelFormat();
-
-  GLenum internalFormat;
-  GLenum format;
-  GLenum type;
-  if (pixelFormat == kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange ||
-      pixelFormat == kCVPixelFormatType_420YpCbCr8BiPlanarFullRange) {
-    MOZ_ASSERT(GetPlaneCount() == 2);
-    MOZ_ASSERT(plane < 2);
-
-    // The LOCAL_GL_LUMINANCE and LOCAL_GL_LUMINANCE_ALPHA are the deprecated
-    // format. So, use LOCAL_GL_RED and LOCAL_GL_RB if we use core profile.
-    // https://www.khronos.org/opengl/wiki/Image_Format#Legacy_Image_Formats
-    if (plane == 0) {
-      internalFormat = format = (isCompatibilityProfile) ? (LOCAL_GL_LUMINANCE) : (LOCAL_GL_RED);
-    } else {
-      internalFormat = format =
-          (isCompatibilityProfile) ? (LOCAL_GL_LUMINANCE_ALPHA) : (LOCAL_GL_RG);
-    }
-    type = LOCAL_GL_UNSIGNED_BYTE;
-    if (aOutReadFormat) {
-      *aOutReadFormat = mozilla::gfx::SurfaceFormat::NV12;
-    }
-  } else if (pixelFormat == kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange ||
-             pixelFormat == kCVPixelFormatType_420YpCbCr10BiPlanarFullRange) {
-    MOZ_ASSERT(GetPlaneCount() == 2);
-    MOZ_ASSERT(plane < 2);
-
-    // The LOCAL_GL_LUMINANCE and LOCAL_GL_LUMINANCE_ALPHA are the deprecated
-    // format. So, use LOCAL_GL_RED and LOCAL_GL_RB if we use core profile.
-    // https://www.khronos.org/opengl/wiki/Image_Format#Legacy_Image_Formats
-    if (plane == 0) {
-      internalFormat = format = (isCompatibilityProfile) ? (LOCAL_GL_LUMINANCE) : (LOCAL_GL_RED);
-    } else {
-      internalFormat = format =
-          (isCompatibilityProfile) ? (LOCAL_GL_LUMINANCE_ALPHA) : (LOCAL_GL_RG);
-    }
-    type = LOCAL_GL_UNSIGNED_SHORT;
-    if (aOutReadFormat) {
-      *aOutReadFormat = mozilla::gfx::SurfaceFormat::P010;
-    }
-  } else if (pixelFormat == kCVPixelFormatType_422YpCbCr8_yuvs ||
-             pixelFormat == kCVPixelFormatType_422YpCbCr8FullRange) {
-    MOZ_ASSERT(plane == 0);
-    // The YCBCR_422_APPLE ext is only available in compatibility profile. So,
-    // we should use RGB_422_APPLE for core profile. The difference between
-    // YCBCR_422_APPLE and RGB_422_APPLE is that the YCBCR_422_APPLE converts
-    // the YCbCr value to RGB with REC 601 conversion. But the RGB_422_APPLE
-    // doesn't contain color conversion. You should do the color conversion by
-    // yourself for RGB_422_APPLE.
-    //
-    // https://www.khronos.org/registry/OpenGL/extensions/APPLE/APPLE_ycbcr_422.txt
-    // https://www.khronos.org/registry/OpenGL/extensions/APPLE/APPLE_rgb_422.txt
-    if (isCompatibilityProfile) {
-      format = LOCAL_GL_YCBCR_422_APPLE;
-      if (aOutReadFormat) {
-        *aOutReadFormat = mozilla::gfx::SurfaceFormat::R8G8B8X8;
-      }
-    } else {
-      format = LOCAL_GL_RGB_422_APPLE;
-      if (aOutReadFormat) {
-        *aOutReadFormat = mozilla::gfx::SurfaceFormat::YUV422;
-      }
-    }
-    internalFormat = LOCAL_GL_RGB;
-    type = LOCAL_GL_UNSIGNED_SHORT_8_8_REV_APPLE;
-  } else {
-    MOZ_ASSERT(plane == 0);
-
-    internalFormat = HasAlpha() ? LOCAL_GL_RGBA : LOCAL_GL_RGB;
-    format = LOCAL_GL_BGRA;
-    type = LOCAL_GL_UNSIGNED_INT_8_8_8_8_REV;
-    if (aOutReadFormat) {
-      *aOutReadFormat = HasAlpha() ? mozilla::gfx::SurfaceFormat::R8G8B8A8
-                                   : mozilla::gfx::SurfaceFormat::R8G8B8X8;
-    }
-  }
-
-  auto err = EAGLTexImageIOSurface2D(aGL, LOCAL_GL_TEXTURE_RECTANGLE_ARB, internalFormat,
-                                     GetDevicePixelWidth(plane), GetDevicePixelHeight(plane),
-                                     format, type, plane);
-  if (err) {
-    const auto formatChars = (const char*)&pixelFormat;
-    const char formatStr[] = {formatChars[3], formatChars[2], formatChars[1], formatChars[0], 0};
-    const nsPrintfCString errStr("CGLTexImageIOSurface2D(context, target, 0x%04x,"
-                                 " %u, %u, 0x%04x, 0x%04x, iosurfPtr, %u) -> %i",
-                                 internalFormat, uint32_t(GetDevicePixelWidth(plane)),
-                                 uint32_t(GetDevicePixelHeight(plane)), format, type,
-                                 (unsigned int)plane, err);
-    gfxCriticalError() << errStr.get() << " (iosurf format: " << formatStr << ")";
-  }
-  return err;
-}
+                          plane:aPlane];
+#  endif
 #endif
+}
 
 void MacIOSurface::SetColorSpace(const mozilla::gfx::ColorSpace2 cs) const {
   Maybe<CFStringRef> str;
