@@ -1759,9 +1759,9 @@ bool NativeLayerCA::Representation::ApplyChanges(
     mOpaquenessTintLayer.anchorPoint = CGPointZero;
     mOpaquenessTintLayer.contentsGravity = kCAGravityTopLeft;
     if (aIsOpaque) {
-      mOpaquenessTintLayer.backgroundColor = CGColorCreateSRGB(0, 1, 0, 0.5);
+      mOpaquenessTintLayer.backgroundColor = CGColorCreateGenericRGB(0, 1, 0, 0.5);
     } else {
-      mOpaquenessTintLayer.backgroundColor = CGColorCreateSRGB(1, 0, 0, 0.5);
+      mOpaquenessTintLayer.backgroundColor = CGColorCreateGenericRGB(1, 0, 0, 0.5);
     }
     [mWrappingCALayer addSublayer:mOpaquenessTintLayer];
   } else if (!shouldTintOpaqueness && mOpaquenessTintLayer) {
