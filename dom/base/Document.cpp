@@ -10994,9 +10994,6 @@ void Document::RemoveColorSchemeMeta(HTMLMetaElement& aMeta) {
 }
 
 void Document::RecomputeColorScheme() {
-  if (!StaticPrefs::layout_css_color_scheme_enabled()) {
-    return;
-  }
   auto oldColorScheme = mColorSchemeBits;
   mColorSchemeBits = 0;
   const nsTArray<HTMLMetaElement*>& elements = mColorSchemeMetaTags;
@@ -18123,11 +18120,6 @@ void Document::RecordNavigationTiming(ReadyState aReadyState) {
       NS_WARNING("Unexpected ReadyState value");
       break;
   }
-}
-
-bool Document::ModuleScriptsEnabled() const {
-  return nsContentUtils::IsChromeDoc(this) ||
-         StaticPrefs::dom_moduleScripts_enabled();
 }
 
 bool Document::ImportMapsEnabled() const {

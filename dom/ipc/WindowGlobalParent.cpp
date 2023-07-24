@@ -8,6 +8,7 @@
 
 #include <algorithm>
 
+#include "mozilla/AntiTrackingUtils.h"
 #include "mozilla/AsyncEventDispatcher.h"
 #include "mozilla/ClearOnShutdown.h"
 #include "mozilla/ContentBlockingAllowList.h"
@@ -66,8 +67,6 @@
 #include "SessionStoreFunctions.h"
 #include "nsIXPConnect.h"
 #include "nsImportModule.h"
-#include "nsIOService.h"
-#include "nsScriptSecurityManager.h"
 
 #include "mozilla/dom/PBackgroundSessionStorageCache.h"
 
@@ -84,6 +83,7 @@ WindowGlobalParent::WindowGlobalParent(
     uint64_t aOuterWindowId, FieldValues&& aInit)
     : WindowContext(aBrowsingContext, aInnerWindowId, aOuterWindowId,
                     std::move(aInit)),
+      mIsInitialDocument(false),
       mSandboxFlags(0),
       mDocumentHasLoaded(false),
       mDocumentHasUserInteracted(false),
@@ -110,7 +110,7 @@ already_AddRefed<WindowGlobalParent> WindowGlobalParent::CreateDisconnected(
                              aInit.context().mOuterWindowId, std::move(fields));
   wgp->mDocumentPrincipal = aInit.principal();
   wgp->mDocumentURI = aInit.documentURI();
-  wgp->mIsInitialDocument = Some(aInit.isInitialDocument());
+  wgp->mIsInitialDocument = aInit.isInitialDocument();
   wgp->mBlockAllMixedContent = aInit.blockAllMixedContent();
   wgp->mUpgradeInsecureRequests = aInit.upgradeInsecureRequests();
   wgp->mSandboxFlags = aInit.sandboxFlags();
@@ -373,49 +373,7 @@ mozilla::ipc::IPCResult WindowGlobalParent::RecvInternalLoad(
 
 IPCResult WindowGlobalParent::RecvUpdateDocumentURI(nsIURI* aURI) {
   // XXX(nika): Assert that the URI change was one which makes sense (either
-  // about:blank -> a real URI, or a legal push/popstate URI change):
-  nsAutoCString scheme;
-  if (NS_FAILED(aURI->GetScheme(scheme))) {
-    return IPC_FAIL(this, "Setting DocumentURI without scheme.");
-  }
-
-  nsIIOService* ios = nsContentUtils::GetIOService();
-  if (!ios) {
-    return IPC_FAIL(this, "Cannot get IOService");
-  }
-  nsCOMPtr<nsIProtocolHandler> handler;
-  ios->GetProtocolHandler(scheme.get(), getter_AddRefs(handler));
-  if (!handler) {
-    return IPC_FAIL(this, "Setting DocumentURI with unknown protocol.");
-  }
-
-  auto isLoadableViaInternet = [](nsIURI* uri) {
-    return (uri && (net::SchemeIsHTTP(uri) || net::SchemeIsHTTPS(uri)));
-  };
-
-  if (isLoadableViaInternet(aURI)) {
-    nsCOMPtr<nsIURI> principalURI = mDocumentPrincipal->GetURI();
-    if (mDocumentPrincipal->GetIsNullPrincipal()) {
-      nsCOMPtr<nsIPrincipal> precursor =
-          mDocumentPrincipal->GetPrecursorPrincipal();
-      if (precursor) {
-        principalURI = precursor->GetURI();
-      }
-    }
-
-    if (isLoadableViaInternet(principalURI) &&
-        !nsScriptSecurityManager::SecurityCompareURIs(principalURI, aURI)) {
-      nsAutoCString oldScheme, newScheme;
-      principalURI->GetScheme(oldScheme);
-      aURI->GetScheme(newScheme);
-      return IPC_FAIL_UNSAFE_PRINTF(
-          this,
-          "Setting DocumentURI with a different scheme than "
-          "principal URI. %s -> %s",
-          oldScheme.get(), newScheme.get());
-    }
-  }
-
+  // about:blank -> a real URI, or a legal push/popstate URI change?)
   mDocumentURI = aURI;
   return IPC_OK();
 }
@@ -1414,6 +1372,68 @@ IPCResult WindowGlobalParent::RecvDiscoverIdentityCredentialFromExternalSource(
             return aResolver(Some(aResult));
           },
           [aResolver](nsresult aErr) { aResolver(Nothing()); });
+  return IPC_OK();
+}
+
+IPCResult WindowGlobalParent::RecvHasStorageAccessPermission(
+    HasStorageAccessPermissionResolver&& aResolve) {
+  WindowGlobalParent* top = TopWindowContext();
+  if (!top) {
+    return IPC_FAIL_NO_REASON(this);
+  }
+  nsIPrincipal* topPrincipal = top->DocumentPrincipal();
+  nsIPrincipal* principal = DocumentPrincipal();
+
+  nsCOMPtr<nsIPermissionManager> permMgr =
+      components::PermissionManager::Service();
+  if (!permMgr) {
+    return IPC_FAIL(
+        this,
+        "Storage Access Permission: Failed to get Permission Manager service");
+  }
+
+  // Build the permission keys
+  nsAutoCString requestPermissionKey;
+  bool success = AntiTrackingUtils::CreateStoragePermissionKey(
+      principal, requestPermissionKey);
+  if (!success) {
+    return IPC_FAIL(
+        this,
+        "Storage Access Permission: Failed to create top level permission key");
+  }
+
+  nsAutoCString requestFramePermissionKey;
+  success = AntiTrackingUtils::CreateStorageFramePermissionKey(
+      principal, requestFramePermissionKey);
+  if (!success) {
+    return IPC_FAIL(
+        this,
+        "Storage Access Permission: Failed to create frame permission key");
+  }
+
+  // Test the permission
+  uint32_t access = nsIPermissionManager::UNKNOWN_ACTION;
+  nsresult rv = permMgr->TestPermissionFromPrincipal(
+      topPrincipal, requestPermissionKey, &access);
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+    return IPC_FAIL(this,
+                    "Storage Access Permission: Permission Manager failed to "
+                    "test permission");
+  }
+  if (access == nsIPermissionManager::ALLOW_ACTION) {
+    aResolve(true);
+    return IPC_OK();
+  }
+
+  uint32_t frameAccess = nsIPermissionManager::UNKNOWN_ACTION;
+  rv = permMgr->TestPermissionFromPrincipal(
+      topPrincipal, requestFramePermissionKey, &frameAccess);
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+    return IPC_FAIL(this,
+                    "Storage Access Permission: Permission Manager failed to "
+                    "test permission");
+  }
+  aResolve(frameAccess == nsIPermissionManager::ALLOW_ACTION);
   return IPC_OK();
 }
 

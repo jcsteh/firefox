@@ -731,8 +731,6 @@ static MOZ_ALWAYS_INLINE JSAtom* AllocateNewPermanentAtomNonStaticValidLength(
 }
 
 JSAtom* js::AtomizeString(JSContext* cx, JSString* str) {
-  MOZ_ASSERT(cx->isMainThreadContext());
-
   if (str->isAtom()) {
     return &str->asAtom();
   }
@@ -1017,7 +1015,6 @@ static MOZ_ALWAYS_INLINE JSAtom* PrimitiveToAtom(JSContext* cx,
     case ValueType::Undefined:
       return cx->names().undefined;
     case ValueType::Symbol:
-      MOZ_ASSERT(!cx->isHelperThreadContext());
       if constexpr (allowGC) {
         JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr,
                                   JSMSG_SYMBOL_TO_STRING);
@@ -1045,7 +1042,6 @@ static JSAtom* ToAtomSlow(
 
   Value v = arg;
   if (!v.isPrimitive()) {
-    MOZ_ASSERT(!cx->isHelperThreadContext());
     if (!allowGC) {
       return nullptr;
     }
@@ -1073,7 +1069,7 @@ JSAtom* js::ToAtom(JSContext* cx,
 
   JSAtom* atom = AtomizeString(cx, str);
   if (!atom && !allowGC) {
-    MOZ_ASSERT_IF(!cx->isHelperThreadContext(), cx->isThrowingOutOfMemory());
+    MOZ_ASSERT(cx->isThrowingOutOfMemory());
     cx->recoverFromOutOfMemory();
   }
   return atom;

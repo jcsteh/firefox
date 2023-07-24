@@ -1509,9 +1509,22 @@ JS::GCSliceCallback GCRuntime::setSliceCallback(JS::GCSliceCallback callback) {
   return stats().setSliceCallback(callback);
 }
 
-JS::GCNurseryCollectionCallback GCRuntime::setNurseryCollectionCallback(
+bool GCRuntime::addNurseryCollectionCallback(
+    JS::GCNurseryCollectionCallback callback, void* data) {
+  return nurseryCollectionCallbacks.ref().append(
+      Callback<JS::GCNurseryCollectionCallback>(callback, data));
+}
+
+void GCRuntime::removeNurseryCollectionCallback(
     JS::GCNurseryCollectionCallback callback) {
-  return stats().setNurseryCollectionCallback(callback);
+  EraseCallback(nurseryCollectionCallbacks.ref(), callback);
+}
+
+void GCRuntime::callNurseryCollectionCallbacks(JS::GCNurseryProgress progress,
+                                               JS::GCReason reason) {
+  for (auto const& p : nurseryCollectionCallbacks.ref()) {
+    p.op(rt->mainContextFromOwnThread(), progress, reason, p.data);
+  }
 }
 
 JS::DoCycleCollectionCallback GCRuntime::setDoCycleCollectionCallback(
@@ -2236,12 +2249,6 @@ void GCRuntime::purgeRuntime() {
 
   MOZ_ASSERT(marker().unmarkGrayStack.empty());
   marker().unmarkGrayStack.clearAndFree();
-
-  // If we're the main runtime, tell helper threads to free their unused
-  // memory when they are next idle.
-  if (!rt->parentRuntime) {
-    HelperThreadState().triggerFreeUnusedMemory();
-  }
 }
 
 bool GCRuntime::shouldPreserveJITCode(Realm* realm,
@@ -3496,7 +3503,6 @@ static bool NeedToCollectNursery(GCRuntime* gc) {
 
 #ifdef DEBUG
 static const char* DescribeBudget(const SliceBudget& budget) {
-  MOZ_ASSERT(TlsContext.get()->isMainThreadContext());
   constexpr size_t length = 32;
   static char buffer[length];
   budget.describe(buffer, length);

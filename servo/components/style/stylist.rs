@@ -324,19 +324,35 @@ struct UserAgentCascadeData {
     precomputed_pseudo_element_decls: PrecomputedPseudoElementDeclarations,
 }
 
+lazy_static! {
+    /// The empty UA cascade data for un-filled stylists.
+    static ref EMPTY_UA_CASCADE_DATA: Arc<UserAgentCascadeData> = {
+        let arc = Arc::new(UserAgentCascadeData::default());
+        arc.mark_as_intentionally_leaked();
+        arc
+    };
+}
+
 /// All the computed information for all the stylesheets that apply to the
 /// document.
-#[derive(Default)]
-#[cfg_attr(feature = "servo", derive(MallocSizeOf))]
+#[derive(MallocSizeOf)]
 pub struct DocumentCascadeData {
-    #[cfg_attr(
-        feature = "servo",
-        ignore_malloc_size_of = "Arc, owned by UserAgentCascadeDataCache"
-    )]
+    #[ignore_malloc_size_of = "Arc, owned by UserAgentCascadeDataCache or empty"]
     user_agent: Arc<UserAgentCascadeData>,
     user: CascadeData,
     author: CascadeData,
     per_origin: PerOrigin<()>,
+}
+
+impl Default for DocumentCascadeData {
+    fn default() -> Self {
+        Self {
+            user_agent: EMPTY_UA_CASCADE_DATA.clone(),
+            user: Default::default(),
+            author: Default::default(),
+            per_origin: Default::default(),
+        }
+    }
 }
 
 /// An iterator over the cascade data of a given document.
@@ -2810,7 +2826,8 @@ impl CascadeData {
                     )?;
                 },
                 CssRule::Property(ref rule) => {
-                    if let Ok(registration) = rule.to_valid_registration() {
+                    let url_data = stylesheet.contents().url_data.read();
+                    if let Ok(registration) = rule.to_valid_registration(&url_data) {
                         self.custom_property_registrations.try_insert(
                             rule.name.0.clone(),
                             registration,
