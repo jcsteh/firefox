@@ -3,7 +3,6 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 # Setup for build cache
-set -x
 
 # Thunderbird builds will set prior to including this file
 aws_prefix=${aws_prefix:-taskcluster}
