@@ -26,6 +26,7 @@
 extern "C" {
 // N.B. the syscalls are available back to 10.5, but the C wrappers
 // only in 10.12.  Fortunately, 10.15 is our current baseline.
+int pthread_chdir_np(const char* dir) API_AVAILABLE(macosx(10.12));
 int pthread_fchdir_np(int fd) API_AVAILABLE(macosx(10.12));
 
 int responsibility_spawnattrs_setdisclaim(posix_spawnattr_t attrs, int disclaim)
@@ -84,6 +85,34 @@ Result<Ok, LaunchError> LaunchApp(const std::vector<std::string>& argv,
     }
   }
 
+  // macOS 10.15 allows adding a chdir operation to the file actions;
+  // this ought to be part of the standard but sadly is not.  On iOS
+  // we can use a different nonstandard extension:
+  // pthread_{f,}chdir_np, so we can temporarily change the calling
+  // thread's cwd (which is then inherited by the child) without
+  // disturbing other threads, and then restore it afterwards.
+#ifdef XP_IOS
+  int old_cwd_fd = -1;
+  if (!options.workdir.empty()) {
+    old_cwd_fd = open(".", O_RDONLY | O_CLOEXEC | O_DIRECTORY);
+    if (old_cwd_fd < 0) {
+      DLOG(WARNING) << "open(\".\") failed";
+      return Err(LaunchError("open", errno));
+    }
+    if (pthread_chdir_np(options.workdir.c_str()) != 0) {
+      DLOG(WARNING) << "pthread_chdir_np failed";
+      return Err(LaunchError("pthread_chdir_np", errno));
+    }
+  }
+  auto thread_cwd_guard = mozilla::MakeScopeExit([old_cwd_fd] {
+    if (old_cwd_fd >= 0) {
+      if (pthread_fchdir_np(old_cwd_fd) != 0) {
+        DLOG(ERROR) << "pthread_fchdir_np failed; thread is in the wrong directory!";
+      }
+      close(old_cwd_fd);
+    }
+  });
+#else
   if (!options.workdir.empty()) {
     int rv = posix_spawn_file_actions_addchdir_np(&file_actions, options.workdir.c_str());
     if (rv != 0) {
@@ -91,6 +120,7 @@ Result<Ok, LaunchError> LaunchApp(const std::vector<std::string>& argv,
       return Err(LaunchError("posix_spawn_file_actions_addchdir", rv));
     }
   }
+#endif
 
   // Initialize spawn attributes.
   posix_spawnattr_t spawnattr;
