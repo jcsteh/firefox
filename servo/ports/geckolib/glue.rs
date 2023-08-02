@@ -10,8 +10,7 @@ use cssparser::{Parser, ParserInput, SourceLocation, UnicodeRange};
 use dom::{DocumentState, ElementState};
 use malloc_size_of::MallocSizeOfOps;
 use nsstring::{nsCString, nsString};
-use selectors::matching::IgnoreNthChildForInvalidation;
-use selectors::NthIndexCache;
+use selectors::matching::{MatchingForInvalidation, SelectorCaches};
 use servo_arc::{Arc, ArcBorrow};
 use smallvec::SmallVec;
 use style::values::generics::color::ColorMixFlags;
@@ -56,6 +55,7 @@ use style::gecko_bindings::bindings::Gecko_GetOrCreateInitialKeyframe;
 use style::gecko_bindings::bindings::Gecko_GetOrCreateKeyframeAtStart;
 use style::gecko_bindings::bindings::Gecko_HaveSeenPtr;
 use style::gecko_bindings::structs;
+use style::gecko_bindings::structs::GeckoFontMetrics;
 use style::gecko_bindings::structs::gfx::FontPaletteValueSet;
 use style::gecko_bindings::structs::gfxFontFeatureValueSet;
 use style::gecko_bindings::structs::ipc::ByteBuf;
@@ -97,7 +97,7 @@ use style::global_style_data::{
 use style::invalidation::element::restyle_hints::RestyleHint;
 use style::invalidation::stylesheets::RuleChangeKind;
 use style::media_queries::MediaList;
-use style::parser::{self, Parse, ParserContext};
+use style::parser::{Parse, ParserContext};
 use style::properties::animated_properties::{AnimationValue, AnimationValueMap};
 use style::properties::{parse_one_declaration_into, parse_style_attribute};
 use style::properties::{ComputedValues, CountedUnknownProperty, Importance, NonCustomPropertyId};
@@ -189,7 +189,6 @@ pub unsafe extern "C" fn Servo_Initialize(
 
     // Perform some debug-only runtime assertions.
     origin_flags::assert_flags_match();
-    parser::assert_parsing_mode_match();
     traversal_flags::assert_traversal_flags_match();
     specified::font::assert_variant_east_asian_matches();
     specified::font::assert_variant_ligatures_matches();
@@ -2428,7 +2427,7 @@ fn desugared_selector_list(rules: &ThinVec<&LockedStyleRule>) -> SelectorList {
     let mut selectors: Option<SelectorList> = None;
     for rule in rules.iter().rev() {
         selectors = Some(read_locked_arc(rule, |rule| match selectors {
-            Some(s) => rule.selectors.replace_parent_selector(&s.0),
+            Some(s) => rule.selectors.replace_parent_selector(&s.to_shared()),
             None => rule.selectors.clone(),
         }));
     }
@@ -2472,7 +2471,7 @@ pub extern "C" fn Servo_StyleRule_SelectorMatchesElement(
     let selectors = desugared_selector_list(rules);
     let Some(selector) = selectors.0.get(index as usize) else { return false };
     let mut matching_mode = MatchingMode::Normal;
-    match PseudoElement::from_pseudo_type(pseudo_type) {
+    match PseudoElement::from_pseudo_type(pseudo_type, None) {
         Some(pseudo) => {
             // We need to make sure that the requested pseudo element type
             // matches the selector pseudo element type before proceeding.
@@ -2495,7 +2494,7 @@ pub extern "C" fn Servo_StyleRule_SelectorMatchesElement(
     let element = GeckoElement(element);
     let host = host.map(GeckoElement);
     let quirks_mode = element.as_node().owner_doc().quirks_mode();
-    let mut nth_index_cache = Default::default();
+    let mut selector_caches = SelectorCaches::default();
     let visited_mode = if relevant_link_visited {
         VisitedHandlingMode::RelevantLinkVisited
     } else {
@@ -2504,11 +2503,11 @@ pub extern "C" fn Servo_StyleRule_SelectorMatchesElement(
     let mut ctx = MatchingContext::new_for_visited(
         matching_mode,
         /* bloom_filter = */ None,
-        &mut nth_index_cache,
+        &mut selector_caches,
         visited_mode,
         quirks_mode,
         NeedsSelectorFlags::No,
-        IgnoreNthChildForInvalidation::No,
+        MatchingForInvalidation::No,
     );
     ctx.with_shadow_host(host, |ctx| {
         matches_selector(selector, 0, None, &element, ctx)
@@ -3905,7 +3904,7 @@ pub unsafe extern "C" fn Servo_ComputedValues_GetForAnonymousBox(
     pseudo: PseudoStyleType,
     raw_data: &PerDocumentStyleData,
 ) -> Strong<ComputedValues> {
-    let pseudo = PseudoElement::from_pseudo_type(pseudo).unwrap();
+    let pseudo = PseudoElement::from_pseudo_type(pseudo, None).unwrap();
     debug_assert!(pseudo.is_anon_box());
     debug_assert_ne!(pseudo, PseudoElement::PageContent);
     let global_style_data = &*GLOBAL_STYLE_DATA;
@@ -3926,10 +3925,23 @@ pub unsafe extern "C" fn Servo_ComputedValues_GetForAnonymousBox(
         .into()
 }
 
+fn get_functional_pseudo_parameter_atom(
+    functional_pseudo_parameter: *mut nsAtom,
+) -> Option<AtomIdent> {
+    if functional_pseudo_parameter.is_null() {
+        None
+    } else {
+        Some(AtomIdent::new(unsafe {
+            Atom::from_raw(functional_pseudo_parameter)
+        }))
+    }
+}
+
 #[no_mangle]
 pub extern "C" fn Servo_ResolvePseudoStyle(
     element: &RawGeckoElement,
     pseudo_type: PseudoStyleType,
+    functional_pseudo_parameter: *mut nsAtom,
     is_probe: bool,
     inherited_style: Option<&ComputedValues>,
     raw_data: &PerDocumentStyleData,
@@ -3940,7 +3952,10 @@ pub extern "C" fn Servo_ResolvePseudoStyle(
     debug!(
         "Servo_ResolvePseudoStyle: {:?} {:?}, is_probe: {}",
         element,
-        PseudoElement::from_pseudo_type(pseudo_type),
+        PseudoElement::from_pseudo_type(
+            pseudo_type,
+            get_functional_pseudo_parameter_atom(functional_pseudo_parameter)
+        ),
         is_probe
     );
 
@@ -3965,21 +3980,26 @@ pub extern "C" fn Servo_ResolvePseudoStyle(
         },
     };
 
-    let pseudo = PseudoElement::from_pseudo_type(pseudo_type)
-        .expect("ResolvePseudoStyle with a non-pseudo?");
+    let pseudo_element = PseudoElement::from_pseudo_type(
+        pseudo_type,
+        get_functional_pseudo_parameter_atom(functional_pseudo_parameter),
+    )
+    .expect("ResolvePseudoStyle with a non-pseudo?");
+
+    let matching_fn = |pseudo: &PseudoElement| *pseudo == pseudo_element;
 
     let global_style_data = &*GLOBAL_STYLE_DATA;
     let guard = global_style_data.shared_lock.read();
     let style = get_pseudo_style(
         &guard,
         element,
-        &pseudo,
+        &pseudo_element,
         RuleInclusion::All,
         &data.styles,
         inherited_style,
         &doc_data.stylist,
         is_probe,
-        /* matching_func = */ None,
+        /* matching_func = */ if pseudo_element.is_highlight() {Some(&matching_fn)} else {None},
     );
 
     match style {
@@ -4003,45 +4023,6 @@ fn debug_atom_array(atoms: &nsTArray<structs::RefPtr<nsAtom>>) -> String {
     }
     result.push(']');
     result
-}
-
-#[no_mangle]
-pub extern "C" fn Servo_ComputedValues_ResolveHighlightPseudoStyle(
-    element: &RawGeckoElement,
-    highlight_name: *const nsAtom,
-    raw_data: &PerDocumentStyleData,
-) -> Strong<ComputedValues> {
-    let element = GeckoElement(element);
-    let data = element
-        .borrow_data()
-        .expect("Calling ResolveHighlightPseudoStyle on unstyled element?");
-    let pseudo_element = unsafe {
-        AtomIdent::with(highlight_name, |atom| {
-            PseudoElement::Highlight(atom.to_owned())
-        })
-    };
-
-    let doc_data = raw_data.borrow();
-
-    let matching_fn = |pseudo: &PseudoElement| *pseudo == pseudo_element;
-
-    let global_style_data = &*GLOBAL_STYLE_DATA;
-    let guard = global_style_data.shared_lock.read();
-    let style = get_pseudo_style(
-        &guard,
-        element,
-        &pseudo_element,
-        RuleInclusion::All,
-        &data.styles,
-        None,
-        &doc_data.stylist,
-        /* is_probe = */ true,
-        Some(&matching_fn),
-    );
-    match style {
-        Some(s) => s.into(),
-        None => Strong::null(),
-    }
 }
 
 #[no_mangle]
@@ -4213,7 +4194,7 @@ pub unsafe extern "C" fn Servo_ComputedValues_Inherit(
     let data = raw_data.borrow();
 
     let for_text = target == structs::InheritTarget::Text;
-    let pseudo = PseudoElement::from_pseudo_type(pseudo).unwrap();
+    let pseudo = PseudoElement::from_pseudo_type(pseudo, None).unwrap();
     debug_assert!(pseudo.is_anon_box());
 
     let mut style =
@@ -4401,13 +4382,12 @@ fn parse_property_into(
     value: &nsACString,
     origin: Origin,
     url_data: &UrlExtraData,
-    parsing_mode: structs::ParsingMode,
+    parsing_mode: ParsingMode,
     quirks_mode: QuirksMode,
     rule_type: CssRuleType,
     reporter: Option<&dyn ParseErrorReporter>,
 ) -> Result<(), ()> {
     let value = unsafe { value.as_str_unchecked() };
-    let parsing_mode = ParsingMode::from_bits_retain(parsing_mode);
 
     if let Some(non_custom) = property_id.non_custom_id() {
         if !non_custom.allowed_in_rule(rule_type.into()) {
@@ -4433,7 +4413,7 @@ pub unsafe extern "C" fn Servo_ParseProperty(
     property: nsCSSPropertyID,
     value: &nsACString,
     data: *mut URLExtraData,
-    parsing_mode: structs::ParsingMode,
+    parsing_mode: ParsingMode,
     quirks_mode: nsCompatibility,
     loader: *mut Loader,
     rule_type: CssRuleType,
@@ -4802,7 +4782,7 @@ fn set_property(
     value: &nsACString,
     is_important: bool,
     data: &UrlExtraData,
-    parsing_mode: structs::ParsingMode,
+    parsing_mode: ParsingMode,
     quirks_mode: QuirksMode,
     loader: *mut Loader,
     rule_type: CssRuleType,
@@ -4849,7 +4829,7 @@ pub unsafe extern "C" fn Servo_DeclarationBlock_SetProperty(
     value: &nsACString,
     is_important: bool,
     data: *mut URLExtraData,
-    parsing_mode: structs::ParsingMode,
+    parsing_mode: ParsingMode,
     quirks_mode: nsCompatibility,
     loader: *mut Loader,
     rule_type: CssRuleType,
@@ -4894,7 +4874,7 @@ pub unsafe extern "C" fn Servo_DeclarationBlock_SetPropertyById(
     value: &nsACString,
     is_important: bool,
     data: *mut URLExtraData,
-    parsing_mode: structs::ParsingMode,
+    parsing_mode: ParsingMode,
     quirks_mode: nsCompatibility,
     loader: *mut Loader,
     rule_type: CssRuleType,
@@ -5689,7 +5669,7 @@ pub extern "C" fn Servo_CSSSupports2(property: &nsACString, value: &nsACString) 
         value,
         Origin::Author,
         unsafe { dummy_url_data() },
-        structs::ParsingMode_Default,
+        ParsingMode::DEFAULT,
         QuirksMode::NoQuirks,
         CssRuleType::Style,
         None,
@@ -5826,6 +5806,7 @@ pub extern "C" fn Servo_ResolveStyle(element: &RawGeckoElement) -> Strong<Comput
 pub extern "C" fn Servo_ResolveStyleLazily(
     element: &RawGeckoElement,
     pseudo_type: PseudoStyleType,
+    functional_pseudo_parameter: *mut nsAtom,
     rule_inclusion: StyleRuleInclusion,
     snapshots: *const ServoElementSnapshotTable,
     cache_generation: u64,
@@ -5840,7 +5821,15 @@ pub extern "C" fn Servo_ResolveStyleLazily(
     let mut data = raw_data.borrow_mut();
     let data = &mut *data;
     let rule_inclusion = RuleInclusion::from(rule_inclusion);
-    let pseudo = PseudoElement::from_pseudo_type(pseudo_type);
+    let pseudo_element = PseudoElement::from_pseudo_type(
+        pseudo_type,
+        get_functional_pseudo_parameter_atom(functional_pseudo_parameter),
+    );
+
+    let matching_fn = |pseudo: &PseudoElement| match pseudo_element {
+        Some(ref p) => *pseudo == *p,
+        _ => false,
+    };
 
     if cache_generation != data.undisplayed_style_cache_generation {
         data.undisplayed_style_cache.clear();
@@ -5849,7 +5838,7 @@ pub extern "C" fn Servo_ResolveStyleLazily(
 
     let stylist = &data.stylist;
     let finish = |styles: &ElementStyles, is_probe: bool| -> Option<Arc<ComputedValues>> {
-        match pseudo {
+        match pseudo_element {
             Some(ref pseudo) => {
                 get_pseudo_style(
                     &guard,
@@ -5860,14 +5849,20 @@ pub extern "C" fn Servo_ResolveStyleLazily(
                     /* inherited_styles = */ None,
                     &stylist,
                     is_probe,
-                    /* matching_func = */ None,
+                    if pseudo.is_highlight() {
+                        Some(&matching_fn)
+                    } else {
+                        None
+                    },
                 )
             },
             None => Some(styles.primary().clone()),
         }
     };
 
-    let is_before_or_after = pseudo.as_ref().map_or(false, |p| p.is_before_or_after());
+    let is_before_or_after = pseudo_element
+        .as_ref()
+        .map_or(false, |p| p.is_before_or_after());
 
     // In the common case we already have the style. Check that before setting
     // up all the computation machinery.
@@ -5886,7 +5881,7 @@ pub extern "C" fn Servo_ResolveStyleLazily(
         if let Some(result) = styles {
             return result.into();
         }
-        if pseudo.is_none() && can_use_cache {
+        if pseudo_element.is_none() && can_use_cache {
             if let Some(style) = data.undisplayed_style_cache.get(&element.opaque()) {
                 return style.clone().into();
             }
@@ -5911,7 +5906,7 @@ pub extern "C" fn Servo_ResolveStyleLazily(
         &mut context,
         element,
         rule_inclusion,
-        pseudo.as_ref(),
+        pseudo_element.as_ref(),
         if can_use_cache {
             Some(&mut data.undisplayed_style_cache)
         } else {
@@ -6055,7 +6050,7 @@ pub extern "C" fn Servo_GetComputedKeyframeValues(
 ) {
     let data = raw_data.borrow();
     let element = GeckoElement(element);
-    let pseudo = PseudoElement::from_pseudo_type(pseudo_type);
+    let pseudo = PseudoElement::from_pseudo_type(pseudo_type, None);
     let parent_element = if pseudo.is_none() {
         element.inheritance_parent()
     } else {
@@ -6941,6 +6936,7 @@ pub extern "C" fn Servo_ProcessInvalidations(
     );
     let mut data = data.as_mut().map(|d| &mut **d);
 
+    let mut selector_caches = SelectorCaches::default();
     if let Some(ref mut data) = data {
         // FIXME(emilio): Ideally we could share the nth-index-cache across all
         // the elements?
@@ -6948,7 +6944,7 @@ pub extern "C" fn Servo_ProcessInvalidations(
             element,
             &shared_style_context,
             None,
-            &mut NthIndexCache::default(),
+            &mut selector_caches,
         );
 
         if result.has_invalidated_siblings() {
@@ -7350,11 +7346,16 @@ pub unsafe extern "C" fn Servo_ParseFontShorthandForMatching(
                     Err(..) => return false,
                 }
             },
-            // Map absolute-size keywords to sizes.
             specified::FontSize::Keyword(info) => {
+                let keyword = if info.kw != specified::FontSizeKeyword::Math {
+                  info.kw
+                } else {
+                  specified::FontSizeKeyword::Medium
+                };
+                // Map absolute-size keywords to sizes.
                 // TODO: Maybe get a meaningful quirks / base size from the caller?
                 let quirks_mode = QuirksMode::NoQuirks;
-                info.kw
+                keyword
                     .to_length_without_context(
                         quirks_mode,
                         computed::Length::new(specified::FONT_MEDIUM_PX),
@@ -7445,12 +7446,12 @@ pub unsafe extern "C" fn Servo_InvalidateStyleForDocStateChanges(
                 .map(|author_styles| &*author_styles.data),
         );
 
-    let mut nth_index_cache = Default::default();
+    let mut selector_caches = SelectorCaches::default();
     let root = GeckoElement(root);
     let mut processor = DocumentStateInvalidationProcessor::new(
         iter,
         DocumentState::from_bits_retain(states_changed),
-        &mut nth_index_cache,
+        &mut selector_caches,
         root.as_node().owner_doc().quirks_mode(),
     );
 
@@ -7802,9 +7803,25 @@ where
 }
 
 #[no_mangle]
-pub extern "C" fn Servo_ParseAbsoluteLength(len: &nsACString, out: &mut f32) -> bool {
+// Parse a length without style context (for canvas2d letterSpacing/wordSpacing attributes).
+// This accepts absolute lengths, and if a font-metrics-getter function is passed, also
+// font-relative ones, but not other units (such as percentages, viewport-relative, etc)
+// that would require a full style context to resolve.
+pub extern "C" fn Servo_ParseLengthWithoutStyleContext(
+    len: &nsACString,
+    out: &mut f32,
+    get_font_metrics: Option<unsafe extern "C" fn(*mut c_void) -> GeckoFontMetrics>,
+    getter_context: *mut c_void
+) -> bool {
+    let metrics_getter = if let Some(getter) = get_font_metrics {
+        Some(move || -> GeckoFontMetrics {
+            unsafe { getter(getter_context) }
+        })
+    } else {
+        None
+    };
     let value = parse_no_context(unsafe { len.as_str_unchecked() }, specified::Length::parse)
-        .and_then(|p| p.to_computed_pixel_length_without_context());
+        .and_then(|p| p.to_computed_pixel_length_with_font_metrics(metrics_getter));
     match value {
         Ok(v) => {
             *out = v;

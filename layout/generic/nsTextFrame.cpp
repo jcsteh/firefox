@@ -4735,10 +4735,10 @@ void nsTextFrame::GetTextDecorations(
     // If we're on a ruby frame other than ruby text container, we
     // should continue.
     mozilla::StyleDisplay display = f->GetDisplay();
-    if (!nsStyleDisplay::IsInlineFlow(display) &&
-        (!nsStyleDisplay::IsRubyDisplayType(display) ||
+    if (!display.IsInlineFlow() &&
+        (!display.IsRuby() ||
          display == mozilla::StyleDisplay::RubyTextContainer) &&
-        nsStyleDisplay::IsDisplayTypeInlineOutside(display)) {
+        display.IsInlineOutside()) {
       break;
     }
 
@@ -5478,7 +5478,7 @@ void nsTextFrame::DrawSelectionDecorations(
 
 /* static */
 bool nsTextFrame::GetSelectionTextColors(SelectionType aSelectionType,
-                                         const nsAtom* aHighlightName,
+                                         nsAtom* aHighlightName,
                                          nsTextPaintStyle& aTextPaintStyle,
                                          const TextRangeStyle& aRangeStyle,
                                          nscolor* aForeground,
@@ -5582,7 +5582,7 @@ class MOZ_STACK_CLASS SelectionRangeIterator {
   bool GetNextSegment(gfxFloat* aXOffset, gfxTextRun::Range* aRange,
                       gfxFloat* aHyphenWidth,
                       nsTArray<SelectionType>& aSelectionType,
-                      nsTArray<RefPtr<const nsAtom>>& aHighlightName,
+                      nsTArray<RefPtr<nsAtom>>& aHighlightName,
                       nsTArray<TextRangeStyle>& aStyle);
 
   void UpdateWithAdvance(gfxFloat aAdvance) {
@@ -5617,7 +5617,7 @@ SelectionRangeIterator::SelectionRangeIterator(
 bool SelectionRangeIterator::GetNextSegment(
     gfxFloat* aXOffset, gfxTextRun::Range* aRange, gfxFloat* aHyphenWidth,
     nsTArray<SelectionType>& aSelectionType,
-    nsTArray<RefPtr<const nsAtom>>& aHighlightName,
+    nsTArray<RefPtr<nsAtom>>& aHighlightName,
     nsTArray<TextRangeStyle>& aStyle) {
   if (mIterator.GetOriginalOffset() >= int32_t(mOriginalRange.end)) {
     return false;
@@ -6001,7 +6001,7 @@ bool nsTextFrame::PaintTextWithSelectionColors(
     SelectionRangeIterator iterator(selectionRanges, contentRange,
                                     *aParams.provider, mTextRun, startIOffset);
     AutoTArray<SelectionType, 1> selectionTypes;
-    AutoTArray<RefPtr<const nsAtom>, 1> highlightNames;
+    AutoTArray<RefPtr<nsAtom>, 1> highlightNames;
     AutoTArray<TextRangeStyle, 1> rangeStyles;
     while (iterator.GetNextSegment(&iOffset, &range, &hyphenWidth,
                                    selectionTypes, highlightNames,
@@ -6083,7 +6083,7 @@ bool nsTextFrame::PaintTextWithSelectionColors(
   SelectionRangeIterator iterator(selectionRanges, contentRange,
                                   *aParams.provider, mTextRun, startIOffset);
   AutoTArray<SelectionType, 1> selectionTypes;
-  AutoTArray<RefPtr<const nsAtom>, 1> highlightNames;
+  AutoTArray<RefPtr<nsAtom>, 1> highlightNames;
   AutoTArray<TextRangeStyle, 1> rangeStyles;
   while (iterator.GetNextSegment(&iOffset, &range, &hyphenWidth, selectionTypes,
                                  highlightNames, rangeStyles)) {
@@ -6190,7 +6190,7 @@ void nsTextFrame::PaintTextSelectionDecorations(
     pt.y = (aParams.textBaselinePt.y - mAscent) / app;
   }
   AutoTArray<SelectionType, 1> nextSelectionTypes;
-  AutoTArray<RefPtr<const nsAtom>, 1> highlightNames;
+  AutoTArray<RefPtr<nsAtom>, 1> highlightNames;
   AutoTArray<TextRangeStyle, 1> selectedStyles;
 
   while (iterator.GetNextSegment(&iOffset, &range, &hyphenWidth,
@@ -7471,18 +7471,11 @@ nsresult nsTextFrame::GetCharacterRectsInRange(int32_t aInOffset,
   }
 
   do {
-    // Note that when IsTextCombined() is true, we may get a slight mismatch
-    // between `point`, which is accumulated one cluster at a time, applying
-    // the scale factor to each individual width, and the result of
-    // GetPointFromIterator, which measures the range up to the iterator
-    // position all at once and then scales the result. This can result in
-    // different rounding, so we relax this assertion a bit.
-    DebugOnly<nsPoint> p = GetPointFromIterator(iter, properties);
-    MOZ_ASSERT(
-        point == p || (Style()->IsTextCombined() &&
-                       std::abs(point.x - p.value.x) < AppUnitsPerCSSPixel() &&
-                       point.y == p.value.y),
-        "character position error!");
+    // We'd like to assert here that |point| matches
+    // |GetPointFromIterator(iter, properties)|, which in principle should be
+    // true; however, testcases with vast dimensions can lead to coordinate
+    // overflow and disrupt the calculations. So we've dropped the assertion
+    // to avoid tripping the fuzzer unnecessarily.
 
     // Measure to the end of the cluster.
     nscoord iSize = 0;

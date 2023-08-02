@@ -36,7 +36,7 @@ ChromeUtils.defineESModuleGetters(lazy, {
     "chrome://global/content/translations/TranslationsTelemetry.sys.mjs",
 });
 
-XPCOMUtils.defineLazyGetter(lazy, "console", () => {
+ChromeUtils.defineLazyGetter(lazy, "console", () => {
   return console.createInstance({
     maxLogLevelPref: "browser.translations.logLevel",
     prefix: "Translations",
@@ -497,7 +497,7 @@ export class TranslationsParent extends JSWindowActorParent {
       }
 
       if (
-        Services.prefs.prefHasDefaultValue("intl.accept_languages") &&
+        !Services.prefs.prefHasUserValue("intl.accept_languages") &&
         Services.locale.appLocaleAsBCP47 !== "en" &&
         !Services.locale.appLocaleAsBCP47.startsWith("en-")
       ) {
@@ -910,11 +910,10 @@ export class TranslationsParent extends JSWindowActorParent {
         TranslationsParent.#getTranslationModelRecords().then(records => {
           const languagePairMap = new Map();
 
-          for (const { fromLang, toLang, version } of records.values()) {
-            const isBeta = Services.vc.compare(version, "1.0") < 0;
+          for (const { fromLang, toLang } of records.values()) {
             const key = TranslationsParent.languagePairKey(fromLang, toLang);
             if (!languagePairMap.has(key)) {
-              languagePairMap.set(key, { fromLang, toLang, isBeta });
+              languagePairMap.set(key, { fromLang, toLang });
             }
           }
           return Array.from(languagePairMap.values());
@@ -936,31 +935,14 @@ export class TranslationsParent extends JSWindowActorParent {
   static async getSupportedLanguages() {
     const languagePairs = await TranslationsParent.getLanguagePairs();
 
-    /** @type {Map<string, boolean>} */
-    const fromLanguages = new Map();
-    /** @type {Map<string, boolean>} */
-    const toLanguages = new Map();
+    /** @type {Set<string>} */
+    const fromLanguages = new Set();
+    /** @type {Set<string>} */
+    const toLanguages = new Set();
 
-    for (const { fromLang, toLang, isBeta } of languagePairs) {
-      // [BetaLanguage, BetaLanguage]       => isBeta == true,
-      // [BetaLanguage, NonBetaLanguage]    => isBeta == true,
-      // [NonBetaLanguage, BetaLanguage]    => isBeta == true,
-      // [NonBetaLanguage, NonBetaLanguage] => isBeta == false,
-      if (isBeta) {
-        // If these languages are part of a beta languagePair, at least one of them is a beta language
-        // but the other may not be, so only tentatively mark them as beta if there is no entry.
-        if (!fromLanguages.has(fromLang)) {
-          fromLanguages.set(fromLang, isBeta);
-        }
-        if (!toLanguages.has(toLang)) {
-          toLanguages.set(toLang, isBeta);
-        }
-      } else {
-        // If these languages are part of a non-beta languagePair, then they are both
-        // guaranteed to be non-beta languages. Idempotently overwrite any previous entry.
-        fromLanguages.set(fromLang, isBeta);
-        toLanguages.set(toLang, isBeta);
-      }
+    for (const { fromLang, toLang } of languagePairs) {
+      fromLanguages.add(fromLang);
+      toLanguages.add(toLang);
     }
 
     // Build a map of the langTag to the display name.
@@ -981,9 +963,8 @@ export class TranslationsParent extends JSWindowActorParent {
       }
     }
 
-    const addDisplayName = ([langTag, isBeta]) => ({
+    const addDisplayName = langTag => ({
       langTag,
-      isBeta,
       displayName: displayNames.get(langTag),
     });
 
@@ -991,10 +972,10 @@ export class TranslationsParent extends JSWindowActorParent {
 
     return {
       languagePairs,
-      fromLanguages: Array.from(fromLanguages.entries())
+      fromLanguages: Array.from(fromLanguages.keys())
         .map(addDisplayName)
         .sort(sort),
-      toLanguages: Array.from(toLanguages.entries())
+      toLanguages: Array.from(toLanguages.keys())
         .map(addDisplayName)
         .sort(sort),
     };
@@ -1799,6 +1780,7 @@ export class TranslationsParent extends JSWindowActorParent {
    * @param {string} fromLanguage A BCP-47 language tag
    */
   restorePage(fromLanguage) {
+    TranslationsParent.telemetry().onRestorePage();
     if (
       lazy.autoTranslatePagePref ||
       TranslationsParent.shouldAlwaysTranslateLanguage(fromLanguage)
@@ -2134,17 +2116,21 @@ export class TranslationsParent extends JSWindowActorParent {
    * to the pref list if it is not present, or removing it if it is present.
    *
    * @param {string} langTag - A BCP-47 language tag
+   * @returns {boolean}
+   *  True if always-translate was enabled for this language.
+   *  False if always-translate was disabled for this language.
    */
   static toggleAlwaysTranslateLanguagePref(langTag) {
     if (TranslationsParent.shouldAlwaysTranslateLanguage(langTag)) {
       // The pref was toggled off for this langTag
       this.#removeLangTagFromPref(langTag, ALWAYS_TRANSLATE_LANGS_PREF);
-      return;
+      return false;
     }
 
     // The pref was toggled on for this langTag
     this.#addLangTagToPref(langTag, ALWAYS_TRANSLATE_LANGS_PREF);
     this.#removeLangTagFromPref(langTag, NEVER_TRANSLATE_LANGS_PREF);
+    return true;
   }
 
   /**
@@ -2152,35 +2138,46 @@ export class TranslationsParent extends JSWindowActorParent {
    * to the pref list if it is not present, or removing it if it is present.
    *
    * @param {string} langTag - A BCP-47 language tag
+   * @returns {boolean} Whether the pref was toggled on or off for this langTag.
+   *  True if never-translate was enabled for this language.
+   *  False if never-translate was disabled for this language.
    */
   static toggleNeverTranslateLanguagePref(langTag) {
     if (TranslationsParent.shouldNeverTranslateLanguage(langTag)) {
       // The pref was toggled off for this langTag
       this.#removeLangTagFromPref(langTag, NEVER_TRANSLATE_LANGS_PREF);
-      return;
+      return false;
     }
 
     // The pref was toggled on for this langTag
     this.#addLangTagToPref(langTag, NEVER_TRANSLATE_LANGS_PREF);
     this.#removeLangTagFromPref(langTag, ALWAYS_TRANSLATE_LANGS_PREF);
+    return true;
   }
 
   /**
    * Toggles the never-translate site permissions by adding DENY_ACTION to
    * the site principal if it is not present, or removing it if it is present.
+   *
+   * @returns {boolean}
+   *  True if never-translate was enabled for this site.
+   *  False if never-translate was disabled for this site.
    */
   toggleNeverTranslateSitePermissions() {
     const perms = Services.perms;
     const { documentPrincipal } = this.browsingContext.currentWindowGlobal;
+
     if (this.shouldNeverTranslateSite()) {
       perms.removeFromPrincipal(documentPrincipal, TRANSLATIONS_PERMISSION);
-    } else {
-      perms.addFromPrincipal(
-        documentPrincipal,
-        TRANSLATIONS_PERMISSION,
-        perms.DENY_ACTION
-      );
+      return false;
     }
+
+    perms.addFromPrincipal(
+      documentPrincipal,
+      TRANSLATIONS_PERMISSION,
+      perms.DENY_ACTION
+    );
+    return true;
   }
 
   didDestroy() {

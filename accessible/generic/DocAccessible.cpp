@@ -17,7 +17,7 @@
 #include "nsIIOService.h"
 #include "nsLayoutUtils.h"
 #include "nsTextEquivUtils.h"
-#include "Role.h"
+#include "mozilla/a11y/Role.h"
 #include "TreeWalker.h"
 #include "xpcAccessibleDocument.h"
 
@@ -79,7 +79,7 @@ DocAccessible::DocAccessible(dom::Document* aDocument,
        // before setting up the vtable we will call LocalAccessible::AddRef()
        // but not the overrides of it for subclasses.  It is important to call
        // those overrides to avoid confusing leak checking machinary.
-      HyperTextAccessibleWrap(nullptr, nullptr),
+      HyperTextAccessible(nullptr, nullptr),
       // XXX aaronl should we use an algorithm for the initial cache size?
       mAccessibleCache(kDefaultCacheLength),
       mNodeToAccessibleMap(kDefaultCacheLength),
@@ -520,7 +520,7 @@ void DocAccessible::Shutdown() {
     iter.Remove();
   }
 
-  HyperTextAccessibleWrap::Shutdown();
+  HyperTextAccessible::Shutdown();
 
   MOZ_ASSERT(GetAccService());
   GetAccService()->NotifyOfDocumentShutdown(
@@ -1629,7 +1629,7 @@ void DocAccessible::DoInitialUpdate() {
       SendCache(CacheDomain::All, CacheUpdateType::Initial);
 
       for (auto idx = 0U; idx < mChildren.Length(); idx++) {
-        ipcDoc->InsertIntoIpcTree(this, mChildren.ElementAt(idx), idx, true);
+        ipcDoc->InsertIntoIpcTree(mChildren.ElementAt(idx), true);
       }
     }
   }
@@ -1801,6 +1801,33 @@ bool DocAccessible::UpdateAccessibleOnAttrChange(dom::Element* aElement,
     // If the input[type] changes, we should recreate the accessible.
     RecreateAccessible(aElement);
     return true;
+  }
+
+  if (aAttribute == nsGkAtoms::href &&
+      !nsCoreUtils::HasClickListener(aElement)) {
+    // If the href is added or removed for a or area elements without click
+    // listeners, we need to recreate the accessible since the role might have
+    // changed. Without an href or click listener, the accessible must be a
+    // generic.
+    if (aElement->IsHTMLElement(nsGkAtoms::a)) {
+      LocalAccessible* acc = GetAccessible(aElement);
+      if (!acc) {
+        return false;
+      }
+      if (acc->IsHTMLLink() != aElement->HasAttr(nsGkAtoms::href)) {
+        RecreateAccessible(aElement);
+        return true;
+      }
+    } else if (aElement->IsHTMLElement(nsGkAtoms::area)) {
+      // For area accessibles, we have to recreate the entire image map, since
+      // the image map accessible manages the tree itself.
+      LocalAccessible* areaAcc = GetAccessibleEvenIfNotInMap(aElement);
+      if (!areaAcc || !areaAcc->LocalParent()) {
+        return false;
+      }
+      RecreateAccessible(areaAcc->LocalParent()->GetContent());
+      return true;
+    }
   }
 
   if (aElement->IsHTMLElement(nsGkAtoms::img) && aAttribute == nsGkAtoms::alt) {

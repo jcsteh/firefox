@@ -231,7 +231,7 @@ ASSERT_NODE_SIZE(HTMLParagraphElement, 128, 80);
 ASSERT_NODE_SIZE(HTMLPreElement, 128, 80);
 ASSERT_NODE_SIZE(HTMLSpanElement, 128, 80);
 ASSERT_NODE_SIZE(HTMLTableCellElement, 128, 80);
-ASSERT_NODE_SIZE(Text, 120, 64);
+ASSERT_NODE_SIZE(Text, 120, 80);
 
 #undef ASSERT_NODE_SIZE
 #undef EXTRA_DOM_NODE_BYTES
@@ -3025,6 +3025,8 @@ void Element::List(FILE* out, int32_t aIndent, const nsCString& aPrefix) const {
   fprintf(out, " state=[%llx]",
           static_cast<unsigned long long>(State().GetInternalValue()));
   fprintf(out, " flags=[%08x]", static_cast<unsigned int>(GetFlags()));
+  fprintf(out, " selectorflags=[%08x]",
+          static_cast<unsigned int>(GetSelectorFlags()));
   if (IsClosestCommonInclusiveAncestorForRangeInSelection()) {
     const LinkedList<AbstractRange>* ranges =
         GetExistingClosestCommonInclusiveAncestorRanges();
@@ -3209,7 +3211,7 @@ void Element::DispatchChromeOnlyLinkClickEvent(
       /* Cancelable */ true, nsGlobalWindowInner::Cast(doc->GetInnerWindow()),
       0, mouseEvent->CtrlKey(), mouseEvent->AltKey(), mouseEvent->ShiftKey(),
       mouseEvent->MetaKey(), mouseEvent->Button(), mouseDOMEvent,
-      mouseEvent->MozInputSource(), IgnoreErrors());
+      mouseEvent->InputSource(), IgnoreErrors());
   // Note: we're always trusted, but the event we pass as the `sourceEvent`
   // might not be. Frontend code will check that event's trusted property to
   // make that determination; doing it this way means we don't also start

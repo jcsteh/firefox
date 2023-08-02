@@ -8,13 +8,13 @@ import { CommonUtils } from "resource://services-common/utils.sys.mjs";
 
 import { CryptoUtils } from "resource://services-crypto/utils.sys.mjs";
 
-const {
+import {
   SCOPE_OLD_SYNC,
   DEPRECATED_SCOPE_ECOSYSTEM_TELEMETRY,
   FX_OAUTH_CLIENT_ID,
   log,
   logPII,
-} = ChromeUtils.import("resource://gre/modules/FxAccountsCommon.js");
+} from "resource://gre/modules/FxAccountsCommon.sys.mjs";
 
 // The following top-level fields have since been deprecated and exist here purely
 // to be removed from the account state when seen. After a reasonable period of time
@@ -302,7 +302,7 @@ export class FxAccountsKeys {
     sessionToken,
     keyFetchToken
   ) {
-    if (logPII) {
+    if (logPII()) {
       log.debug(
         `fetchAndUnwrapKeys: sessionToken: ${sessionToken}, keyFetchToken: ${keyFetchToken}`
       );
@@ -342,7 +342,7 @@ export class FxAccountsKeys {
       wrapKB
     );
 
-    if (logPII) {
+    if (logPII()) {
       log.debug("kBbytes: " + kBbytes);
     }
 
@@ -352,7 +352,7 @@ export class FxAccountsKeys {
       unwrapBKey: null,
     };
 
-    if (logPII) {
+    if (logPII()) {
       log.debug(`Keys Obtained: ${updateData.scopedKeys}`);
     } else {
       log.debug(
@@ -379,7 +379,7 @@ export class FxAccountsKeys {
     log.debug(
       `Fetching keys with token ${!!keyFetchToken} from ${client.host}`
     );
-    if (logPII) {
+    if (logPII()) {
       log.debug("fetchKeys - the token is " + keyFetchToken);
     }
     return client.accountKeys(keyFetchToken);

@@ -1078,7 +1078,7 @@ void nsFrameConstructorState::ConstructBackdropFrameFor(nsIContent* aContent,
 
   RefPtr<ComputedStyle> style =
       mPresShell->StyleSet()->ResolvePseudoElementStyle(
-          *aContent->AsElement(), PseudoStyleType::backdrop,
+          *aContent->AsElement(), PseudoStyleType::backdrop, nullptr,
           /* aParentStyle */ nullptr);
   MOZ_ASSERT(style->StyleDisplay()->mTopLayer == StyleTopLayer::Top);
   nsContainerFrame* parentFrame =
@@ -1848,7 +1848,7 @@ void nsCSSFrameConstructor::CreateGeneratedContentItem(
   // |ProbePseudoElementStyle| checks the relevant properties for the pseudo.
   // It only returns a non-null value if the pseudo should exist.
   RefPtr<ComputedStyle> pseudoStyle = styleSet->ProbePseudoElementStyle(
-      aOriginatingElement, aPseudoElement, &aStyle);
+      aOriginatingElement, aPseudoElement, nullptr, &aStyle);
   if (!pseudoStyle) {
     return;
   }
@@ -4729,19 +4729,6 @@ nsCSSFrameConstructor::FindMathMLData(const Element& aElement,
     return &sInlineMathData;
   }
 
-  if (!StaticPrefs::
-          mathml_legacy_maction_and_semantics_implementations_disabled()) {
-    static constexpr FrameConstructionDataByTag sMactionAndSemanticsData[] = {
-        SIMPLE_MATHML_CREATE(maction_, NS_NewMathMLmactionFrame),
-        SIMPLE_MATHML_CREATE(semantics_, NS_NewMathMLsemanticsFrame)};
-    const FrameConstructionData* data =
-        FindDataByTag(aElement, aStyle, sMactionAndSemanticsData,
-                      ArrayLength(sMactionAndSemanticsData));
-    if (data) {
-      return data;
-    }
-  }
-
   static constexpr FrameConstructionDataByTag sMathMLData[] = {
       SIMPLE_MATHML_CREATE(annotation_, NS_NewMathMLTokenFrame),
       SIMPLE_MATHML_CREATE(annotation_xml_, NS_NewMathMLmrowFrame),
@@ -5277,7 +5264,7 @@ nsCSSFrameConstructor::FindElementData(const Element& aElement,
     bool isRootElement = false;
     uint16_t rawDisplayValue =
         Servo_ComputedValues_BlockifiedDisplay(&aStyle, isRootElement);
-    display.mDisplay = StyleDisplay(rawDisplayValue);
+    display.mDisplay = StyleDisplay{rawDisplayValue};
     return FindDisplayData(display, aElement);
   }
 
@@ -8581,7 +8568,8 @@ already_AddRefed<ComputedStyle> nsCSSFrameConstructor::GetFirstLetterStyle(
     nsIContent* aContent, ComputedStyle* aComputedStyle) {
   if (aContent) {
     return mPresShell->StyleSet()->ResolvePseudoElementStyle(
-        *aContent->AsElement(), PseudoStyleType::firstLetter, aComputedStyle);
+        *aContent->AsElement(), PseudoStyleType::firstLetter, nullptr,
+        aComputedStyle);
   }
   return nullptr;
 }
@@ -8590,7 +8578,8 @@ already_AddRefed<ComputedStyle> nsCSSFrameConstructor::GetFirstLineStyle(
     nsIContent* aContent, ComputedStyle* aComputedStyle) {
   if (aContent) {
     return mPresShell->StyleSet()->ResolvePseudoElementStyle(
-        *aContent->AsElement(), PseudoStyleType::firstLine, aComputedStyle);
+        *aContent->AsElement(), PseudoStyleType::firstLine, nullptr,
+        aComputedStyle);
   }
   return nullptr;
 }
@@ -8808,8 +8797,7 @@ void nsCSSFrameConstructor::CreateNeededAnonFlexOrGridItems(
 /* static */ nsCSSFrameConstructor::RubyWhitespaceType
 nsCSSFrameConstructor::ComputeRubyWhitespaceType(StyleDisplay aPrevDisplay,
                                                  StyleDisplay aNextDisplay) {
-  MOZ_ASSERT(nsStyleDisplay::IsRubyDisplayType(aPrevDisplay) &&
-             nsStyleDisplay::IsRubyDisplayType(aNextDisplay));
+  MOZ_ASSERT(aPrevDisplay.IsRuby() && aNextDisplay.IsRuby());
   if (aPrevDisplay == aNextDisplay &&
       (aPrevDisplay == StyleDisplay::RubyBase ||
        aPrevDisplay == StyleDisplay::RubyText)) {
@@ -9254,10 +9242,9 @@ void nsCSSFrameConstructor::WrapItemsInPseudoParent(
             pseudoType);
   }
 
-  FrameConstructionItem* newItem = new (this)
-      FrameConstructionItem(&pseudoData.mFCData,
-                            // Use the content of our parent frame
-                            aParentContent, wrapperStyle.forget(), true);
+  // Use the content of our parent frame
+  auto* newItem = new (this) FrameConstructionItem(
+      &pseudoData.mFCData, aParentContent, wrapperStyle.forget(), true);
 
   const nsStyleDisplay* disp = newItem->mComputedStyle->StyleDisplay();
   // Here we're cheating a tad... technically, table-internal items should be

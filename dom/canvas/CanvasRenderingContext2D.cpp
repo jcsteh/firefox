@@ -129,6 +129,7 @@
 #include "mozilla/layers/WebRenderUserData.h"
 #include "mozilla/layers/WebRenderCanvasRenderer.h"
 #include "WindowRenderer.h"
+#include "GeckoBindings.h"
 
 #undef free  // apparently defined by some windows header, clashing with a
              // free() method in SkTypes.h
@@ -1136,6 +1137,17 @@ JSObject* CanvasRenderingContext2D::WrapObject(
   return CanvasRenderingContext2D_Binding::Wrap(aCx, this, aGivenProto);
 }
 
+void CanvasRenderingContext2D::GetContextAttributes(
+    CanvasRenderingContext2DSettings& aSettings) const {
+  aSettings = CanvasRenderingContext2DSettings();
+
+  aSettings.mAlpha = mContextAttributesHasAlpha;
+  aSettings.mWillReadFrequently = mWillReadFrequently;
+
+  // We don't support the 'desynchronized' and 'colorSpace' attributes, so
+  // those just keep their default values.
+}
+
 CanvasRenderingContext2D::ColorStyleCacheEntry
 CanvasRenderingContext2D::ParseColorSlow(const nsACString& aString) {
   ColorStyleCacheEntry result{nsCString(aString)};
@@ -1881,7 +1893,7 @@ CanvasRenderingContext2D::SetContextOptions(JSContext* aCx,
   // drawtarget yet
   MOZ_ASSERT(!mTarget);
 
-  ContextAttributes2D attributes;
+  CanvasRenderingContext2DSettings attributes;
   if (!attributes.Init(aCx, aOptions)) {
     aRvForDictionaryInit.Throw(NS_ERROR_UNEXPECTED);
     return NS_ERROR_UNEXPECTED;
@@ -2472,7 +2484,8 @@ static already_AddRefed<StyleLockedDeclarationBlock> CreateDeclarationForServo(
                                          aDocument->GetCompatibilityMode(),
                                          aDocument->CSSLoader()};
   RefPtr<StyleLockedDeclarationBlock> servoDeclarations =
-      ServoCSSParser::ParseProperty(aProperty, aPropertyValue, env);
+      ServoCSSParser::ParseProperty(aProperty, aPropertyValue, env,
+                                    StyleParsingMode::DEFAULT);
 
   if (!servoDeclarations) {
     // We got a syntax error.  The spec says this value must be ignored.
@@ -2485,8 +2498,8 @@ static already_AddRefed<StyleLockedDeclarationBlock> CreateDeclarationForServo(
     const nsCString normalString = "normal"_ns;
     Servo_DeclarationBlock_SetPropertyById(
         servoDeclarations, eCSSProperty_line_height, &normalString, false,
-        env.mUrlExtraData, ParsingMode::Default, env.mCompatMode, env.mLoader,
-        env.mRuleType, {});
+        env.mUrlExtraData, StyleParsingMode::DEFAULT, env.mCompatMode,
+        env.mLoader, env.mRuleType, {});
   }
 
   return servoDeclarations.forget();
@@ -2555,7 +2568,7 @@ static already_AddRefed<const ComputedStyle> GetFontStyleForServo(
     sc->GetComputedPropertyValue(eCSSProperty_font_size, computedFontSize);
     Servo_DeclarationBlock_SetPropertyById(
         declarations, eCSSProperty_font_size, &computedFontSize, false, nullptr,
-        ParsingMode::Default, eCompatibility_FullStandards, nullptr,
+        StyleParsingMode::DEFAULT, eCompatibility_FullStandards, nullptr,
         StyleCssRuleType::Style, {});
   }
 
@@ -2726,6 +2739,32 @@ void CanvasRenderingContext2D::SetWordSpacing(const nsACString& aWordSpacing) {
                CurrentState().wordSpacingStr);
 }
 
+static GeckoFontMetrics GetFontMetricsFromCanvas(void* aContext) {
+  auto* ctx = static_cast<CanvasRenderingContext2D*>(aContext);
+  auto* fontGroup = ctx->GetCurrentFontStyle();
+  if (!fontGroup) {
+    // Shouldn't happen, but just in case... return plausible values for a
+    // 10px font (canvas default size).
+    return {Length::FromPixels(5.0),
+            Length::FromPixels(5.0),
+            Length::FromPixels(8.0),
+            Length::FromPixels(10.0),
+            Length::FromPixels(8.0),
+            Length::FromPixels(10.0),
+            0.0f,
+            0.0f};
+  }
+  auto metrics = fontGroup->GetMetricsForCSSUnits(nsFontMetrics::eHorizontal);
+  return {Length::FromPixels(metrics.xHeight),
+          Length::FromPixels(metrics.zeroWidth),
+          Length::FromPixels(metrics.capHeight),
+          Length::FromPixels(metrics.ideographicWidth),
+          Length::FromPixels(metrics.maxAscent),
+          Length::FromPixels(fontGroup->GetStyle()->size),
+          0.0f,
+          0.0f};
+}
+
 void CanvasRenderingContext2D::ParseSpacing(const nsACString& aSpacing,
                                             float* aValue,
                                             nsACString& aNormalized) {
@@ -2739,7 +2778,8 @@ void CanvasRenderingContext2D::ParseSpacing(const nsACString& aSpacing,
     return;
   }
   float value;
-  if (!Servo_ParseAbsoluteLength(&normalized, &value)) {
+  if (!Servo_ParseLengthWithoutStyleContext(&normalized, &value,
+                                            GetFontMetricsFromCanvas, this)) {
     if (!GetPresShell()) {
       return;
     }
@@ -3372,6 +3412,8 @@ void CanvasRenderingContext2D::Arc(double aX, double aY, double aR,
   }
 
   EnsureWritablePath();
+
+  EnsureActivePath();
 
   mPathBuilder->Arc(Point(aX, aY), aR, aStartAngle, aEndAngle, aAnticlockwise);
   mPathPruned = false;
@@ -4448,14 +4490,14 @@ TextMetrics* CanvasRenderingContext2D::DrawOrMeasureText(
     const nsAString& aRawText, float aX, float aY,
     const Optional<double>& aMaxWidth, TextDrawOperation aOp,
     ErrorResult& aError) {
-  gfxFontGroup* currentFontStyle = GetCurrentFontStyle();
+  RefPtr<gfxFontGroup> currentFontStyle = GetCurrentFontStyle();
   if (NS_WARN_IF(!currentFontStyle)) {
     aError = NS_ERROR_FAILURE;
     return nullptr;
   }
 
   RefPtr<PresShell> presShell = GetPresShell();
-  Document* document = presShell ? presShell->GetDocument() : nullptr;
+  RefPtr<Document> document = presShell ? presShell->GetDocument() : nullptr;
 
   // replace all the whitespace characters with U+0020 SPACE
   nsAutoString textToDraw(aRawText);
@@ -4701,8 +4743,8 @@ TextMetrics* CanvasRenderingContext2D::DrawOrMeasureText(
         fontMetrics.maxAscent - baselineAnchor,   // fontBBAscent
         fontMetrics.maxDescent + baselineAnchor,  // fontBBDescent
         actualBoundingBoxAscent, actualBoundingBoxDescent,
-        fontMetrics.emAscent - baselineAnchor,    // emHeightAscent
-        -fontMetrics.emDescent - baselineAnchor,  // emHeightDescent
+        fontMetrics.emAscent - baselineAnchor,   // emHeightAscent
+        fontMetrics.emDescent + baselineAnchor,  // emHeightDescent
         baselines.mHanging - baselineAnchor,
         baselines.mAlphabetic - baselineAnchor,
         baselines.mIdeographic - baselineAnchor);
@@ -6357,6 +6399,16 @@ inline void CanvasPath::EnsureCapped() const {
   }
 }
 
+inline void CanvasPath::EnsureActive() const {
+  // If the path is not active, then adding an op to the path may cause the path
+  // to add the first point of the op as the initial point instead of the actual
+  // current point.
+  if (mPruned && !mPathBuilder->IsActive()) {
+    mPathBuilder->MoveTo(mPathBuilder->CurrentPoint());
+    mPruned = false;
+  }
+}
+
 void CanvasPath::MoveTo(double aX, double aY) {
   EnsurePathBuilder();
 
@@ -6386,6 +6438,8 @@ void CanvasPath::QuadraticCurveTo(double aCpx, double aCpy, double aX,
     mPruned = true;
     return;
   }
+
+  EnsureActive();
 
   mPathBuilder->QuadraticBezierTo(cp1, cp2);
   mPruned = false;
@@ -6506,6 +6560,8 @@ void CanvasPath::Arc(double aX, double aY, double aRadius, double aStartAngle,
 
   EnsurePathBuilder();
 
+  EnsureActive();
+
   mPathBuilder->Arc(Point(aX, aY), aRadius, aStartAngle, aEndAngle,
                     aAnticlockwise);
   mPruned = false;
@@ -6540,6 +6596,8 @@ void CanvasPath::LineTo(const gfx::Point& aPoint) {
     return;
   }
 
+  EnsureActive();
+
   mPathBuilder->LineTo(aPoint);
   mPruned = false;
 }
@@ -6555,6 +6613,8 @@ void CanvasPath::BezierTo(const gfx::Point& aCP1, const gfx::Point& aCP2,
     mPruned = true;
     return;
   }
+
+  EnsureActive();
 
   mPathBuilder->BezierTo(aCP1, aCP2, aCP3);
   mPruned = false;

@@ -35,7 +35,6 @@ const TEST_URI = `
 `;
 
 add_task(async function () {
-  await pushPref("layout.css.nesting.enabled", true);
   await addTab("data:text/html;charset=utf-8," + encodeURIComponent(TEST_URI));
   const { inspector, view } = await openRuleView();
 
@@ -61,7 +60,7 @@ add_task(async function () {
   const mediaText = getRuleViewAncestorRulesDataTextByIndex(view, 1);
   is(
     mediaText,
-    "@media screen and (min-width: 10px)",
+    "@media screen and (min-width: 10px) {",
     "media text at index 1 has expected content"
   );
 

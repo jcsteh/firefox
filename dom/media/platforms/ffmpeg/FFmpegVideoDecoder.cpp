@@ -269,6 +269,17 @@ bool FFmpegVideoDecoder<LIBAV_VER>::CreateVAAPIDeviceContext() {
   return true;
 }
 
+void FFmpegVideoDecoder<LIBAV_VER>::AdjustHWDecodeLogging() {
+  if (MOZ_LOG_TEST(sPDMLog, LogLevel::Debug)) {
+    mLib->av_log_set_level(AV_LOG_DEBUG);
+    setenv("LIBVA_MESSAGING_LEVEL", "1", false);
+  } else if (MOZ_LOG_TEST(sPDMLog, LogLevel::Info)) {
+    setenv("LIBVA_MESSAGING_LEVEL", "2", false);
+  } else {
+    setenv("LIBVA_MESSAGING_LEVEL", "0", false);
+  }
+}
+
 MediaResult FFmpegVideoDecoder<LIBAV_VER>::InitVAAPIDecoder() {
   FFMPEG_LOG("Initialising VA-API FFmpeg decoder");
 
@@ -345,9 +356,7 @@ MediaResult FFmpegVideoDecoder<LIBAV_VER>::InitVAAPIDecoder() {
     }
   }
 
-  if (MOZ_LOG_TEST(sPDMLog, LogLevel::Debug)) {
-    mLib->av_log_set_level(AV_LOG_DEBUG);
-  }
+  AdjustHWDecodeLogging();
 
   FFMPEG_LOG("  VA-API FFmpeg init successful");
   releaseVAAPIdecoder.release();
@@ -425,9 +434,7 @@ MediaResult FFmpegVideoDecoder<LIBAV_VER>::InitV4L2Decoder() {
     mAcceleratedFormats.AppendElement(mCodecID);
   }
 
-  if (MOZ_LOG_TEST(sPDMLog, LogLevel::Debug)) {
-    mLib->av_log_set_level(AV_LOG_DEBUG);
-  }
+  AdjustHWDecodeLogging();
 
   FFMPEG_LOG("  V4L2 FFmpeg init successful");
   mUsingV4L2 = true;
@@ -589,6 +596,11 @@ RefPtr<MediaDataDecoder::InitPromise> FFmpegVideoDecoder<LIBAV_VER>::Init() {
   return InitPromise::CreateAndReject(rv, __func__);
 }
 
+static gfx::ColorRange GetColorRange(enum AVColorRange& aColorRange) {
+  return aColorRange == AVCOL_RANGE_JPEG ? gfx::ColorRange::FULL
+                                         : gfx::ColorRange::LIMITED;
+}
+
 static gfx::ColorDepth GetColorDepth(const AVPixelFormat& aFormat) {
   switch (aFormat) {
     case AV_PIX_FMT_YUV420P:
@@ -612,6 +624,32 @@ static gfx::ColorDepth GetColorDepth(const AVPixelFormat& aFormat) {
   }
 }
 
+static bool IsYUVFormat(const AVPixelFormat& aFormat) {
+  return aFormat != AV_PIX_FMT_GBRP;
+}
+
+static gfx::YUVColorSpace TransferAVColorSpaceToColorSpace(
+    const AVColorSpace aSpace, const AVPixelFormat aFormat,
+    const gfx::IntSize& aSize) {
+  if (!IsYUVFormat(aFormat)) {
+    return gfx::YUVColorSpace::Identity;
+  }
+  switch (aSpace) {
+#if LIBAVCODEC_VERSION_MAJOR >= 55
+    case AVCOL_SPC_BT2020_NCL:
+    case AVCOL_SPC_BT2020_CL:
+      return gfx::YUVColorSpace::BT2020;
+#endif
+    case AVCOL_SPC_BT709:
+      return gfx::YUVColorSpace::BT709;
+    case AVCOL_SPC_SMPTE170M:
+    case AVCOL_SPC_BT470BG:
+      return gfx::YUVColorSpace::BT601;
+    default:
+      return DefaultColorSpace(aSize);
+  }
+}
+
 #ifdef CUSTOMIZED_BUFFER_ALLOCATION
 static int GetVideoBufferWrapper(struct AVCodecContext* aCodecContext,
                                  AVFrame* aFrame, int aFlags) {
@@ -627,22 +665,6 @@ static void ReleaseVideoBufferWrapper(void* opaque, uint8_t* data) {
     FFMPEG_LOGV("ReleaseVideoBufferWrapper: PlanarYCbCrImage=%p", opaque);
     RefPtr<ImageBufferWrapper> image = static_cast<ImageBufferWrapper*>(opaque);
     image->ReleaseBuffer();
-  }
-}
-
-static gfx::YUVColorSpace TransferAVColorSpaceToYUVColorSpace(
-    AVColorSpace aSpace) {
-  switch (aSpace) {
-    case AVCOL_SPC_BT2020_NCL:
-    case AVCOL_SPC_BT2020_CL:
-      return gfx::YUVColorSpace::BT2020;
-    case AVCOL_SPC_BT709:
-      return gfx::YUVColorSpace::BT709;
-    case AVCOL_SPC_SMPTE170M:
-    case AVCOL_SPC_BT470BG:
-      return gfx::YUVColorSpace::BT601;
-    default:
-      return gfx::YUVColorSpace::Default;
   }
 }
 
@@ -728,17 +750,16 @@ FFmpegVideoDecoder<LIBAV_VER>::AllocateTextureClientForImage(
       gfx::IntSize(aCodecContext->width, aCodecContext->height));
   data.mStereoMode = mInfo.mStereoMode;
   if (aCodecContext->colorspace != AVCOL_SPC_UNSPECIFIED) {
-    data.mYUVColorSpace =
-        TransferAVColorSpaceToYUVColorSpace(aCodecContext->colorspace);
+    data.mYUVColorSpace = TransferAVColorSpaceToColorSpace(
+        aCodecContext->colorspace, aCodecContext->pix_fmt,
+        data.mPictureRect.Size());
   } else {
     data.mYUVColorSpace = mInfo.mColorSpace
                               ? *mInfo.mColorSpace
                               : DefaultColorSpace(data.mPictureRect.Size());
   }
   data.mColorDepth = GetColorDepth(aCodecContext->pix_fmt);
-  data.mColorRange = aCodecContext->color_range == AVCOL_RANGE_JPEG
-                         ? gfx::ColorRange::FULL
-                         : gfx::ColorRange::LIMITED;
+  data.mColorRange = GetColorRange(aCodecContext->color_range);
 
   FFMPEG_LOGV(
       "Created plane data, YSize=(%d, %d), CbCrSize=(%d, %d), "
@@ -1280,30 +1301,17 @@ MediaResult FFmpegVideoDecoder<LIBAV_VER>::DoDecode(
 }
 
 gfx::YUVColorSpace FFmpegVideoDecoder<LIBAV_VER>::GetFrameColorSpace() const {
-#if LIBAVCODEC_VERSION_MAJOR > 58
-  switch (mFrame->colorspace) {
-#else
   AVColorSpace colorSpace = AVCOL_SPC_UNSPECIFIED;
+#if LIBAVCODEC_VERSION_MAJOR > 58
+  colorSpace = mFrame->colorspace;
+#else
   if (mLib->av_frame_get_colorspace) {
     colorSpace = (AVColorSpace)mLib->av_frame_get_colorspace(mFrame);
   }
-  switch (colorSpace) {
 #endif
-#if LIBAVCODEC_VERSION_MAJOR >= 55
-    case AVCOL_SPC_BT2020_NCL:
-    case AVCOL_SPC_BT2020_CL:
-      return gfx::YUVColorSpace::BT2020;
-#endif
-    case AVCOL_SPC_BT709:
-      return gfx::YUVColorSpace::BT709;
-    case AVCOL_SPC_SMPTE170M:
-    case AVCOL_SPC_BT470BG:
-      return gfx::YUVColorSpace::BT601;
-    case AVCOL_SPC_RGB:
-      return gfx::YUVColorSpace::Identity;
-    default:
-      return DefaultColorSpace({mFrame->width, mFrame->height});
-  }
+  return TransferAVColorSpaceToColorSpace(
+      colorSpace, (AVPixelFormat)mFrame->format,
+      gfx::IntSize{mFrame->width, mFrame->height});
 }
 
 gfx::ColorSpace2 FFmpegVideoDecoder<LIBAV_VER>::GetFrameColorPrimaries() const {
@@ -1332,8 +1340,7 @@ gfx::ColorRange FFmpegVideoDecoder<LIBAV_VER>::GetFrameColorRange() const {
     range = (AVColorRange)mLib->av_frame_get_color_range(mFrame);
   }
 #endif
-  return range == AVCOL_RANGE_JPEG ? gfx::ColorRange::FULL
-                                   : gfx::ColorRange::LIMITED;
+  return GetColorRange(range);
 }
 
 MediaResult FFmpegVideoDecoder<LIBAV_VER>::CreateImage(
@@ -1637,7 +1644,8 @@ static const struct {
   VAProfile va_profile;
   char name[100];
 } vaapi_profile_map[] = {
-#  define MAP(c, v, n) {AV_CODEC_ID_##c, VAProfile##v, n}
+#  define MAP(c, v, n) \
+    { AV_CODEC_ID_##c, VAProfile##v, n }
     MAP(H264, H264ConstrainedBaseline, "H264ConstrainedBaseline"),
     MAP(H264, H264Main, "H264Main"),
     MAP(H264, H264High, "H264High"),

@@ -12,6 +12,10 @@ shopping-page-title = { -brand-product-name } Shopping
 shopping-main-container-title = Review quality check
 shopping-close-button =
   .title = Close
+# This string is for notifying screen reader users that the
+# sidebar is still loading data.
+shopping-a11y-loading =
+  .aria-label = Loading…
 
 ## Strings for the letter grade component.
 ## For now, we only support letter grades A, B, C, D and F.
@@ -29,6 +33,12 @@ shopping-letter-grade-description-df = Unreliable reviews
 #  $description (String) - The localized letter grade description. See shopping-letter-grade-description-* strings above.
 shopping-letter-grade-tooltip =
   .title = { $letter } - { $description }
+
+## Strings for the shopping message-bar
+
+shopping-message-bar-warning-stale-analysis-title = Updates available
+shopping-message-bar-warning-stale-analysis-message = Re-analyze the reviews for this product, so you have the latest info.
+shopping-message-bar-warning-stale-analysis-link = Re-analyze reviews
 
 ## Strings for the product review snippets card
 
@@ -88,5 +98,18 @@ shopping-analysis-explainer-review-grading-scale = Review grading scale:
 shopping-analysis-explainer-review-grading-scale-reliable = We believe the reviews to be reliable
 shopping-analysis-explainer-review-grading-scale-mixed = We believe there’s a mix of reliable and unreliable reviews
 shopping-analysis-explainer-review-grading-scale-unreliable = We believe the reviews are unreliable
+
+## Strings for UrlBar button
+
+shopping-sidebar-open-button =
+  .tooltiptext = Open shopping sidebar
+shopping-sidebar-close-button =
+  .tooltiptext = Close shopping sidebar
+
+## Strings for the unanalyzed product card.
+
+shopping-unanalyzed-product-header = No analysis for these reviews yet
+shopping-unanalyzed-product-message = You’re about 60 seconds away from knowing whether you can trust the reviews for this product.
+shopping-unanalyzed-product-analyze-link = Analyze reviews
 
 ##

@@ -271,6 +271,41 @@ bool evaluateQueryForNode(const RefPtr<nsNavHistoryQuery>& aQuery,
   return true;
 }
 
+inline bool caseInsensitiveFind(const nsACString& aSearchTerms,
+                                const nsACString& aTarget) {
+  nsACString::const_iterator start, end;
+  aTarget.BeginReading(start);
+  aTarget.EndReading(end);
+  return CaseInsensitiveFindInReadable(aSearchTerms, start, end);
+}
+
+bool isQuerySearchTermsMatching(const RefPtr<nsNavHistoryQuery>& aQuery,
+                                const nsACString& aURI,
+                                const nsACString& aTitle,
+                                const nsAString& aTags) {
+  nsAutoCString searchTerms = NS_ConvertUTF16toUTF8(aQuery->SearchTerms());
+  if ((!aTitle.IsEmpty() && caseInsensitiveFind(searchTerms, aTitle)) ||
+      (!aURI.IsEmpty() && caseInsensitiveFind(searchTerms, aURI))) {
+    return true;
+  }
+
+  if (aTags.IsEmpty()) {
+    return false;
+  }
+  for (const nsAString& tag : aTags.Split(',')) {
+    if (caseInsensitiveFind(searchTerms, NS_ConvertUTF16toUTF8(tag))) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool isQuerySearchTermsMatching(const RefPtr<nsNavHistoryQuery>& aQuery,
+                                const RefPtr<nsNavHistoryResultNode>& aNode) {
+  return isQuerySearchTermsMatching(aQuery, aNode->mURI, aNode->mTitle,
+                                    aNode->mTags);
+}
+
 // Emulate string comparison (used for sorting) for PRTime and int.
 inline int32_t ComparePRTime(PRTime a, PRTime b) {
   if (a < b)
@@ -306,7 +341,6 @@ nsNavHistoryResultNode::nsNavHistoryResultNode(const nsACString& aURI,
       mBookmarkIndex(-1),
       mItemId(-1),
       mVisitId(-1),
-      mFromVisitId(-1),
       mDateAdded(0),
       mLastModified(0),
       mIndentLevel(-1),
@@ -439,12 +473,6 @@ nsNavHistoryResultNode::GetBookmarkGuid(nsACString& aBookmarkGuid) {
 NS_IMETHODIMP
 nsNavHistoryResultNode::GetVisitId(int64_t* aVisitId) {
   *aVisitId = mVisitId;
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-nsNavHistoryResultNode::GetFromVisitId(int64_t* aFromVisitId) {
-  *aFromVisitId = mFromVisitId;
   return NS_OK;
 }
 
@@ -2081,10 +2109,10 @@ static nsresult setHistoryDetailsCallback(nsNavHistoryResultNode* aNode,
  * common update operation and it is important that it be as efficient as
  * possible.
  */
-nsresult nsNavHistoryQueryResultNode::OnVisit(nsIURI* aURI, int64_t aVisitId,
-                                              PRTime aTime,
-                                              uint32_t aTransitionType,
-                                              bool aHidden, uint32_t* aAdded) {
+nsresult nsNavHistoryQueryResultNode::OnVisit(
+    nsIURI* aURI, int64_t aVisitId, PRTime aTime, uint32_t aTransitionType,
+    const nsACString& aGUID, bool aHidden, uint32_t aVisitCount,
+    const nsAString& aLastKnownTitle, int64_t aFrecency, uint32_t* aAdded) {
   if (aHidden && !mOptions->IncludeHidden()) return NS_OK;
   // Skip the notification if the query is filtered by specific transition types
   // and this visit has a different one.
@@ -2145,17 +2173,28 @@ nsresult nsNavHistoryQueryResultNode::OnVisit(nsIURI* aURI, int64_t aVisitId,
     }
 
     case QUERYUPDATE_SIMPLE: {
-      // The history service can tell us whether the new item should appear
-      // in the result.  We first have to construct a node for it to check.
-      RefPtr<nsNavHistoryResultNode> addition;
-      nsresult rv = history->VisitIdToResultNode(aVisitId, mOptions,
-                                                 getter_AddRefs(addition));
-      NS_ENSURE_SUCCESS(rv, rv);
-      if (!addition) {
+      if (mOptions->ResultType() !=
+              nsNavHistoryQueryOptions::RESULTS_AS_VISIT &&
+          mOptions->ResultType() != nsNavHistoryQueryOptions::RESULTS_AS_URI) {
         // Certain result types manage the nodes by themselves.
         return NS_OK;
       }
+
+      nsAutoCString spec;
+      nsresult rv = aURI->GetSpec(spec);
+      NS_ENSURE_SUCCESS(rv, rv);
+      RefPtr<nsNavHistoryResultNode> addition = new nsNavHistoryResultNode(
+          spec, NS_ConvertUTF16toUTF8(aLastKnownTitle), aVisitCount, aTime);
+      addition->mPageGuid.Assign(aGUID);
+      addition->mFrecency = aFrecency;
+      addition->mHidden = aHidden;
       addition->mTransitionType = aTransitionType;
+
+      if (mOptions->ResultType() ==
+          nsNavHistoryQueryOptions::RESULTS_AS_VISIT) {
+        addition->mVisitId = aVisitId;
+      }
+
       if (!evaluateQueryForNode(mQuery, mOptions, addition))
         return NS_OK;  // don't need to include in our query
 
@@ -2273,18 +2312,14 @@ nsresult nsNavHistoryQueryResultNode::OnTitleChanged(
     nsresult rv = aURI->GetSpec(spec);
     NS_ENSURE_SUCCESS(rv, rv);
     RecursiveFindURIs(onlyOneEntry, this, spec, &matches);
+
     if (matches.Count() == 0) {
-      // This could be a new node matching the query, thus we could need
-      // to add it to the result.
-      RefPtr<nsNavHistoryResultNode> node;
-      nsNavHistory* history = nsNavHistory::GetHistoryService();
-      NS_ENSURE_TRUE(history, NS_ERROR_OUT_OF_MEMORY);
-      rv = history->URIToResultNode(aURI, mOptions, getter_AddRefs(node));
-      NS_ENSURE_SUCCESS(rv, rv);
-      if (evaluateQueryForNode(mQuery, mOptions, node)) {
-        rv = InsertSortedChild(node);
-        NS_ENSURE_SUCCESS(rv, rv);
-      }
+      // If we didn't find any matching URI, and the query is filters by search
+      // terms, maybe the new title will match and then we want to Refresh()
+      // contents. Otherwise this will continue being an empty query.
+      return isQuerySearchTermsMatching(mQuery, mURI, newTitle, mTags)
+                 ? Refresh()
+                 : NS_OK;
     }
     for (int32_t i = 0; i < matches.Count(); ++i) {
       // For each matched node we check if it passes the query filter, if not
@@ -2296,7 +2331,7 @@ nsresult nsNavHistoryQueryResultNode::OnTitleChanged(
 
       nsNavHistory* history = nsNavHistory::GetHistoryService();
       NS_ENSURE_TRUE(history, NS_ERROR_OUT_OF_MEMORY);
-      if (!evaluateQueryForNode(mQuery, mOptions, node)) {
+      if (!isQuerySearchTermsMatching(mQuery, node)) {
         nsNavHistoryContainerResultNode* parent = node->mParent;
         // URI nodes should always have parents
         NS_ENSURE_TRUE(parent, NS_ERROR_UNEXPECTED);
@@ -2415,22 +2450,11 @@ nsresult nsNavHistoryQueryResultNode::NotifyIfTagsChanged(nsIURI* aURI) {
   bool onlyOneEntry =
       mOptions->ResultType() == nsINavHistoryQueryOptions::RESULTS_AS_URI;
 
-  // Find matching URI nodes.
-  RefPtr<nsNavHistoryResultNode> node;
-  nsNavHistory* history = nsNavHistory::GetHistoryService();
-
   nsCOMArray<nsNavHistoryResultNode> matches;
   RecursiveFindURIs(onlyOneEntry, this, spec, &matches);
 
   if (matches.Count() == 0 && mHasSearchTerms) {
-    // A new tag has been added, it's possible it matches our query.
-    NS_ENSURE_TRUE(history, NS_ERROR_OUT_OF_MEMORY);
-    rv = history->URIToResultNode(aURI, mOptions, getter_AddRefs(node));
-    NS_ENSURE_SUCCESS(rv, rv);
-    if (evaluateQueryForNode(mQuery, mOptions, node)) {
-      rv = InsertSortedChild(node);
-      NS_ENSURE_SUCCESS(rv, rv);
-    }
+    return isQuerySearchTermsMatching(mQuery, this) ? Refresh() : NS_OK;
   }
 
   for (int32_t i = 0; i < matches.Count(); ++i) {
@@ -2442,7 +2466,7 @@ nsresult nsNavHistoryQueryResultNode::NotifyIfTagsChanged(nsIURI* aURI) {
     NS_ENSURE_SUCCESS(rv, rv);
     // It's possible now this node does not respect anymore the conditions.
     // In such a case it should be removed.
-    if (mHasSearchTerms && !evaluateQueryForNode(mQuery, mOptions, node)) {
+    if (mHasSearchTerms && !isQuerySearchTermsMatching(mQuery, node)) {
       nsNavHistoryContainerResultNode* parent = node->mParent;
       // URI nodes should always have parents
       NS_ENSURE_TRUE(parent, NS_ERROR_UNEXPECTED);
@@ -3365,7 +3389,8 @@ nsresult nsNavHistoryResultNode::OnVisitsRemoved() {
  */
 nsresult nsNavHistoryFolderResultNode::OnItemVisited(nsIURI* aURI,
                                                      int64_t aVisitId,
-                                                     PRTime aTime) {
+                                                     PRTime aTime,
+                                                     int64_t aFrecency) {
   if (mOptions->ExcludeItems())
     return NS_OK;  // don't update items when we aren't displaying them
 
@@ -3396,21 +3421,7 @@ nsresult nsNavHistoryFolderResultNode::OnItemVisited(nsIURI* aURI,
     PRTime nodeOldTime = node->mTime;
     node->mTime = aTime;
     ++node->mAccessCount;
-
-    // Update frecency for proper frecency ordering.
-    // TODO (bug 832617): we may avoid one query here, by providing the new
-    // frecency value in the notification.
-    nsNavHistory* history = nsNavHistory::GetHistoryService();
-    NS_ENSURE_TRUE(history, NS_OK);
-    RefPtr<nsNavHistoryResultNode> visitNode;
-    rv = history->VisitIdToResultNode(aVisitId, mOptions,
-                                      getter_AddRefs(visitNode));
-    NS_ENSURE_SUCCESS(rv, rv);
-    if (!visitNode) {
-      // Certain result types manage the nodes by themselves.
-      return NS_OK;
-    }
-    node->mFrecency = visitNode->mFrecency;
+    node->mFrecency = aFrecency;
 
     nsNavHistoryResult* result = GetResult();
     if (AreChildrenVisible() && !result->CanSkipHistoryDetailsNotifications()) {
@@ -4047,7 +4058,8 @@ nsresult nsNavHistoryResult::OnVisit(nsIURI* aURI, int64_t aVisitId,
                                      PRTime aTime, uint32_t aTransitionType,
                                      const nsACString& aGUID, bool aHidden,
                                      uint32_t aVisitCount,
-                                     const nsAString& aLastKnownTitle) {
+                                     const nsAString& aLastKnownTitle,
+                                     int64_t aFrecency) {
   NS_ENSURE_ARG(aURI);
 
   // Embed visits are never shown in our views.
@@ -4057,8 +4069,9 @@ nsresult nsNavHistoryResult::OnVisit(nsIURI* aURI, int64_t aVisitId,
 
   uint32_t added = 0;
 
-  ENUMERATE_HISTORY_OBSERVERS(
-      OnVisit(aURI, aVisitId, aTime, aTransitionType, aHidden, &added));
+  ENUMERATE_HISTORY_OBSERVERS(OnVisit(aURI, aVisitId, aTime, aTransitionType,
+                                      aGUID, aHidden, aVisitCount,
+                                      aLastKnownTitle, aFrecency, &added));
 
   // When we add visits, we don't bother telling the world that the title
   // 'changed' from nothing to the first title we ever see for a history entry.
@@ -4135,7 +4148,8 @@ nsresult nsNavHistoryResult::OnVisit(nsIURI* aURI, int64_t aVisitId,
       for (int32_t i = 0; i < nodes.Count(); ++i) {
         nsNavHistoryResultNode* node = nodes[i];
         ENUMERATE_BOOKMARK_FOLDER_OBSERVERS(
-            node->mParent->mBookmarkGuid, OnItemVisited(aURI, aVisitId, aTime));
+            node->mParent->mBookmarkGuid,
+            OnItemVisited(aURI, aVisitId, aTime, aFrecency));
       }
     }
   }
@@ -4210,7 +4224,7 @@ void nsNavHistoryResult::HandlePlacesEvent(const PlacesEventSequence& aEvents) {
         }
         OnVisit(uri, visit->mVisitId, visit->mVisitTime * 1000,
                 visit->mTransitionType, visit->mPageGuid, visit->mHidden,
-                visit->mVisitCount, visit->mLastKnownTitle);
+                visit->mVisitCount, visit->mLastKnownTitle, visit->mFrecency);
         break;
       }
       case PlacesEventType::Bookmark_added: {

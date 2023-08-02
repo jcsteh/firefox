@@ -92,7 +92,7 @@
           "nsIMacSharingService",
         ],
       });
-      XPCOMUtils.defineLazyGetter(this, "tabLocalization", () => {
+      ChromeUtils.defineLazyGetter(this, "tabLocalization", () => {
         return new Localization(
           ["browser/tabbrowser.ftl", "branding/brand.ftl"],
           true
@@ -3918,7 +3918,7 @@
         !aTab.pinned &&
         !aTab.hidden &&
         aTab._fullyOpen &&
-        triggeringEvent?.mozInputSource == MouseEvent.MOZ_SOURCE_MOUSE &&
+        triggeringEvent?.inputSource == MouseEvent.MOZ_SOURCE_MOUSE &&
         triggeringEvent?.target.closest(".tabbrowser-tab");
       if (lockTabSizing) {
         this.tabContainer._lockTabSizing(aTab, tabWidth);

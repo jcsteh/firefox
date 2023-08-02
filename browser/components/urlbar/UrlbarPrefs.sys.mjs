@@ -167,6 +167,9 @@ const PREF_URLBAR_DEFAULTS = new Map([
   // The maximum number of results in the urlbar popup.
   ["maxRichResults", 10],
 
+  // Feature gate pref for mdn suggestions in the urlbar.
+  ["mdn.featureGate", false],
+
   // Comma-separated list of client variants to send to Merino
   ["merino.clientVariants", ""],
 
@@ -236,6 +239,9 @@ const PREF_URLBAR_DEFAULTS = new Map([
   // Whether results will include a calculator.
   ["suggest.calculator", false],
 
+  // Whether results will include clipboard results.
+  ["suggest.clipboard", true],
+
   // Whether results will include search engines (e.g. tab-to-search).
   ["suggest.engines", true],
 
@@ -283,6 +289,10 @@ const PREF_URLBAR_DEFAULTS = new Map([
   // If `browser.urlbar.addons.featureGate` is true, this controls whether
   // addon suggestions are turned on.
   ["suggest.addons", true],
+
+  // If `browser.urlbar.mdn.featureGate` is true, this controls whether
+  // mdn suggestions are turned on.
+  ["suggest.mdn", true],
 
   // Whether results will include search suggestions.
   ["suggest.searches", false],
@@ -438,6 +448,9 @@ const PREF_URLBAR_DEFAULTS = new Map([
 
   // Feature gate pref for rich suggestions being shown in the urlbar.
   ["richSuggestions.featureGate", false],
+
+  // Feature gate pref for clipboard suggestions in the urlbar.
+  ["clipboard.featureGate", false],
 ]);
 
 const PREF_OTHER_DEFAULTS = new Map([

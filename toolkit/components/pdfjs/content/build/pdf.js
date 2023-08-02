@@ -108,12 +108,13 @@ const AnnotationEditorType = {
 };
 exports.AnnotationEditorType = AnnotationEditorType;
 const AnnotationEditorParamsType = {
-  FREETEXT_SIZE: 1,
-  FREETEXT_COLOR: 2,
-  FREETEXT_OPACITY: 3,
-  INK_COLOR: 11,
-  INK_THICKNESS: 12,
-  INK_OPACITY: 13
+  RESIZE: 1,
+  FREETEXT_SIZE: 11,
+  FREETEXT_COLOR: 12,
+  FREETEXT_OPACITY: 13,
+  INK_COLOR: 21,
+  INK_THICKNESS: 22,
+  INK_OPACITY: 23
 };
 exports.AnnotationEditorParamsType = AnnotationEditorParamsType;
 const PermissionFlag = {
@@ -939,7 +940,7 @@ function getDocument(src) {
   }
   const fetchDocParams = {
     docId,
-    apiVersion: '3.9.104',
+    apiVersion: '3.10.17',
     data,
     password,
     disableAutoFetch,
@@ -1840,6 +1841,7 @@ class WorkerTransport {
   #methodPromises = new Map();
   #pageCache = new Map();
   #pagePromises = new Map();
+  #passwordCapability = null;
   constructor(messageHandler, loadingTask, networkStream, params, factory) {
     this.messageHandler = messageHandler;
     this.loadingTask = loadingTask;
@@ -1855,7 +1857,6 @@ class WorkerTransport {
     this.standardFontDataFactory = factory.standardFontDataFactory;
     this.destroyed = false;
     this.destroyCapability = null;
-    this._passwordCapability = null;
     this._networkStream = networkStream;
     this._fullReader = null;
     this._lastProgress = null;
@@ -1921,9 +1922,7 @@ class WorkerTransport {
     }
     this.destroyed = true;
     this.destroyCapability = new _util.PromiseCapability();
-    if (this._passwordCapability) {
-      this._passwordCapability.reject(new Error("Worker was destroyed during onPassword callback"));
-    }
+    this.#passwordCapability?.reject(new Error("Worker was destroyed during onPassword callback"));
     const waitOn = [];
     for (const page of this.#pageCache.values()) {
       waitOn.push(page._destroy());
@@ -2077,13 +2076,13 @@ class WorkerTransport {
       loadingTask._capability.reject(reason);
     });
     messageHandler.on("PasswordRequest", exception => {
-      this._passwordCapability = new _util.PromiseCapability();
+      this.#passwordCapability = new _util.PromiseCapability();
       if (loadingTask.onPassword) {
         const updatePassword = password => {
           if (password instanceof Error) {
-            this._passwordCapability.reject(password);
+            this.#passwordCapability.reject(password);
           } else {
-            this._passwordCapability.resolve({
+            this.#passwordCapability.resolve({
               password
             });
           }
@@ -2091,12 +2090,12 @@ class WorkerTransport {
         try {
           loadingTask.onPassword(updatePassword, exception.code);
         } catch (ex) {
-          this._passwordCapability.reject(ex);
+          this.#passwordCapability.reject(ex);
         }
       } else {
-        this._passwordCapability.reject(new _util.PasswordException(exception.message, exception.code));
+        this.#passwordCapability.reject(new _util.PasswordException(exception.message, exception.code));
       }
-      return this._passwordCapability.promise;
+      return this.#passwordCapability.promise;
     });
     messageHandler.on("DataLoaded", data => {
       loadingTask.onProgress?.({
@@ -2316,7 +2315,7 @@ class WorkerTransport {
     return this.messageHandler.sendWithPromise("GetJavaScript", null);
   }
   getDocJSActions() {
-    return this.messageHandler.sendWithPromise("GetDocJSActions", null);
+    return this.#cacheSimpleMethod("GetDocJSActions");
   }
   getPageJSActions(pageIndex) {
     return this.messageHandler.sendWithPromise("GetPageJSActions", {
@@ -2595,9 +2594,9 @@ class InternalRenderTask {
     }
   }
 }
-const version = '3.9.104';
+const version = '3.10.17';
 exports.version = version;
-const build = '2a508b95e';
+const build = '4735ed8f1';
 exports.build = build;
 
 /***/ }),
@@ -2774,11 +2773,12 @@ Object.defineProperty(exports, "__esModule", ({
   value: true
 }));
 exports.AnnotationEditor = void 0;
-var _tools = __w_pdfjs_require__(5);
 var _util = __w_pdfjs_require__(1);
-const RESIZER_SIZE = 16;
+var _tools = __w_pdfjs_require__(5);
 class AnnotationEditor {
   #keepAspectRatio = false;
+  #resizersDiv = null;
+  #resizePosition = null;
   #boundFocusin = this.focusin.bind(this);
   #boundFocusout = this.focusout.bind(this);
   #hasBeenSelected = false;
@@ -2800,6 +2800,7 @@ class AnnotationEditor {
     this.div = null;
     this._uiManager = parameters.uiManager;
     this.annotationElementId = null;
+    this._willKeepAspectRatio = false;
     const {
       rotation,
       rawDims: {
@@ -2906,12 +2907,20 @@ class AnnotationEditor {
     this.y = (y + ty) / height;
     this.fixAndSetPosition();
   }
-  translate(x, y) {
-    const [width, height] = this.parentDimensions;
+  #translate([width, height], x, y) {
     [x, y] = this.screenToPageTranslation(x, y);
     this.x += x / width;
     this.y += y / height;
     this.fixAndSetPosition();
+  }
+  translate(x, y) {
+    this.#translate(this.parentDimensions, x, y);
+  }
+  translateInPage(x, y) {
+    this.#translate(this.pageDimensions, x, y);
+    this.div.scrollIntoView({
+      block: "nearest"
+    });
   }
   fixAndSetPosition() {
     const [pageWidth, pageHeight] = this.pageDimensions;
@@ -3015,6 +3024,210 @@ class AnnotationEditor {
   }
   getInitialTranslation() {
     return [0, 0];
+  }
+  #createResizers() {
+    if (this.#resizersDiv) {
+      return;
+    }
+    this.#resizersDiv = document.createElement("div");
+    this.#resizersDiv.classList.add("resizers");
+    const classes = ["topLeft", "topRight", "bottomRight", "bottomLeft"];
+    if (!this._willKeepAspectRatio) {
+      classes.push("topMiddle", "middleRight", "bottomMiddle", "middleLeft");
+    }
+    for (const name of classes) {
+      const div = document.createElement("div");
+      this.#resizersDiv.append(div);
+      div.classList.add("resizer", name);
+      div.addEventListener("pointerdown", this.#resizerPointerdown.bind(this, name));
+    }
+    this.div.prepend(this.#resizersDiv);
+  }
+  #resizerPointerdown(name, event) {
+    event.preventDefault();
+    this.#resizePosition = [event.clientX, event.clientY];
+    const boundResizerPointermove = this.#resizerPointermove.bind(this, name);
+    const savedDraggable = this.div.draggable;
+    this.div.draggable = false;
+    const resizingClassName = `resizing${name.charAt(0).toUpperCase()}${name.slice(1)}`;
+    this.parent.div.classList.add(resizingClassName);
+    const pointerMoveOptions = {
+      passive: true,
+      capture: true
+    };
+    window.addEventListener("pointermove", boundResizerPointermove, pointerMoveOptions);
+    const pointerUpCallback = () => {
+      this._uiManager.stopUndoAccumulation();
+      this.div.draggable = savedDraggable;
+      this.parent.div.classList.remove(resizingClassName);
+      window.removeEventListener("pointermove", boundResizerPointermove, pointerMoveOptions);
+    };
+    window.addEventListener("pointerup", pointerUpCallback, {
+      once: true
+    });
+  }
+  #resizerPointermove(name, event) {
+    const {
+      clientX,
+      clientY
+    } = event;
+    const deltaX = clientX - this.#resizePosition[0];
+    const deltaY = clientY - this.#resizePosition[1];
+    this.#resizePosition[0] = clientX;
+    this.#resizePosition[1] = clientY;
+    const [parentWidth, parentHeight] = this.parentDimensions;
+    const savedX = this.x;
+    const savedY = this.y;
+    const savedWidth = this.width;
+    const savedHeight = this.height;
+    const minWidth = AnnotationEditor.MIN_SIZE / parentWidth;
+    const minHeight = AnnotationEditor.MIN_SIZE / parentHeight;
+    let cmd;
+    const round = x => Math.round(x * 10000) / 10000;
+    const updatePosition = (width, height) => {
+      const [pWidth, pHeight] = this.parentDimensions;
+      this.setDims(pWidth * width, pHeight * height);
+      this.fixAndSetPosition();
+    };
+    const undo = () => {
+      this.width = savedWidth;
+      this.height = savedHeight;
+      this.x = savedX;
+      this.y = savedY;
+      updatePosition(savedWidth, savedHeight);
+    };
+    switch (name) {
+      case "topLeft":
+        {
+          if (Math.sign(deltaX) * Math.sign(deltaY) < 0) {
+            return;
+          }
+          const dist = Math.hypot(deltaX, deltaY);
+          const oldDiag = Math.hypot(savedWidth * parentWidth, savedHeight * parentHeight);
+          const brX = round(savedX + savedWidth);
+          const brY = round(savedY + savedHeight);
+          const ratio = Math.max(Math.min(1 - Math.sign(deltaX) * (dist / oldDiag), 1 / savedWidth, 1 / savedHeight), minWidth / savedWidth, minHeight / savedHeight);
+          const newWidth = round(savedWidth * ratio);
+          const newHeight = round(savedHeight * ratio);
+          const newX = brX - newWidth;
+          const newY = brY - newHeight;
+          cmd = () => {
+            this.width = newWidth;
+            this.height = newHeight;
+            this.x = newX;
+            this.y = newY;
+            updatePosition(newWidth, newHeight);
+          };
+          break;
+        }
+      case "topMiddle":
+        {
+          const bmY = round(this.y + savedHeight);
+          const newHeight = round(Math.max(minHeight, Math.min(1, savedHeight - deltaY / parentHeight)));
+          const newY = bmY - newHeight;
+          cmd = () => {
+            this.height = newHeight;
+            this.y = newY;
+            updatePosition(savedWidth, newHeight);
+          };
+          break;
+        }
+      case "topRight":
+        {
+          if (Math.sign(deltaX) * Math.sign(deltaY) > 0) {
+            return;
+          }
+          const dist = Math.hypot(deltaX, deltaY);
+          const oldDiag = Math.hypot(this.width * parentWidth, this.height * parentHeight);
+          const blY = round(savedY + this.height);
+          const ratio = Math.max(Math.min(1 + Math.sign(deltaX) * (dist / oldDiag), 1 / savedWidth, 1 / savedHeight), minWidth / savedWidth, minHeight / savedHeight);
+          const newWidth = round(savedWidth * ratio);
+          const newHeight = round(savedHeight * ratio);
+          const newY = blY - newHeight;
+          cmd = () => {
+            this.width = newWidth;
+            this.height = newHeight;
+            this.y = newY;
+            updatePosition(newWidth, newHeight);
+          };
+          break;
+        }
+      case "middleRight":
+        {
+          const newWidth = round(Math.max(minWidth, Math.min(1, savedWidth + deltaX / parentWidth)));
+          cmd = () => {
+            this.width = newWidth;
+            updatePosition(newWidth, savedHeight);
+          };
+          break;
+        }
+      case "bottomRight":
+        {
+          if (Math.sign(deltaX) * Math.sign(deltaY) < 0) {
+            return;
+          }
+          const dist = Math.hypot(deltaX, deltaY);
+          const oldDiag = Math.hypot(this.width * parentWidth, this.height * parentHeight);
+          const ratio = Math.max(Math.min(1 + Math.sign(deltaX) * (dist / oldDiag), 1 / savedWidth, 1 / savedHeight), minWidth / savedWidth, minHeight / savedHeight);
+          const newWidth = round(savedWidth * ratio);
+          const newHeight = round(savedHeight * ratio);
+          cmd = () => {
+            this.width = newWidth;
+            this.height = newHeight;
+            updatePosition(newWidth, newHeight);
+          };
+          break;
+        }
+      case "bottomMiddle":
+        {
+          const newHeight = round(Math.max(minHeight, Math.min(1, savedHeight + deltaY / parentHeight)));
+          cmd = () => {
+            this.height = newHeight;
+            updatePosition(savedWidth, newHeight);
+          };
+          break;
+        }
+      case "bottomLeft":
+        {
+          if (Math.sign(deltaX) * Math.sign(deltaY) > 0) {
+            return;
+          }
+          const dist = Math.hypot(deltaX, deltaY);
+          const oldDiag = Math.hypot(this.width * parentWidth, this.height * parentHeight);
+          const trX = round(savedX + this.width);
+          const ratio = Math.max(Math.min(1 - Math.sign(deltaX) * (dist / oldDiag), 1 / savedWidth, 1 / savedHeight), minWidth / savedWidth, minHeight / savedHeight);
+          const newWidth = round(savedWidth * ratio);
+          const newHeight = round(savedHeight * ratio);
+          const newX = trX - newWidth;
+          cmd = () => {
+            this.width = newWidth;
+            this.height = newHeight;
+            this.x = newX;
+            updatePosition(newWidth, newHeight);
+          };
+          break;
+        }
+      case "middleLeft":
+        {
+          const mrX = round(savedX + savedWidth);
+          const newWidth = round(Math.max(minWidth, Math.min(1, savedWidth - deltaX / parentWidth)));
+          const newX = mrX - newWidth;
+          cmd = () => {
+            this.width = newWidth;
+            this.x = newX;
+            updatePosition(newWidth, savedHeight);
+          };
+          break;
+        }
+    }
+    this.addCommands({
+      cmd,
+      undo,
+      mustExec: true,
+      type: _util.AnnotationEditorParamsType.RESIZE,
+      overwriteIfSameType: true,
+      keepUndo: true
+    });
   }
   render() {
     this.div = document.createElement("div");
@@ -3143,11 +3356,25 @@ class AnnotationEditor {
       this._uiManager.removeEditor(this);
     }
   }
+  get isResizable() {
+    return false;
+  }
+  makeResizable() {
+    if (this.isResizable) {
+      this.#createResizers();
+      this.#resizersDiv.classList.remove("hidden");
+    }
+  }
   select() {
+    this.makeResizable();
     this.div?.classList.add("selectedEditor");
   }
   unselect() {
+    this.#resizersDiv?.classList.add("hidden");
     this.div?.classList.remove("selectedEditor");
+    if (this.div?.contains(document.activeElement)) {
+      this._uiManager.currentLayer.div.focus();
+    }
   }
   updateParams(type, value) {}
   disableEditing() {}
@@ -3179,16 +3406,9 @@ class AnnotationEditor {
     } = this.div;
     style.aspectRatio = aspectRatio;
     style.height = "auto";
-    if (aspectRatio >= 1) {
-      style.minHeight = `${RESIZER_SIZE}px`;
-      style.minWidth = `${Math.round(aspectRatio * RESIZER_SIZE)}px`;
-    } else {
-      style.minWidth = `${RESIZER_SIZE}px`;
-      style.minHeight = `${Math.round(RESIZER_SIZE / aspectRatio)}px`;
-    }
   }
   static get MIN_SIZE() {
-    return RESIZER_SIZE;
+    return 16;
   }
 }
 exports.AnnotationEditor = AnnotationEditor;
@@ -3400,6 +3620,11 @@ class CommandManager {
     }
     this.#commands.push(save);
   }
+  stopUndoAccumulation() {
+    if (this.#position !== -1) {
+      this.#commands[this.#position].type = NaN;
+    }
+  }
   undo() {
     if (this.#position === -1) {
       return;
@@ -3436,19 +3661,19 @@ class KeyboardManager {
     const {
       isMac
     } = _util.FeatureTest.platform;
-    for (const [keys, callback, bubbles = false] of callbacks) {
+    for (const [keys, callback, options = {}] of callbacks) {
       for (const key of keys) {
         const isMacKey = key.startsWith("mac+");
         if (isMac && isMacKey) {
           this.callbacks.set(key.slice(4), {
             callback,
-            bubbles
+            options
           });
           this.allKeys.add(key.split("+").at(-1));
         } else if (!isMac && !isMacKey) {
           this.callbacks.set(key, {
             callback,
-            bubbles
+            options
           });
           this.allKeys.add(key.split("+").at(-1));
         }
@@ -3483,9 +3708,16 @@ class KeyboardManager {
     }
     const {
       callback,
-      bubbles
+      options: {
+        bubbles = false,
+        args = [],
+        checker = null
+      }
     } = info;
-    callback.bind(self)();
+    if (checker && !checker(self, event)) {
+      return;
+    }
+    callback.bind(self, ...args)();
     if (!bubbles) {
       event.stopPropagation();
       event.preventDefault();
@@ -3553,9 +3785,46 @@ class AnnotationEditorUIManager {
     hasSomethingToRedo: false,
     hasSelectedEditor: false
   };
+  #translation = [0, 0];
+  #translationTimeoutId = null;
   #container = null;
+  static TRANSLATE_SMALL = 1;
+  static TRANSLATE_BIG = 10;
   static get _keyboardManager() {
-    return (0, _util.shadow)(this, "_keyboardManager", new KeyboardManager([[["ctrl+a", "mac+meta+a"], AnnotationEditorUIManager.prototype.selectAll], [["ctrl+z", "mac+meta+z"], AnnotationEditorUIManager.prototype.undo], [["ctrl+y", "ctrl+shift+z", "mac+meta+shift+z", "ctrl+shift+Z", "mac+meta+shift+Z"], AnnotationEditorUIManager.prototype.redo], [["Backspace", "alt+Backspace", "ctrl+Backspace", "shift+Backspace", "mac+Backspace", "mac+alt+Backspace", "mac+ctrl+Backspace", "Delete", "ctrl+Delete", "shift+Delete", "mac+Delete"], AnnotationEditorUIManager.prototype.delete], [["Escape", "mac+Escape"], AnnotationEditorUIManager.prototype.unselectAll]]));
+    const proto = AnnotationEditorUIManager.prototype;
+    const arrowChecker = self => {
+      const {
+        activeElement
+      } = document;
+      return activeElement && self.#container.contains(activeElement) && self.hasSomethingToControl();
+    };
+    const small = this.TRANSLATE_SMALL;
+    const big = this.TRANSLATE_BIG;
+    return (0, _util.shadow)(this, "_keyboardManager", new KeyboardManager([[["ctrl+a", "mac+meta+a"], proto.selectAll], [["ctrl+z", "mac+meta+z"], proto.undo], [["ctrl+y", "ctrl+shift+z", "mac+meta+shift+z", "ctrl+shift+Z", "mac+meta+shift+Z"], proto.redo], [["Backspace", "alt+Backspace", "ctrl+Backspace", "shift+Backspace", "mac+Backspace", "mac+alt+Backspace", "mac+ctrl+Backspace", "Delete", "ctrl+Delete", "shift+Delete", "mac+Delete"], proto.delete], [["Escape", "mac+Escape"], proto.unselectAll], [["ArrowLeft", "mac+ArrowLeft"], proto.translateSelectedEditors, {
+      args: [-small, 0],
+      checker: arrowChecker
+    }], [["ctrl+ArrowLeft", "mac+shift+ArrowLeft"], proto.translateSelectedEditors, {
+      args: [-big, 0],
+      checker: arrowChecker
+    }], [["ArrowRight", "mac+ArrowRight"], proto.translateSelectedEditors, {
+      args: [small, 0],
+      checker: arrowChecker
+    }], [["ctrl+ArrowRight", "mac+shift+ArrowRight"], proto.translateSelectedEditors, {
+      args: [big, 0],
+      checker: arrowChecker
+    }], [["ArrowUp", "mac+ArrowUp"], proto.translateSelectedEditors, {
+      args: [0, -small],
+      checker: arrowChecker
+    }], [["ctrl+ArrowUp", "mac+shift+ArrowUp"], proto.translateSelectedEditors, {
+      args: [0, -big],
+      checker: arrowChecker
+    }], [["ArrowDown", "mac+ArrowDown"], proto.translateSelectedEditors, {
+      args: [0, small],
+      checker: arrowChecker
+    }], [["ctrl+ArrowDown", "mac+shift+ArrowDown"], proto.translateSelectedEditors, {
+      args: [0, big],
+      checker: arrowChecker
+    }]]));
   }
   constructor(container, eventBus, pdfDocument, pageColors) {
     this.#container = container;
@@ -3626,10 +3895,14 @@ class AnnotationEditorUIManager {
     }
   }
   #addKeyboardManager() {
-    this.#container.addEventListener("keydown", this.#boundKeydown);
+    window.addEventListener("keydown", this.#boundKeydown, {
+      capture: true
+    });
   }
   #removeKeyboardManager() {
-    this.#container.removeEventListener("keydown", this.#boundKeydown);
+    window.removeEventListener("keydown", this.#boundKeydown, {
+      capture: true
+    });
   }
   #addCopyPasteListeners() {
     document.addEventListener("copy", this.#boundCopy);
@@ -3681,7 +3954,7 @@ class AnnotationEditorUIManager {
       return;
     }
     this.unselectAll();
-    const layer = this.#allLayers.get(this.#currentPageIndex);
+    const layer = this.currentLayer;
     try {
       const newEditors = [];
       for (const editor of data) {
@@ -3937,6 +4210,9 @@ class AnnotationEditorUIManager {
   get hasSelection() {
     return this.#selectedEditors.size !== 0;
   }
+  stopUndoAccumulation() {
+    this.#commandManager.stopUndoAccumulation();
+  }
   undo() {
     this.#commandManager.undo();
     this.#dispatchUpdateStates({
@@ -3997,6 +4273,9 @@ class AnnotationEditorUIManager {
   commitOrRemove() {
     this.#activeEditor?.commitOrRemove();
   }
+  hasSomethingToControl() {
+    return this.#activeEditor || this.hasSelection;
+  }
   #selectEditors(editors) {
     this.#selectedEditors.clear();
     for (const editor of editors) {
@@ -4021,7 +4300,7 @@ class AnnotationEditorUIManager {
       this.#activeEditor.commitOrRemove();
       return;
     }
-    if (this.#selectedEditors.size === 0) {
+    if (!this.hasSelection) {
       return;
     }
     for (const editor of this.#selectedEditors) {
@@ -4031,6 +4310,46 @@ class AnnotationEditorUIManager {
     this.#dispatchUpdateStates({
       hasSelectedEditor: false
     });
+  }
+  translateSelectedEditors(x, y, noCommit = false) {
+    if (!noCommit) {
+      this.commitOrRemove();
+    }
+    if (!this.hasSelection) {
+      return;
+    }
+    this.#translation[0] += x;
+    this.#translation[1] += y;
+    const [totalX, totalY] = this.#translation;
+    const editors = [...this.#selectedEditors];
+    const TIME_TO_WAIT = 1000;
+    if (this.#translationTimeoutId) {
+      clearTimeout(this.#translationTimeoutId);
+    }
+    this.#translationTimeoutId = setTimeout(() => {
+      this.#translationTimeoutId = null;
+      this.#translation[0] = this.#translation[1] = 0;
+      this.addCommands({
+        cmd: () => {
+          for (const editor of editors) {
+            if (this.#allEditors.has(editor.id)) {
+              editor.translateInPage(totalX, totalY);
+            }
+          }
+        },
+        undo: () => {
+          for (const editor of editors) {
+            if (this.#allEditors.has(editor.id)) {
+              editor.translateInPage(-totalX, -totalY);
+            }
+          }
+        },
+        mustExec: false
+      });
+    }, TIME_TO_WAIT);
+    for (const editor of editors) {
+      editor.translateInPage(x, y);
+    }
   }
   isActive(editor) {
     return this.#activeEditor === editor;
@@ -5755,7 +6074,12 @@ function resetCtxToDefault(ctx) {
     ctx.setLineDash([]);
     ctx.lineDashOffset = 0;
   }
-  ctx.filter = "none";
+  const {
+    filter
+  } = ctx;
+  if (filter !== "none" && filter !== "") {
+    ctx.filter = "none";
+  }
 }
 function composeSMaskBackdrop(bytes, r0, g0, b0) {
   const length = bytes.length;
@@ -5793,12 +6117,7 @@ function genericComposeSMask(maskCtx, layerCtx, width, height, subtype, backdrop
   const r0 = hasBackdrop ? backdrop[0] : 0;
   const g0 = hasBackdrop ? backdrop[1] : 0;
   const b0 = hasBackdrop ? backdrop[2] : 0;
-  let composeFn;
-  if (subtype === "Luminosity") {
-    composeFn = composeSMaskLuminosity;
-  } else {
-    composeFn = composeSMaskAlpha;
-  }
+  const composeFn = subtype === "Luminosity" ? composeSMaskLuminosity : composeSMaskAlpha;
   const PIXELS_TO_PROCESS = 1048576;
   const chunkSize = Math.min(height, Math.ceil(PIXELS_TO_PROCESS / width));
   for (let row = 0; row < height; row += chunkSize) {
@@ -6716,12 +7035,7 @@ class CanvasGraphics {
           }
         }
       }
-      let charWidth;
-      if (vertical) {
-        charWidth = width * widthAdvanceScale - spacing * fontDirection;
-      } else {
-        charWidth = width * widthAdvanceScale + spacing * fontDirection;
-      }
+      const charWidth = vertical ? width * widthAdvanceScale - spacing * fontDirection : width * widthAdvanceScale + spacing * fontDirection;
       x += charWidth;
       if (restoreNeeded) {
         ctx.restore();
@@ -7196,7 +7510,12 @@ class CanvasGraphics {
     const height = imgData.height;
     const ctx = this.ctx;
     this.save();
-    ctx.filter = "none";
+    const {
+      filter
+    } = ctx;
+    if (filter !== "none" && filter !== "") {
+      ctx.filter = "none";
+    }
     ctx.scale(1 / width, -1 / height);
     let imgToPaint;
     if (imgData.bitmap) {
@@ -7548,12 +7867,7 @@ function drawTriangle(data, context, p1, p2, p3, c1, c2, c3) {
   let xb, cbr, cbg, cbb;
   for (let y = minY; y <= maxY; y++) {
     if (y < y2) {
-      let k;
-      if (y < y1) {
-        k = 0;
-      } else {
-        k = (y1 - y) / (y1 - y2);
-      }
+      const k = y < y1 ? 0 : (y1 - y) / (y1 - y2);
       xa = x1 - (x1 - x2) * k;
       car = c1r - (c1r - c2r) * k;
       cag = c1g - (c1g - c2g) * k;
@@ -8613,7 +8927,7 @@ class OptionalContentConfig {
     this.#cachedGetHash = null;
   }
   get hasInitialVisibility() {
-    return this.getHash() === this.#initialHash;
+    return this.#initialHash === null || this.getHash() === this.#initialHash;
   }
   getOrder() {
     if (!this.#groups.size) {
@@ -9671,6 +9985,10 @@ class AnnotationEditorLayer {
     this.#createAndAddNewEditor(event);
   }
   pointerdown(event) {
+    if (this.#hadPointerDown) {
+      this.#hadPointerDown = false;
+      return;
+    }
     const {
       isMac
     } = _util.FeatureTest.platform;
@@ -9787,7 +10105,37 @@ class FreeTextEditor extends _editor.AnnotationEditor {
   static _defaultColor = null;
   static _defaultFontSize = 10;
   static get _keyboardManager() {
-    return (0, _util.shadow)(this, "_keyboardManager", new _tools.KeyboardManager([[["ctrl+s", "mac+meta+s", "ctrl+p", "mac+meta+p"], FreeTextEditor.prototype.commitOrRemove, true], [["ctrl+Enter", "mac+meta+Enter", "Escape", "mac+Escape"], FreeTextEditor.prototype.commitOrRemove]]));
+    const proto = FreeTextEditor.prototype;
+    const arrowChecker = self => self.isEmpty();
+    const small = _tools.AnnotationEditorUIManager.TRANSLATE_SMALL;
+    const big = _tools.AnnotationEditorUIManager.TRANSLATE_BIG;
+    return (0, _util.shadow)(this, "_keyboardManager", new _tools.KeyboardManager([[["ctrl+s", "mac+meta+s", "ctrl+p", "mac+meta+p"], proto.commitOrRemove, {
+      bubbles: true
+    }], [["ctrl+Enter", "mac+meta+Enter", "Escape", "mac+Escape"], proto.commitOrRemove], [["ArrowLeft", "mac+ArrowLeft"], proto._translateEmpty, {
+      args: [-small, 0],
+      checker: arrowChecker
+    }], [["ctrl+ArrowLeft", "mac+shift+ArrowLeft"], proto._translateEmpty, {
+      args: [-big, 0],
+      checker: arrowChecker
+    }], [["ArrowRight", "mac+ArrowRight"], proto._translateEmpty, {
+      args: [small, 0],
+      checker: arrowChecker
+    }], [["ctrl+ArrowRight", "mac+shift+ArrowRight"], proto._translateEmpty, {
+      args: [big, 0],
+      checker: arrowChecker
+    }], [["ArrowUp", "mac+ArrowUp"], proto._translateEmpty, {
+      args: [0, -small],
+      checker: arrowChecker
+    }], [["ctrl+ArrowUp", "mac+shift+ArrowUp"], proto._translateEmpty, {
+      args: [0, -big],
+      checker: arrowChecker
+    }], [["ArrowDown", "mac+ArrowDown"], proto._translateEmpty, {
+      args: [0, small],
+      checker: arrowChecker
+    }], [["ctrl+ArrowDown", "mac+shift+ArrowDown"], proto._translateEmpty, {
+      args: [0, big],
+      checker: arrowChecker
+    }]]));
   }
   static _type = "freetext";
   constructor(params) {
@@ -9864,6 +10212,9 @@ class FreeTextEditor extends _editor.AnnotationEditor {
       overwriteIfSameType: true,
       keepUndo: true
     });
+  }
+  _translateEmpty(x, y) {
+    this._uiManager.translateSelectedEditors(x, y, true);
   }
   getInitialTranslation() {
     const scale = this.parentScale;
@@ -10459,26 +10810,38 @@ class AnnotationElement {
   get _commonActions() {
     const setColor = (jsName, styleName, event) => {
       const color = event.detail[jsName];
-      event.target.style[styleName] = _scripting_utils.ColorConverters[`${color[0]}_HTML`](color.slice(1));
+      const colorType = color[0];
+      const colorArray = color.slice(1);
+      event.target.style[styleName] = _scripting_utils.ColorConverters[`${colorType}_HTML`](colorArray);
+      this.annotationStorage.setValue(this.data.id, {
+        [styleName]: _scripting_utils.ColorConverters[`${colorType}_rgb`](colorArray)
+      });
     };
     return (0, _util.shadow)(this, "_commonActions", {
       display: event => {
-        const hidden = event.detail.display % 2 === 1;
+        const {
+          display
+        } = event.detail;
+        const hidden = display % 2 === 1;
         this.container.style.visibility = hidden ? "hidden" : "visible";
         this.annotationStorage.setValue(this.data.id, {
-          hidden,
-          print: event.detail.display === 0 || event.detail.display === 3
+          noView: hidden,
+          noPrint: display === 1 || display === 2
         });
       },
       print: event => {
         this.annotationStorage.setValue(this.data.id, {
-          print: event.detail.print
+          noPrint: !event.detail.print
         });
       },
       hidden: event => {
-        this.container.style.visibility = event.detail.hidden ? "hidden" : "visible";
+        const {
+          hidden
+        } = event.detail;
+        this.container.style.visibility = hidden ? "hidden" : "visible";
         this.annotationStorage.setValue(this.data.id, {
-          hidden: event.detail.hidden
+          noPrint: hidden,
+          noView: hidden
         });
       },
       focus: event => {
@@ -12572,6 +12935,9 @@ exports.ColorConverters = void 0;
 function makeColorComp(n) {
   return Math.floor(Math.max(0, Math.min(1, n)) * 255).toString(16).padStart(2, "0");
 }
+function scaleAndClamp(x) {
+  return Math.max(0, Math.min(255, 255 * x));
+}
 class ColorConverters {
   static CMYK_G([c, y, m, k]) {
     return ["G", 1 - Math.min(1, 0.3 * c + 0.59 * m + 0.11 * y + k)];
@@ -12582,6 +12948,10 @@ class ColorConverters {
   static G_RGB([g]) {
     return ["RGB", g, g, g];
   }
+  static G_rgb([g]) {
+    g = scaleAndClamp(g);
+    return [g, g, g];
+  }
   static G_HTML([g]) {
     const G = makeColorComp(g);
     return `#${G}${G}${G}`;
@@ -12589,17 +12959,23 @@ class ColorConverters {
   static RGB_G([r, g, b]) {
     return ["G", 0.3 * r + 0.59 * g + 0.11 * b];
   }
-  static RGB_HTML([r, g, b]) {
-    const R = makeColorComp(r);
-    const G = makeColorComp(g);
-    const B = makeColorComp(b);
-    return `#${R}${G}${B}`;
+  static RGB_rgb(color) {
+    return color.map(scaleAndClamp);
+  }
+  static RGB_HTML(color) {
+    return `#${color.map(makeColorComp).join("")}`;
   }
   static T_HTML() {
     return "#00000000";
   }
+  static T_rgb() {
+    return [null];
+  }
   static CMYK_RGB([c, y, m, k]) {
     return ["RGB", 1 - Math.min(1, c + k), 1 - Math.min(1, m + k), 1 - Math.min(1, y + k)];
+  }
+  static CMYK_rgb([c, y, m, k]) {
+    return [scaleAndClamp(1 - Math.min(1, c + k)), scaleAndClamp(1 - Math.min(1, m + k)), scaleAndClamp(1 - Math.min(1, y + k))];
   }
   static CMYK_HTML(components) {
     const rgb = this.CMYK_RGB(components).slice(1);
@@ -12676,9 +13052,12 @@ class XfaLayer {
         break;
       case "select":
         if (storedData.value !== null) {
+          html.setAttribute("value", storedData.value);
           for (const option of element.children) {
             if (option.attributes.value === storedData.value) {
               option.attributes.selected = true;
+            } else if (option.attributes.hasOwnProperty("selected")) {
+              delete option.attributes.selected;
             }
           }
         }
@@ -12784,12 +13163,7 @@ class XfaLayer {
         html.append(node);
         continue;
       }
-      let childHtml;
-      if (child?.attributes?.xmlns) {
-        childHtml = document.createElementNS(child.attributes.xmlns, name);
-      } else {
-        childHtml = document.createElement(name);
-      }
+      const childHtml = child?.attributes?.xmlns ? document.createElementNS(child.attributes.xmlns, name) : document.createElement(name);
       html.append(childHtml);
       if (child.attributes) {
         this.setAttributes({
@@ -12876,6 +13250,7 @@ class InkEditor extends _editor.AnnotationEditor {
     this.translationX = this.translationY = 0;
     this.x = 0;
     this.y = 0;
+    this._willKeepAspectRatio = true;
   }
   static initialize(l10n) {
     this._l10nPromise = new Map(["editor_ink_canvas_aria_label", "editor_ink2_aria_label"].map(str => [str, l10n.get(str)]));
@@ -13243,6 +13618,7 @@ class InkEditor extends _editor.AnnotationEditor {
     this.#disableEditing = true;
     this.div.classList.add("disabled");
     this.#fitToContent(true);
+    this.makeResizable();
     this.parent.addInkEditorIfNeeded(true);
     this.parent.moveEditorInDOM(this);
     this.div.focus({
@@ -13306,6 +13682,9 @@ class InkEditor extends _editor.AnnotationEditor {
       }
     });
     this.#observer.observe(this.div);
+  }
+  get isResizable() {
+    return !this.isEmpty() && this.#disableEditing;
   }
   render() {
     if (this.div) {
@@ -13620,8 +13999,8 @@ Object.defineProperty(exports, "__esModule", ({
   value: true
 }));
 exports.StampEditor = void 0;
-var _editor = __w_pdfjs_require__(4);
 var _util = __w_pdfjs_require__(1);
+var _editor = __w_pdfjs_require__(4);
 var _display_utils = __w_pdfjs_require__(6);
 var _annotation_layer = __w_pdfjs_require__(23);
 class StampEditor extends _editor.AnnotationEditor {
@@ -13640,6 +14019,10 @@ class StampEditor extends _editor.AnnotationEditor {
       name: "stampEditor"
     });
     this.#bitmapUrl = params.bitmapUrl;
+  }
+  static get supportedTypes() {
+    const types = ["apng", "avif", "bmp", "gif", "jpeg", "png", "svg+xml", "webp", "x-icon"];
+    return (0, _util.shadow)(this, "supportedTypes", types.map(type => `image/${type}`).join(","));
   }
   #getBitmap() {
     if (this.#bitmapId) {
@@ -13673,7 +14056,7 @@ class StampEditor extends _editor.AnnotationEditor {
     }
     const input = document.createElement("input");
     input.type = "file";
-    input.accept = "image/*";
+    input.accept = StampEditor.supportedTypes;
     this.#bitmapPromise = new Promise(resolve => {
       input.addEventListener("change", async () => {
         this.#bitmapPromise = null;
@@ -13733,6 +14116,9 @@ class StampEditor extends _editor.AnnotationEditor {
   isEmpty() {
     return this.#bitmapPromise === null && this.#bitmap === null && this.#bitmapUrl === null;
   }
+  get isResizable() {
+    return true;
+  }
   render() {
     if (this.div) {
       return this.div;
@@ -13751,7 +14137,6 @@ class StampEditor extends _editor.AnnotationEditor {
     }
     if (this.width) {
       const [parentWidth, parentHeight] = this.parentDimensions;
-      this.setAspectRatio(this.width * parentWidth, this.height * parentHeight);
       this.setAt(baseX * parentWidth, baseY * parentHeight, this.width * parentWidth, this.height * parentHeight);
     }
     return this.div;
@@ -13776,7 +14161,6 @@ class StampEditor extends _editor.AnnotationEditor {
     }
     const [parentWidth, parentHeight] = this.parentDimensions;
     this.setDims(width * parentWidth / pageWidth, height * parentHeight / pageHeight);
-    this.setAspectRatio(width, height);
     const canvas = this.#canvas = document.createElement("canvas");
     div.append(canvas);
     this.#drawBitmap(width, height);
@@ -14231,8 +14615,8 @@ var _tools = __w_pdfjs_require__(5);
 var _annotation_layer = __w_pdfjs_require__(23);
 var _worker_options = __w_pdfjs_require__(14);
 var _xfa_layer = __w_pdfjs_require__(25);
-const pdfjsVersion = '3.9.104';
-const pdfjsBuild = '2a508b95e';
+const pdfjsVersion = '3.10.17';
+const pdfjsBuild = '4735ed8f1';
 })();
 
 /******/ 	return __webpack_exports__;

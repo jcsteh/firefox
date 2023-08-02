@@ -608,7 +608,11 @@
 #    (multiplied then by pixelsPerLineStep which in GNOME-web is 40).
 -   name: apz.gtk.pangesture.delta_mode
     type: uint32_t
+#ifdef NIGHTLY_BUILD
+    value: 2
+#else
     value: 0
+#endif
     mirror: always
 
 -   name: apz.gtk.pangesture.page_delta_mode_multiplier
@@ -1829,6 +1833,12 @@
   value: true
   mirror: always
 
+# Whether or not to save and restore zoom levels on a per-site basis.
+- name: browser.zoom.siteSpecific
+  type: bool
+  value: @IS_NOT_ANDROID@
+  mirror: always
+
 #---------------------------------------------------------------------------
 # Prefs starting with "canvas."
 #---------------------------------------------------------------------------
@@ -2269,12 +2279,6 @@
 
 # Block Insecure downloads from Secure Origins
 - name: dom.block_download_insecure
-  type: bool
-  value: true
-  mirror: always
-
-# Block all downloads in iframes with the sandboxed attribute
-- name: dom.block_download_in_sandboxed_iframes
   type: bool
   value: true
   mirror: always
@@ -3012,12 +3016,6 @@
 - name: dom.forms.fieldset_disable_only_descendants.enabled
   type: bool
   value: @IS_NIGHTLY_BUILD@
-  mirror: always
-
-# Is support for HTMLInputElement.showPicker enabled?
-- name: dom.input.showPicker
-  type: bool
-  value: true
   mirror: always
 
 # Whether to allow or disallow web apps to cancel `beforeinput` events caused
@@ -4172,7 +4170,7 @@
 
 - name: dom.textMetrics.emHeight.enabled
   type: RelaxedAtomicBool
-  value: false
+  value: true
   mirror: always
 
 - name: dom.textMetrics.fontBoundingBox.enabled
@@ -7501,18 +7499,6 @@
     mirror: always
 #endif  // NIGHTLY_BUILD
 
-  # Experimental support for change-array-by-copy methods
-- name: javascript.options.experimental.enable_change_array_by_copy
-  type: bool
-  value: true
-  mirror: always
-
-# Support Array.fromAsync
-- name: javascript.options.experimental.enable_array_from_async
-  type: bool
-  value: true
-  mirror: always
-
 #if defined(ENABLE_NEW_SET_METHODS)
   # Experimental support for New Set methods
 - name: javascript.options.experimental.enable_new_set_methods
@@ -7649,6 +7635,13 @@
     mirror: always
 #endif // defined(ENABLE_WASM_GC)
 
+#if defined(ENABLE_WASM_GC)
+-   name: javascript.options.wasm_final_types
+    type: bool
+    value: false
+    mirror: always
+#endif // defined(ENABLE_WASM_GC)
+
 #if defined(ENABLE_WASM_MEMORY_CONTROL)
 -   name: javascript.options.wasm_memory_control
     type: bool
@@ -7673,6 +7666,13 @@
     value: @IS_NIGHTLY_BUILD@
     mirror: always
 #endif  // defined(ENABLE_WASM_MEMORY64)
+
+#if defined(ENABLE_WASM_TAIL_CALLS)
+-   name: javascript.options.wasm_tail_calls
+    type: bool
+    value: @IS_NIGHTLY_BUILD@
+    mirror: always
+#endif  // defined(ENABLE_WASM_TAIL_CALLS)
 
 # Support for pretenuring allocations based on their allocation site.
 - name: javascript.options.site_based_pretenuring
@@ -8200,13 +8200,6 @@
   mirror: always
   rust: true
 
-# Whether CSS nesting is enabled.
-- name: layout.css.nesting.enabled
-  type: RelaxedAtomicBool
-  value: true
-  mirror: always
-  rust: true
-
 # Should we look for counter ancestor scopes first?
 - name: layout.css.counter-ancestor-scope.enabled
   type: bool
@@ -8343,6 +8336,13 @@
   value: false
   mirror: always
 
+# Is support for rect() enabled?
+- name: layout.css.basic-shape-rect.enabled
+  type: RelaxedAtomicBool
+  value: @IS_NIGHTLY_BUILD@
+  mirror: always
+  rust: true
+
 # Is support for xywh() enabled?
 - name: layout.css.basic-shape-xywh.enabled
   type: RelaxedAtomicBool
@@ -8393,6 +8393,13 @@
 - name: layout.css.color-mix.enabled
   type: RelaxedAtomicBool
   value: true
+  mirror: always
+  rust: true
+
+# Is support for light-dark() on content enabled?
+- name: layout.css.light-dark.enabled
+  type: RelaxedAtomicBool
+  value: false
   mirror: always
   rust: true
 
@@ -8468,13 +8475,6 @@
 
 # Is support for the size-adjust @font-face descriptor enabled?
 - name: layout.css.size-adjust.enabled
-  type: RelaxedAtomicBool
-  value: true
-  mirror: always
-  rust: true
-
-# Is the optional adjustment-basis value for font-size-adjust enabled?
-- name: layout.css.font-size-adjust.basis.enabled
   type: RelaxedAtomicBool
   value: true
   mirror: always
@@ -8629,15 +8629,14 @@
 # Is support for math-style enabled?
 - name: layout.css.math-style.enabled
   type: RelaxedAtomicBool
-  value: @IS_NIGHTLY_BUILD@
+  value: true
   mirror: always
   rust: true
 
 # Is support for math-depth enabled?
-# This must not be enabled until implementation is complete (see bug 1667090).
 - name: layout.css.math-depth.enabled
   type: RelaxedAtomicBool
-  value: false
+  value: true
   mirror: always
   rust: true
 
@@ -9403,26 +9402,6 @@
 #---------------------------------------------------------------------------
 # Prefs starting with "mathml."
 #---------------------------------------------------------------------------
-
-# Whether to disable layout of invalid markup as an error message.
-- name: mathml.error_message_layout_for_invalid_markup.disabled
-  type: bool
-  value: true
-  mirror: always
-
-# Whether to disable MathML3 implementations for maction and semantics.
-- name: mathml.legacy_maction_and_semantics_implementations.disabled
-  type: bool
-  value: true
-  mirror: always
-  rust: true
-
-# Whether to disable the lquote/rquote attributes of the <ms> element.
-- name: mathml.ms_lquote_rquote_attributes.disabled
-  type: bool
-  value: true
-  mirror: always
-  rust: true
 
 # Whether to disable legacy names "thickmathspace", "mediummathspace",
 # "thickmathspace" etc for length attributes.
@@ -10211,12 +10190,7 @@
 
 -   name: media.wmf.low-latency.enabled
     type: RelaxedAtomicBool
-    value: false
-    mirror: always
-
--   name: media.wmf.low-latency.force-disabled
-    type: RelaxedAtomicBool
-    value: false
+    value: true
     mirror: always
 
 -   name: media.wmf.skip-blacklist
@@ -11728,6 +11702,13 @@
 # Enables `<link rel="preload">` tag and `Link: rel=preload` response header
 # handling.
 - name: network.preload
+  type: RelaxedAtomicBool
+  value: true
+  mirror: always
+
+# Enables `<link rel="preconnect">` tag and `Link: rel=preconnect` response header
+# handling.
+- name: network.preconnect
   type: RelaxedAtomicBool
   value: true
   mirror: always
@@ -13448,6 +13429,26 @@
   value: 10000
   mirror: always
 
+# How long user activations will protect a site host from storage deletion.
+- name: privacy.bounceTrackingProtection.bounceTrackingActivationLifetimeSec
+  type: uint32_t
+  value: 3888000
+  mirror: always
+
+# How long to wait for interaction after a possible bounce tracking event before
+# deleting a site host's storage.
+- name: privacy.bounceTrackingProtection.bounceTrackingGracePeriodSec
+  type: uint32_t
+  value: 3600
+  mirror: always
+
+# How often to run the bounce tracking timer algorithm  which purges bounce
+# tracker state periodically. Set to 0 to disable purging.
+- name: privacy.bounceTrackingProtection.bounceTrackingPurgeTimerPeriodSec
+  type: uint32_t
+  value: 3600
+  mirror: always
+
 # Whether only bounces that access storage should be considered trackers.
 - name: privacy.bounceTrackingProtection.requireStatefulBounces
   type: bool
@@ -13943,17 +13944,6 @@
   value: false
   mirror: once
 
-# On Windows 8.1, if the following preference is 2, we will attempt to detect
-# whether the Family Safety TLS interception feature has been enabled.
-# If so, we will behave as if the enterprise roots feature has been enabled
-# (i.e. import and trust third party root certificates from the OS).
-# With any other value of the pref or on any other platform, this does nothing.
-# This preference takes precedence over "security.enterprise_roots.enabled".
-- name: security.family_safety.mode
-  type: RelaxedAtomicUint32
-  value: 2
-  mirror: always
-
 # Whether or not to import and trust third party root certificates from the OS.
 - name: security.enterprise_roots.enabled
   type: RelaxedAtomicBool
@@ -14083,6 +14073,13 @@
   type: RelaxedAtomicUint32
   value: 100
   mirror: always
+
+# Whether to apply GREASE settings to HTTP3/QUIC connections
+- name: security.tls.grease_http3_enable
+  type: RelaxedAtomicBool
+  value: false
+  mirror: always
+  rust: true
 
 - name: security.tls.hello_downgrade_check
   type: RelaxedAtomicBool
@@ -15588,24 +15585,11 @@
   value: false
   mirror: always
 
-# Whether to apply logic intended to improve taskbar behavior involving
-# non-foreground fullscreen windows. (See bug 1732517.)
-- name: widget.windows.alternate_fullscreen_heuristics
+# Whether to give explorer.exe a delated nudge to recalculate the fullscreenness
+# of a window after maximizing it.
+- name: widget.windows.fullscreen_remind_taskbar
   type: RelaxedAtomicBool
   value: true
-  mirror: always
-
-# Whether to apply a workaround intended to prevent Windows from treating
-# non-foreground-marked fullscreen windows as fullscreen on Windows 7 and
-# earlier. (See bug 1732517.)
-#
-# Valid values:
-#  * -1: the workaround is never used.
-#  *  1: the workaround is always used.
-#  *  0: the workaround is used if we think it should be. (Default.)
-- name: widget.windows.fullscreen_marking_workaround
-  type: RelaxedAtomicInt32
-  value: 0
   mirror: always
 
 # The number of messages of each type to keep for display in

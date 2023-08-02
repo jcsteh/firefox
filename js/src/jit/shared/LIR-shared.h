@@ -3119,17 +3119,18 @@ class LWasmCompareExchangeHeap : public LInstructionHelper<1, 4, 4> {
     setOperand(3, memoryBase);
     setTemp(0, LDefinition::BogusTemp());
   }
-  // MIPS32, MIPS64
+  // MIPS32, MIPS64, LoongArch64
   LWasmCompareExchangeHeap(const LAllocation& ptr, const LAllocation& oldValue,
                            const LAllocation& newValue,
                            const LDefinition& valueTemp,
                            const LDefinition& offsetTemp,
-                           const LDefinition& maskTemp)
+                           const LDefinition& maskTemp,
+                           const LAllocation& memoryBase = LAllocation())
       : LInstructionHelper(classOpcode) {
     setOperand(0, ptr);
     setOperand(1, oldValue);
     setOperand(2, newValue);
-    setOperand(3, LAllocation());
+    setOperand(3, memoryBase);
     setTemp(0, LDefinition::BogusTemp());
     setTemp(1, valueTemp);
     setTemp(2, offsetTemp);
@@ -3167,15 +3168,16 @@ class LWasmAtomicExchangeHeap : public LInstructionHelper<1, 3, 4> {
     setOperand(2, memoryBase);
     setTemp(0, LDefinition::BogusTemp());
   }
-  // MIPS32, MIPS64
+  // MIPS32, MIPS64, LoongArch64
   LWasmAtomicExchangeHeap(const LAllocation& ptr, const LAllocation& value,
                           const LDefinition& valueTemp,
                           const LDefinition& offsetTemp,
-                          const LDefinition& maskTemp)
+                          const LDefinition& maskTemp,
+                          const LAllocation& memoryBase = LAllocation())
       : LInstructionHelper(classOpcode) {
     setOperand(0, ptr);
     setOperand(1, value);
-    setOperand(2, LAllocation());
+    setOperand(2, memoryBase);
     setTemp(0, LDefinition::BogusTemp());
     setTemp(1, valueTemp);
     setTemp(2, offsetTemp);
@@ -3218,15 +3220,16 @@ class LWasmAtomicBinopHeap : public LInstructionHelper<1, 3, 6> {
     setTemp(1, LDefinition::BogusTemp());
     setTemp(2, flagTemp);
   }
-  // MIPS32, MIPS64
+  // MIPS32, MIPS64, LoongArch64
   LWasmAtomicBinopHeap(const LAllocation& ptr, const LAllocation& value,
                        const LDefinition& valueTemp,
                        const LDefinition& offsetTemp,
-                       const LDefinition& maskTemp)
+                       const LDefinition& maskTemp,
+                       const LAllocation& memoryBase = LAllocation())
       : LInstructionHelper(classOpcode) {
     setOperand(0, ptr);
     setOperand(1, value);
-    setOperand(2, LAllocation());
+    setOperand(2, memoryBase);
     setTemp(0, LDefinition::BogusTemp());
     setTemp(1, LDefinition::BogusTemp());
     setTemp(2, LDefinition::BogusTemp());
@@ -3272,16 +3275,17 @@ class LWasmAtomicBinopHeapForEffect : public LInstructionHelper<0, 3, 5> {
     setTemp(0, LDefinition::BogusTemp());
     setTemp(1, flagTemp);
   }
-  // MIPS32, MIPS64
+  // MIPS32, MIPS64, LoongArch64
   LWasmAtomicBinopHeapForEffect(const LAllocation& ptr,
                                 const LAllocation& value,
                                 const LDefinition& valueTemp,
                                 const LDefinition& offsetTemp,
-                                const LDefinition& maskTemp)
+                                const LDefinition& maskTemp,
+                                const LAllocation& memoryBase = LAllocation())
       : LInstructionHelper(classOpcode) {
     setOperand(0, ptr);
     setOperand(1, value);
-    setOperand(2, LAllocation());
+    setOperand(2, memoryBase);
     setTemp(0, LDefinition::BogusTemp());
     setTemp(1, LDefinition::BogusTemp());
     setTemp(2, valueTemp);
@@ -3389,18 +3393,23 @@ class LWasmCall : public LVariadicInstruction<0, 0> {
   }
 
   MWasmCallBase* callBase() const {
-    if (isCatchable()) {
+    if (isCatchable() && !isReturnCall()) {
       return static_cast<MWasmCallBase*>(mirCatchable());
+    }
+    if (isReturnCall()) {
+      return static_cast<MWasmReturnCall*>(mirReturnCall());
     }
     return static_cast<MWasmCallBase*>(mirUncatchable());
   }
   bool isCatchable() const { return mir_->isWasmCallCatchable(); }
+  bool isReturnCall() const { return mir_->isWasmReturnCall(); }
   MWasmCallCatchable* mirCatchable() const {
     return mir_->toWasmCallCatchable();
   }
   MWasmCallUncatchable* mirUncatchable() const {
     return mir_->toWasmCallUncatchable();
   }
+  MWasmReturnCall* mirReturnCall() const { return mir_->toWasmReturnCall(); }
 
   static bool isCallPreserved(AnyRegister reg) {
     // All MWasmCalls preserve the TLS register:

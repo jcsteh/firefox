@@ -2402,42 +2402,6 @@ void CreateDependentString::generateFallback(MacroAssembler& masm) {
   }
 }
 
-static void CreateMatchResultFallback(MacroAssembler& masm, Register object,
-                                      Register temp1, Register temp2,
-                                      const TemplateObject& templateObject,
-                                      Label* fail) {
-  JitSpew(JitSpew_Codegen, "# Emitting CreateMatchResult fallback");
-
-  MOZ_ASSERT(templateObject.isArrayObject());
-
-  LiveRegisterSet regsToSave(RegisterSet::Volatile());
-  regsToSave.takeUnchecked(object);
-  regsToSave.takeUnchecked(temp1);
-  regsToSave.takeUnchecked(temp2);
-
-  masm.PushRegsInMask(regsToSave);
-
-  using Fn = void* (*)(JSContext* cx, gc::AllocKind kind, size_t nDynamicSlots);
-  masm.setupUnalignedABICall(object);
-
-  masm.loadJSContext(object);
-  masm.passABIArg(object);
-  masm.move32(Imm32(int32_t(templateObject.getAllocKind())), temp1);
-  masm.passABIArg(temp1);
-  masm.move32(
-      Imm32(int32_t(templateObject.asTemplateNativeObject().numDynamicSlots())),
-      temp2);
-  masm.passABIArg(temp2);
-  masm.callWithABI<Fn, CreateMatchResultFallbackFunc>();
-  masm.storeCallPointerResult(object);
-
-  masm.PopRegsInMask(regsToSave);
-
-  masm.branchPtr(Assembler::Equal, object, ImmWord(0), fail);
-
-  masm.initGCThing(object, temp1, templateObject);
-}
-
 // Generate the RegExpMatcher and RegExpExecMatch stubs. These are very similar,
 // but RegExpExecMatch also has to load and update .lastIndex for global/sticky
 // regular expressions.
@@ -2537,9 +2501,8 @@ static JitCode* GenerateRegExpMatchStubShared(JSContext* cx,
 
   // Construct the result.
   Register object = temp1;
-  Label matchResultFallback, matchResultJoin;
-  masm.createGCObject(object, temp2, templateObj, gc::Heap::Default,
-                      &matchResultFallback);
+  Label matchResultJoin;
+  masm.createGCObject(object, temp2, templateObj, gc::Heap::Default, &oolEntry);
   masm.bind(&matchResultJoin);
 
   MOZ_ASSERT(nativeTemplateObj.numFixedSlots() == 0);
@@ -2772,11 +2735,6 @@ static JitCode* GenerateRegExpMatchStubShared(JSContext* cx,
     depStr.generateFallback(masm);
   }
 
-  // Fallback path for createGCObject.
-  masm.bind(&matchResultFallback);
-  CreateMatchResultFallback(masm, object, temp2, temp3, templateObj, &oolEntry);
-  masm.jump(&matchResultJoin);
-
   // Fall-through to the ool entry after restoring the registers.
   masm.bind(&restoreRegExpAndLastIndex);
   maybeRestoreRegExpAndLastIndex();
@@ -2990,6 +2948,14 @@ JitCode* JitRealm::generateRegExpSearcherStub(JSContext* cx) {
   masm.push(FramePointer);
   masm.moveStackPtrTo(FramePointer);
 
+#ifdef DEBUG
+  // Store sentinel value to cx->regExpSearcherLastLimit.
+  // See comment in RegExpSearcherImpl.
+  masm.loadJSContext(temp1);
+  masm.store32(Imm32(RegExpSearcherLastLimitSentinel),
+               Address(temp1, JSContext::offsetOfRegExpSearcherLastLimit()));
+#endif
+
   // The InputOutputData is placed above the frame pointer and return address on
   // the stack.
   int32_t inputOutputDataStartOffset = 2 * sizeof(void*);
@@ -3042,10 +3008,12 @@ JitCode* JitRealm::generateRegExpSearcherStub(JSContext* cx) {
   Address matchPairLimit(FramePointer,
                          pairsVectorStartOffset + MatchPair::offsetOfLimit());
 
+  // Store match limit to cx->regExpSearcherLastLimit and return the index.
+  masm.load32(matchPairLimit, result);
+  masm.loadJSContext(input);
+  masm.store32(result,
+               Address(input, JSContext::offsetOfRegExpSearcherLastLimit()));
   masm.load32(matchPairStart, result);
-  masm.load32(matchPairLimit, input);
-  masm.lshiftPtr(Imm32(15), input);
-  masm.or32(input, result);
   masm.pop(FramePointer);
   masm.ret();
 
@@ -3139,6 +3107,14 @@ void CodeGenerator::visitRegExpSearcher(LRegExpSearcher* lir) {
   masm.bind(ool->rejoin());
 
   masm.freeStack(RegExpReservedStack);
+}
+
+void CodeGenerator::visitRegExpSearcherLastLimit(
+    LRegExpSearcherLastLimit* lir) {
+  Register result = ToRegister(lir->output());
+  Register scratch = ToRegister(lir->temp0());
+
+  masm.loadAndClearRegExpSearcherLastLimit(result, scratch);
 }
 
 JitCode* JitRealm::generateRegExpExecTestStub(JSContext* cx) {
@@ -3302,6 +3278,34 @@ void CodeGenerator::visitRegExpExecTest(LRegExpExecTest* lir) {
 
   masm.branch32(Assembler::Equal, ReturnReg, Imm32(RegExpExecTestResultFailed),
                 ool->entry());
+
+  masm.bind(ool->rejoin());
+}
+
+void CodeGenerator::visitRegExpHasCaptureGroups(LRegExpHasCaptureGroups* ins) {
+  Register regexp = ToRegister(ins->regexp());
+  Register input = ToRegister(ins->input());
+  Register output = ToRegister(ins->output());
+
+  using Fn =
+      bool (*)(JSContext*, Handle<RegExpObject*>, Handle<JSString*>, bool*);
+  auto* ool = oolCallVM<Fn, js::RegExpHasCaptureGroups>(
+      ins, ArgList(regexp, input), StoreRegisterTo(output));
+
+  // Load RegExpShared in |output|.
+  Label vmCall;
+  masm.loadParsedRegExpShared(regexp, output, ool->entry());
+
+  // Return true iff pairCount > 1.
+  Label returnTrue;
+  masm.branch32(Assembler::Above,
+                Address(output, RegExpShared::offsetOfPairCount()), Imm32(1),
+                &returnTrue);
+  masm.move32(Imm32(0), output);
+  masm.jump(ool->rejoin());
+
+  masm.bind(&returnTrue);
+  masm.move32(Imm32(1), output);
 
   masm.bind(ool->rejoin());
 }
@@ -8772,6 +8776,7 @@ void CodeGenerator::visitWasmRegisterResult(LWasmRegisterResult* lir) {
 
 void CodeGenerator::visitWasmCall(LWasmCall* lir) {
   const MWasmCallBase* callBase = lir->callBase();
+  bool isReturnCall = lir->isReturnCall();
 
   // If this call is in Wasm try code block, initialise a wasm::TryNote for this
   // call.
@@ -8809,11 +8814,31 @@ void CodeGenerator::visitWasmCall(LWasmCall* lir) {
   CodeOffset secondRetOffset;
   switch (callee.which()) {
     case wasm::CalleeDesc::Func:
+#ifdef ENABLE_WASM_TAIL_CALLS
+      if (isReturnCall) {
+        ReturnCallAdjustmentInfo retCallInfo(
+            callBase->stackArgAreaSizeUnaligned(), inboundStackArgBytes_);
+        masm.wasmReturnCall(desc, callee.funcIndex(), retCallInfo);
+        // The rest of the method is unnecessary for a return call.
+        return;
+      }
+#endif
+      MOZ_ASSERT(!isReturnCall);
       retOffset = masm.call(desc, callee.funcIndex());
       reloadRegs = false;
       switchRealm = false;
       break;
     case wasm::CalleeDesc::Import:
+#ifdef ENABLE_WASM_TAIL_CALLS
+      if (isReturnCall) {
+        ReturnCallAdjustmentInfo retCallInfo(
+            callBase->stackArgAreaSizeUnaligned(), inboundStackArgBytes_);
+        masm.wasmReturnCallImport(desc, callee, retCallInfo);
+        // The rest of the method is unnecessary for a return call.
+        return;
+      }
+#endif
+      MOZ_ASSERT(!isReturnCall);
       retOffset = masm.wasmCallImport(desc, callee);
       break;
     case wasm::CalleeDesc::AsmJSTable:
@@ -8828,6 +8853,12 @@ void CodeGenerator::visitWasmCall(LWasmCall* lir) {
                 wasm::Trap::OutOfBounds);
         if (lir->isCatchable()) {
           addOutOfLineCode(ool, lir->mirCatchable());
+        } else if (isReturnCall) {
+#ifdef ENABLE_WASM_TAIL_CALLS
+          addOutOfLineCode(ool, lir->mirReturnCall());
+#else
+          MOZ_CRASH("Return calls are disabled.");
+#endif
         } else {
           addOutOfLineCode(ool, lir->mirUncatchable());
         }
@@ -8842,12 +8873,30 @@ void CodeGenerator::visitWasmCall(LWasmCall* lir) {
                 wasm::Trap::IndirectCallToNull);
         if (lir->isCatchable()) {
           addOutOfLineCode(ool, lir->mirCatchable());
+        } else if (isReturnCall) {
+#  ifdef ENABLE_WASM_TAIL_CALLS
+          addOutOfLineCode(ool, lir->mirReturnCall());
+#  else
+          MOZ_CRASH("Return calls are disabled.");
+#  endif
         } else {
           addOutOfLineCode(ool, lir->mirUncatchable());
         }
         nullCheckFailed = ool->entry();
       }
 #endif
+#ifdef ENABLE_WASM_TAIL_CALLS
+      if (isReturnCall) {
+        ReturnCallAdjustmentInfo retCallInfo(
+            callBase->stackArgAreaSizeUnaligned(), inboundStackArgBytes_);
+        masm.wasmReturnCallIndirect(desc, callee, boundsCheckFailed,
+                                    nullCheckFailed, mozilla::Nothing(),
+                                    retCallInfo);
+        // The rest of the method is unnecessary for a return call.
+        return;
+      }
+#endif
+      MOZ_ASSERT(!isReturnCall);
       masm.wasmCallIndirect(desc, callee, boundsCheckFailed, nullCheckFailed,
                             lir->tableSize(), &retOffset, &secondRetOffset);
       // Register reloading and realm switching are handled dynamically inside
@@ -8879,6 +8928,7 @@ void CodeGenerator::visitWasmCall(LWasmCall* lir) {
   }
 
   // Note the assembler offset for the associated LSafePoint.
+  MOZ_ASSERT(!isReturnCall);
   markSafepointAt(retOffset.offset(), lir);
 
   // Now that all the outbound in-memory args are on the stack, note the
@@ -8906,6 +8956,21 @@ void CodeGenerator::visitWasmCall(LWasmCall* lir) {
   } else {
     MOZ_ASSERT(!switchRealm);
   }
+
+#ifdef ENABLE_WASM_TAIL_CALLS
+  switch (callee.which()) {
+    case wasm::CalleeDesc::Func:
+    case wasm::CalleeDesc::Import:
+    case wasm::CalleeDesc::WasmTable:
+    case wasm::CalleeDesc::FuncRef:
+      // Stack allocation could change during Wasm (return) calls,
+      // recover pre-call state.
+      masm.freeStackTo(masm.framePushed());
+      break;
+    default:
+      break;
+  }
+#endif  // ENABLE_WASM_TAIL_CALLS
 
   if (inTry) {
     // Set the end of the try note range
@@ -13902,6 +13967,7 @@ bool CodeGenerator::generateWasm(
   JitSpew(JitSpew_Codegen, "# Emitting wasm code");
 
   size_t nInboundStackArgBytes = StackArgAreaSizeUnaligned(argTypes);
+  inboundStackArgBytes_ = nInboundStackArgBytes;
 
   wasm::GenerateFunctionPrologue(masm, callIndirectId, mozilla::Nothing(),
                                  offsets);

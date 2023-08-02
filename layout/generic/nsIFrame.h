@@ -382,8 +382,7 @@ struct IntrinsicSize {
 };
 
 // Pseudo bidi embedding level indicating nonexistence.
-static const mozilla::intl::BidiEmbeddingLevel kBidiLevelNone =
-    mozilla::intl::BidiEmbeddingLevel(0xff);
+constexpr mozilla::intl::BidiEmbeddingLevel kBidiLevelNone(0xff);
 
 struct FrameBidiData {
   mozilla::intl::BidiEmbeddingLevel baseLevel;
@@ -896,7 +895,7 @@ class nsIFrame : public nsQueryFrame {
       int16_t aSelectionStatus) const;
 
   already_AddRefed<ComputedStyle> ComputeHighlightSelectionStyle(
-      const nsAtom* aHighlightName);
+      nsAtom* aHighlightName);
 
   /**
    * Accessor functions for geometric parent.

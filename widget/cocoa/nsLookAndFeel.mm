@@ -104,14 +104,6 @@ nscolor nsLookAndFeel::ProcessSelectionBackground(nscolor aColor, ColorScheme aS
 nsresult nsLookAndFeel::NativeGetColor(ColorID aID, ColorScheme aScheme, nscolor& aColor) {
   NS_OBJC_BEGIN_TRY_ABORT_BLOCK
 
-  if (@available(macOS 10.14, *)) {
-    // No-op. macOS 10.14+ supports dark mode, so currentAppearance can be set
-    // to either Light or Dark.
-  } else {
-    // System colors before 10.14 are always Light.
-    aScheme = ColorScheme::Light;
-  }
-
   NSAppearance.currentAppearance = NSAppearanceForColorScheme(aScheme);
 
   nscolor color = 0;
@@ -248,13 +240,7 @@ nsresult nsLookAndFeel::NativeGetColor(ColorID aID, ColorScheme aScheme, nscolor
       color = GetColorFromNSColor(NSColor.windowFrameColor);
       break;
     case ColorID::Window: {
-      if (@available(macOS 10.14, *)) {
-        color = GetColorFromNSColor(NSColor.windowBackgroundColor);
-      } else {
-        // On 10.13 and below, NSColor.windowBackgroundColor is transparent black.
-        // Use a light grey instead (taken from macOS 11.5).
-        color = NS_RGB(0xF6, 0xF6, 0xF6);
-      }
+      color = GetColorFromNSColor(NSColor.windowBackgroundColor);
       break;
     }
     case ColorID::Field:
@@ -274,24 +260,8 @@ nsresult nsLookAndFeel::NativeGetColor(ColorID aID, ColorScheme aScheme, nscolor
     case ColorID::MozColheaderhovertext:
       color = GetColorFromNSColor(NSColor.controlTextColor);
       break;
-    case ColorID::MozDragtargetzone:
-      color = GetColorFromNSColor(NSColor.selectedControlColor);
-      break;
-    case ColorID::MozMacChromeActive: {
-      int grey = NativeGreyColorAsInt(toolbarFillGrey, true);
-      color = NS_RGB(grey, grey, grey);
-      break;
-    }
-    case ColorID::MozMacChromeInactive: {
-      int grey = NativeGreyColorAsInt(toolbarFillGrey, false);
-      color = NS_RGB(grey, grey, grey);
-      break;
-    }
     case ColorID::MozMacFocusring:
       color = GetColorFromNSColorWithCustomAlpha(NSColor.keyboardFocusIndicatorColor, 0.48);
-      break;
-    case ColorID::MozMacMenushadow:
-      color = NS_RGB(0xA3, 0xA3, 0xA3);
       break;
     case ColorID::MozMacMenutextdisable:
       color = NS_RGB(0x98, 0x98, 0x98);
@@ -303,11 +273,7 @@ nsresult nsLookAndFeel::NativeGetColor(ColorID aID, ColorScheme aScheme, nscolor
     case ColorID::Graytext:
       color = GetColorFromNSColor(NSColor.disabledControlTextColor);
       break;
-    case ColorID::MozMacMenuselect:
-      color = GetColorFromNSColor(NSColor.alternateSelectedControlColor);
-      break;
     case ColorID::MozCellhighlight:
-    case ColorID::MozMacSecondaryhighlight:
       // For inactive list selection
       color = GetColorFromNSColor(NSColor.secondarySelectedControlColor);
       break;
@@ -339,7 +305,7 @@ nsresult nsLookAndFeel::NativeGetColor(ColorID aID, ColorScheme aScheme, nscolor
     case ColorID::MozMacActiveMenuitem:
     case ColorID::MozMacActiveSourceListSelection:
     case ColorID::Accentcolor:
-      color = GetColorFromNSColor(ControlAccentColor());
+      color = GetColorFromNSColor([NSColor controlAccentColor]);
       break;
     case ColorID::Marktext:
     case ColorID::Mark:
@@ -432,9 +398,6 @@ nsresult nsLookAndFeel::NativeGetInt(IntID aID, int32_t& aResult) {
     case IntID::TreeScrollLinesMax:
       aResult = 3;
       break;
-    case IntID::MacGraphiteTheme:
-      aResult = NSColor.currentControlTint == NSGraphiteControlTint;
-      break;
     case IntID::MacBigSurTheme:
       aResult = nsCocoaFeatures::OnBigSurOrLater();
       break;
@@ -484,9 +447,15 @@ nsresult nsLookAndFeel::NativeGetInt(IntID aID, int32_t& aResult) {
     case IntID::PrefersReducedTransparency:
       aResult = NSWorkspace.sharedWorkspace.accessibilityDisplayShouldReduceTransparency;
       break;
-    case IntID::InvertedColors:
-      aResult = NSWorkspace.sharedWorkspace.accessibilityDisplayShouldInvertColors;
+    case IntID::InvertedColors: {
+      Boolean exists;
+      // Cannot use accessibilityDisplayShouldInvertColors as that matches Smart Invert, we want
+      // Classic Invert
+      Boolean val = CFPreferencesGetAppBooleanValue(CFSTR("AXSClassicInvertColorsPreference"),
+                                                    CFSTR("com.apple.Accessibility"), &exists);
+      aResult = exists && val;
       break;
+    }
     case IntID::UseAccessibilityTheme:
       aResult = NSWorkspace.sharedWorkspace.accessibilityDisplayShouldIncreaseContrast;
       break;
@@ -539,14 +508,10 @@ nsresult nsLookAndFeel::NativeGetFloat(FloatID aID, float& aResult) {
 }
 
 bool nsLookAndFeel::SystemWantsDarkTheme() {
-  // This returns true if the macOS system appearance is set to dark mode on
-  // 10.14+, false otherwise.
-  if (@available(macOS 10.14, *)) {
-    NSAppearanceName aquaOrDarkAqua = [NSApp.effectiveAppearance
-        bestMatchFromAppearancesWithNames:@[ NSAppearanceNameAqua, NSAppearanceNameDarkAqua ]];
-    return [aquaOrDarkAqua isEqualToString:NSAppearanceNameDarkAqua];
-  }
-  return false;
+  // This returns true if the macOS system appearance is set to dark mode, false otherwise.
+  NSAppearanceName aquaOrDarkAqua = [NSApp.effectiveAppearance
+      bestMatchFromAppearancesWithNames:@[ NSAppearanceNameAqua, NSAppearanceNameDarkAqua ]];
+  return [aquaOrDarkAqua isEqualToString:NSAppearanceNameDarkAqua];
 }
 
 /*static*/
@@ -601,19 +566,11 @@ void nsLookAndFeel::RecordAccessibilityTelemetry() {
                                              name:NSSystemColorsDidChangeNotification
                                            object:nil];
 
-  if (@available(macOS 10.14, *)) {
-    [NSWorkspace.sharedWorkspace.notificationCenter
-        addObserver:self
-           selector:@selector(mediaQueriesChanged)
-               name:NSWorkspaceAccessibilityDisplayOptionsDidChangeNotification
-             object:nil];
-  } else {
-    [NSNotificationCenter.defaultCenter
-        addObserver:self
-           selector:@selector(mediaQueriesChanged)
-               name:NSWorkspaceAccessibilityDisplayOptionsDidChangeNotification
-             object:nil];
-  }
+  [NSWorkspace.sharedWorkspace.notificationCenter
+      addObserver:self
+         selector:@selector(mediaQueriesChanged)
+             name:NSWorkspaceAccessibilityDisplayOptionsDidChangeNotification
+           object:nil];
 
   [NSNotificationCenter.defaultCenter addObserver:self
                                          selector:@selector(scrollbarsChanged)

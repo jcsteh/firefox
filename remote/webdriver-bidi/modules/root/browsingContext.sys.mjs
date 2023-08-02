@@ -2,8 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
-
 import { Module } from "chrome://remote/content/shared/messagehandler/Module.sys.mjs";
 
 const lazy = {};
@@ -29,7 +27,7 @@ ChromeUtils.defineESModuleGetters(lazy, {
   windowManager: "chrome://remote/content/shared/WindowManager.sys.mjs",
 });
 
-XPCOMUtils.defineLazyGetter(lazy, "logger", () =>
+ChromeUtils.defineLazyGetter(lazy, "logger", () =>
   lazy.Log.get(lazy.Log.TYPES.WEBDRIVER_BIDI)
 );
 
@@ -118,6 +116,40 @@ class BrowsingContextModule extends Module {
     this.#contextListener.destroy();
 
     this.#subscribedEvents = null;
+  }
+
+  /**
+   * Activates and focuses the given top-level browsing context.
+   *
+   * @param {object=} options
+   * @param {string} options.context
+   *     Id of the browsing context.
+   *
+   * @throws {InvalidArgumentError}
+   *     Raised if an argument is of an invalid type or value.
+   * @throws {NoSuchFrameError}
+   *     If the browsing context cannot be found.
+   */
+  async activate(options = {}) {
+    const { context: contextId } = options;
+
+    lazy.assert.string(
+      contextId,
+      `Expected "context" to be a string, got ${contextId}`
+    );
+    const context = this.#getBrowsingContext(contextId);
+
+    if (context.parent) {
+      throw new lazy.error.InvalidArgumentError(
+        `Browsing Context with id ${contextId} is not top-level`
+      );
+    }
+
+    const tab = lazy.TabManager.getTabForBrowsingContext(context);
+    const window = lazy.TabManager.getWindowForTab(tab);
+
+    await lazy.windowManager.focusWindow(window);
+    await lazy.TabManager.selectTab(tab);
   }
 
   /**
@@ -304,6 +336,9 @@ class BrowsingContextModule extends Module {
    * Create a new browsing context using the provided type "tab" or "window".
    *
    * @param {object=} options
+   * @param {boolean=} options.background
+   *     Whether the tab/window should be open in the background. Defaults to false,
+   *     which means that the tab/window will be open in the foreground.
    * @param {string=} options.referenceContext
    *     Id of the top-level browsing context to use as reference.
    *     If options.type is "tab", the new tab will open in the same window as
@@ -318,17 +353,28 @@ class BrowsingContextModule extends Module {
    *     If the browsing context cannot be found.
    */
   async create(options = {}) {
-    const { referenceContext: referenceContextId = null, type } = options;
+    const {
+      background = false,
+      referenceContext: referenceContextId = null,
+      type,
+    } = options;
     if (type !== CreateType.tab && type !== CreateType.window) {
       throw new lazy.error.InvalidArgumentError(
         `Expected "type" to be one of ${Object.values(CreateType)}, got ${type}`
       );
     }
 
+    lazy.assert.boolean(
+      background,
+      lazy.pprint`Expected "background" to be a boolean, got ${background}`
+    );
+
     let browser;
     switch (type) {
       case "window":
-        let newWindow = await lazy.windowManager.openBrowserWindow();
+        const newWindow = await lazy.windowManager.openBrowserWindow({
+          focus: !background,
+        });
         browser = lazy.TabManager.getTabBrowser(newWindow).selectedBrowser;
         break;
 
@@ -366,7 +412,7 @@ class BrowsingContextModule extends Module {
         }
 
         const tab = await lazy.TabManager.addTab({
-          focus: false,
+          focus: !background,
           referenceTab,
         });
         browser = lazy.TabManager.getBrowserForTab(tab);

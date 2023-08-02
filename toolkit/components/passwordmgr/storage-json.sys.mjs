@@ -6,11 +6,11 @@
  * LoginManagerStorage implementation for the JSON back-end.
  */
 
-import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
-
 const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
+  FXA_PWDMGR_HOST: "resource://gre/modules/FxAccountsCommon.sys.mjs",
+  FXA_PWDMGR_REALM: "resource://gre/modules/FxAccountsCommon.sys.mjs",
   LoginHelper: "resource://gre/modules/LoginHelper.sys.mjs",
   LoginStore: "resource://gre/modules/LoginStore.sys.mjs",
 });
@@ -45,11 +45,6 @@ function isSyncableChange(oldLogin, newLogin) {
 function isFXAHost(login) {
   return login.hostname == lazy.FXA_PWDMGR_HOST;
 }
-
-XPCOMUtils.defineLazyModuleGetters(lazy, {
-  FXA_PWDMGR_HOST: "resource://gre/modules/FxAccountsCommon.js",
-  FXA_PWDMGR_REALM: "resource://gre/modules/FxAccountsCommon.js",
-});
 
 export class LoginManagerStorage_json {
   constructor() {
@@ -1024,7 +1019,7 @@ export class LoginManagerStorage_json {
   }
 }
 
-XPCOMUtils.defineLazyGetter(LoginManagerStorage_json.prototype, "log", () => {
+ChromeUtils.defineLazyGetter(LoginManagerStorage_json.prototype, "log", () => {
   let logger = lazy.LoginHelper.createLogger("Login storage");
   return logger.log.bind(logger);
 });

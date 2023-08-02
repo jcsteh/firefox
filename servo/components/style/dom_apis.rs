@@ -14,7 +14,8 @@ use crate::selector_parser::SelectorImpl;
 use crate::values::AtomIdent;
 use selectors::attr::CaseSensitivity;
 use selectors::matching::{
-    self, IgnoreNthChildForInvalidation, MatchingContext, MatchingMode, NeedsSelectorFlags,
+    self, MatchingForInvalidation, MatchingContext, MatchingMode, NeedsSelectorFlags,
+    SelectorCaches,
 };
 use selectors::attr::{AttrSelectorOperation, NamespaceConstraint};
 use selectors::parser::{Combinator, Component, LocalName};
@@ -30,15 +31,15 @@ pub fn element_matches<E>(
 where
     E: Element,
 {
-    let mut nth_index_cache = Default::default();
+    let mut selector_caches = SelectorCaches::default();
 
     let mut context = MatchingContext::new(
         MatchingMode::Normal,
         None,
-        &mut nth_index_cache,
+        &mut selector_caches,
         quirks_mode,
         NeedsSelectorFlags::No,
-        IgnoreNthChildForInvalidation::No,
+        MatchingForInvalidation::No,
     );
     context.scope_element = Some(element.opaque());
     context.current_host = element.containing_shadow_host().map(|e| e.opaque());
@@ -54,15 +55,15 @@ pub fn element_closest<E>(
 where
     E: Element,
 {
-    let mut nth_index_cache = Default::default();
+    let mut selector_caches = SelectorCaches::default();
 
     let mut context = MatchingContext::new(
         MatchingMode::Normal,
         None,
-        &mut nth_index_cache,
+        &mut selector_caches,
         quirks_mode,
         NeedsSelectorFlags::No,
-        IgnoreNthChildForInvalidation::No,
+        MatchingForInvalidation::No,
     );
     context.scope_element = Some(element.opaque());
     context.current_host = element.containing_shadow_host().map(|e| e.opaque());
@@ -736,16 +737,16 @@ pub fn query_selector<E, Q>(
 {
     use crate::invalidation::element::invalidator::TreeStyleInvalidator;
 
-    let mut nth_index_cache = Default::default();
+    let mut selector_caches = SelectorCaches::default();
     let quirks_mode = root.owner_doc().quirks_mode();
 
     let mut matching_context = MatchingContext::new(
         MatchingMode::Normal,
         None,
-        &mut nth_index_cache,
+        &mut selector_caches,
         quirks_mode,
         NeedsSelectorFlags::No,
-        IgnoreNthChildForInvalidation::No,
+        MatchingForInvalidation::No,
     );
     let root_element = root.as_element();
     matching_context.scope_element = root_element.map(|e| e.opaque());

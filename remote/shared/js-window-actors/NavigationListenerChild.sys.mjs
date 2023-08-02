@@ -2,8 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
-
 const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
@@ -11,7 +9,7 @@ ChromeUtils.defineESModuleGetters(lazy, {
   truncate: "chrome://remote/content/shared/Format.sys.mjs",
 });
 
-XPCOMUtils.defineLazyGetter(lazy, "logger", () => lazy.Log.get());
+ChromeUtils.defineLazyGetter(lazy, "logger", () => lazy.Log.get());
 
 export class NavigationListenerChild extends JSWindowActorChild {
   #listener;
@@ -65,6 +63,34 @@ export class NavigationListenerChild extends JSWindowActorChild {
    */
   receiveMessage(message) {}
 
+  /**
+   * A browsing context might be replaced before reaching the parent process,
+   * instead we serialize enough information to retrieve the navigable in the
+   * parent process.
+   *
+   * If the browsing context is top level, then the browserId can be used to
+   * find the browser element and the new browsing context.
+   * Otherwise (frames) the browsing context should not be replaced and the
+   * browsing context id should be enough to find the browsing context.
+   *
+   * @param {BrowsingContext} browsingContext
+   *     The browsing context for which we want to get details.
+   * @returns {object}
+   *     An object that returns the following properties:
+   *       - browserId: browser id for this browsing context
+   *       - browsingContextId: browsing context id
+   *       - isTopBrowsingContext: flag that indicates if the browsing context is
+   *         top level
+   *
+   */
+  #getBrowsingContextDetails(browsingContext) {
+    return {
+      browserId: browsingContext.browserId,
+      browsingContextId: browsingContext.id,
+      isTopBrowsingContext: browsingContext.parent === null,
+    };
+  }
+
   #getTargetURI(request) {
     try {
       return request.QueryInterface(Ci.nsIChannel).originalURI;
@@ -83,7 +109,7 @@ export class NavigationListenerChild extends JSWindowActorChild {
       );
 
       this.sendAsyncMessage("NavigationListenerChild:locationChanged", {
-        context,
+        contextDetails: this.#getBrowsingContextDetails(context),
         url: location.spec,
       });
     }
@@ -112,7 +138,7 @@ export class NavigationListenerChild extends JSWindowActorChild {
     try {
       if (isStart) {
         this.sendAsyncMessage("NavigationListenerChild:navigationStarted", {
-          context,
+          contextDetails: this.#getBrowsingContextDetails(context),
           url: targetURI?.spec,
         });
 
@@ -124,7 +150,7 @@ export class NavigationListenerChild extends JSWindowActorChild {
         // browsing context + process change and we should get the real stop state
         // change from the correct process later.
         this.sendAsyncMessage("NavigationListenerChild:navigationStopped", {
-          context,
+          contextDetails: this.#getBrowsingContextDetails(context),
           url: targetURI?.spec,
         });
       }

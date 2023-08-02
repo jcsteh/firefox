@@ -12,17 +12,10 @@ import {
 import { MozLitElement } from "chrome://global/content/lit-utils.mjs";
 import { ViewPage } from "./viewpage.mjs";
 
-const { XPCOMUtils } = ChromeUtils.importESModule(
-  "resource://gre/modules/XPCOMUtils.sys.mjs"
-);
-
 const lazy = {};
 
-XPCOMUtils.defineLazyModuleGetters(lazy, {
-  EveryWindow: "resource:///modules/EveryWindow.jsm",
-});
-
 ChromeUtils.defineESModuleGetters(lazy, {
+  EveryWindow: "resource:///modules/EveryWindow.sys.mjs",
   PrivateBrowsingUtils: "resource://gre/modules/PrivateBrowsingUtils.sys.mjs",
 });
 
@@ -276,7 +269,7 @@ class OpenTabsInViewCard extends MozLitElement {
             .maxTabsLength=${ifDefined(
               this.classList.contains("height-limited") && !this.showMore
                 ? OpenTabsInViewCard.MAX_TABS_FOR_COMPACT_HEIGHT
-                : null
+                : -1
             )}
             .tabItems=${ifDefined(getTabListItems(this.tabs))}
           ></fxview-tab-list>

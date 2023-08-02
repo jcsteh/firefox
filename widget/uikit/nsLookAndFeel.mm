@@ -167,7 +167,6 @@ nsresult nsLookAndFeel::NativeGetColor(ColorID aID, ColorScheme aScheme, nscolor
     case ColorID::MozColheaderhovertext:
       aResult = mColorDarkText;
       break;
-    case ColorID::MozDragtargetzone:
     case ColorID::MozMacChromeActive:
     case ColorID::MozMacChromeInactive:
       aResult = NS_RGB(0xaa, 0xaa, 0xaa);
@@ -294,12 +293,10 @@ nsLookAndFeel::NativeGetInt(IntID aID, int32_t& aResult) {
     case IntID::TreeScrollLinesMax:
       aResult = 3;
       break;
-    case IntID::WindowsDefaultTheme:
+    case IntID::DWMCompositor:
+    case IntID::WindowsClassic:
       aResult = 0;
       res = NS_ERROR_NOT_IMPLEMENTED;
-      break;
-    case IntID::MacGraphiteTheme:
-      aResult = 0;
       break;
     case IntID::TabFocusModel:
       aResult = 1;  // default to just textboxes

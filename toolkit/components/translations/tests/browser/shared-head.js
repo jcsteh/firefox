@@ -50,7 +50,7 @@ const TRANSLATIONS_TESTER_NO_TAG =
  * This is the BCP 47 language tag for the MockedLanguageIdEngine to return as
  * the mocked detected language.
  *
- * @param {Array<{ fromLang: string, toLang: string, isBeta: boolean }>} options.languagePairs
+ * @param {Array<{ fromLang: string, toLang: string }>} options.languagePairs
  * The translation languages pairs to mock for the test.
  *
  * @param {Array<[string, string]>} options.prefs
@@ -285,10 +285,35 @@ function getTranslationsParent() {
 }
 
 /**
+ * Closes the translations panel settings menu if it is open.
+ */
+function closeSettingsMenuIfOpen() {
+  return waitForCondition(async () => {
+    const settings = document.getElementById(
+      "translations-panel-settings-menupopup"
+    );
+    if (!settings) {
+      return true;
+    }
+    if (settings.state === "closed") {
+      return true;
+    }
+    let popuphiddenPromise = BrowserTestUtils.waitForEvent(
+      settings,
+      "popuphidden"
+    );
+    PanelMultiView.hidePopup(settings);
+    await popuphiddenPromise;
+    return false;
+  });
+}
+
+/**
  * Closes the translations panel if it is open.
  */
-function closeTranslationsPanelIfOpen() {
-  return waitForCondition(() => {
+async function closeTranslationsPanelIfOpen() {
+  await closeSettingsMenuIfOpen();
+  return waitForCondition(async () => {
     const panel = document.getElementById("translations-panel");
     if (!panel) {
       return true;
@@ -296,7 +321,12 @@ function closeTranslationsPanelIfOpen() {
     if (panel.state === "closed") {
       return true;
     }
+    let popuphiddenPromise = BrowserTestUtils.waitForEvent(
+      panel,
+      "popuphidden"
+    );
     PanelMultiView.hidePopup(panel);
+    await popuphiddenPromise;
     return false;
   });
 }
@@ -351,8 +381,8 @@ async function setupActorTest({
  * Provide some default language pairs when none are provided.
  */
 const DEFAULT_LANGUAGE_PAIRS = [
-  { fromLang: "en", toLang: "es", isBeta: false },
-  { fromLang: "es", toLang: "en", isBeta: false },
+  { fromLang: "en", toLang: "es" },
+  { fromLang: "es", toLang: "en" },
 ];
 
 async function createAndMockRemoteSettings({
@@ -422,6 +452,7 @@ async function loadTestPage({
       // Enabled by default.
       ["browser.translations.enable", true],
       ["browser.translations.logLevel", "All"],
+      ["browser.translations.panelShown", true],
       ...(prefs ?? []),
     ],
   });
@@ -672,7 +703,7 @@ function createAttachmentMock(
  */
 const FILES_PER_LANGUAGE_PAIR = 3;
 
-function createRecordsForLanguagePair(fromLang, toLang, isBeta = false) {
+function createRecordsForLanguagePair(fromLang, toLang) {
   const records = [];
   const lang = fromLang + toLang;
   const models = [
@@ -692,7 +723,7 @@ function createRecordsForLanguagePair(fromLang, toLang, isBeta = false) {
       fromLang,
       toLang,
       fileType,
-      version: isBeta ? "0.1" : "1.0",
+      version: "1.0",
       last_modified: Date.now(),
       schema: Date.now(),
     });
@@ -718,8 +749,8 @@ async function createTranslationModelsRemoteClient(
   langPairs
 ) {
   const records = [];
-  for (const { fromLang, toLang, isBeta } of langPairs) {
-    records.push(...createRecordsForLanguagePair(fromLang, toLang, isBeta));
+  for (const { fromLang, toLang } of langPairs) {
+    records.push(...createRecordsForLanguagePair(fromLang, toLang));
   }
 
   const { RemoteSettings } = ChromeUtils.importESModule(
@@ -834,17 +865,17 @@ async function selectAboutPreferencesElements() {
   );
   const frenchLabel = frenchRow.querySelector("label");
   const frenchDownload = frenchRow.querySelector(
-    `[data-l10n-id="translations-manage-language-download-button"]`
+    `[data-l10n-id="translations-manage-language-install-button"]`
   );
   const frenchDelete = frenchRow.querySelector(
-    `[data-l10n-id="translations-manage-language-delete-button"]`
+    `[data-l10n-id="translations-manage-language-remove-button"]`
   );
   const spanishLabel = spanishRow.querySelector("label");
   const spanishDownload = spanishRow.querySelector(
-    `[data-l10n-id="translations-manage-language-download-button"]`
+    `[data-l10n-id="translations-manage-language-install-button"]`
   );
   const spanishDelete = spanishRow.querySelector(
-    `[data-l10n-id="translations-manage-language-delete-button"]`
+    `[data-l10n-id="translations-manage-language-remove-button"]`
   );
 
   return {
@@ -1042,6 +1073,7 @@ class TestTranslationsTelemetry {
     {
       expectedEventCount,
       expectNewFlowId = null,
+      expectFirstInteraction = null,
       allValuePredicates = [],
       finalValuePredicates = [],
     }
@@ -1051,6 +1083,14 @@ class TestTranslationsTelemetry {
     await Services.fog.testFlushAllChildren();
     const events = event.testGetValue() ?? [];
     const eventCount = events.length;
+
+    if (eventCount > 0 && expectFirstInteraction !== null) {
+      is(
+        events[eventCount - 1].extra.first_interaction,
+        expectFirstInteraction ? "true" : "false",
+        "The newest event should be match the given first-interaction expectation"
+      );
+    }
 
     if (eventCount > 0 && expectNewFlowId !== null) {
       const flowId = events[eventCount - 1].extra.flow_id;

@@ -49,6 +49,7 @@
 #  include "builtin/intl/SharedIntlData.h"
 #endif
 #include "builtin/BigInt.h"
+#include "builtin/JSON.h"
 #include "builtin/MapObject.h"
 #include "builtin/Promise.h"
 #include "builtin/TestingUtility.h"  // js::ParseCompileOptions, js::ParseDebugMetadata
@@ -204,13 +205,6 @@ static bool GetRealmConfiguration(JSContext* cx, unsigned argc, Value* vp) {
     return false;
   }
 #endif
-
-  bool changeArrayByCopy =
-      cx->realm()->creationOptions().getChangeArrayByCopyEnabled();
-  if (!JS_SetProperty(cx, info, "enableChangeArrayByCopy",
-                      changeArrayByCopy ? TrueHandleValue : FalseHandleValue)) {
-    return false;
-  }
 
 #ifdef ENABLE_NEW_SET_METHODS
   bool newSetMethods = cx->realm()->creationOptions().getNewSetMethodsEnabled();
@@ -5569,6 +5563,46 @@ static bool DetachArrayBuffer(JSContext* cx, unsigned argc, Value* vp) {
   return true;
 }
 
+static bool JSONStringify(JSContext* cx, unsigned argc, Value* vp) {
+  CallArgs args = CallArgsFromVp(argc, vp);
+
+  RootedValue value(cx, args.get(0));
+  RootedValue behaviorVal(cx, args.get(1));
+  StringifyBehavior behavior = StringifyBehavior::Normal;
+  if (behaviorVal.isString()) {
+    bool matches;
+#define MATCH(name)                                                           \
+  if (!JS_StringEqualsLiteral(cx, behaviorVal.toString(), #name, &matches)) { \
+    return false;                                                             \
+  }                                                                           \
+  if (matches) {                                                              \
+    behavior = StringifyBehavior::name;                                       \
+  }
+    MATCH(Normal)
+    MATCH(FastOnly)
+    MATCH(SlowOnly)
+    MATCH(Compare)
+#undef MATCH
+  }
+
+  JSStringBuilder sb(cx);
+  if (!Stringify(cx, &value, nullptr, UndefinedValue(), sb, behavior)) {
+    return false;
+  }
+
+  if (!sb.empty()) {
+    JSString* str = sb.finishString();
+    if (!str) {
+      return false;
+    }
+    args.rval().setString(str);
+  } else {
+    args.rval().setUndefined();
+  }
+
+  return true;
+}
+
 static bool HelperThreadCount(JSContext* cx, unsigned argc, Value* vp) {
   CallArgs args = CallArgsFromVp(argc, vp);
 
@@ -5761,10 +5795,12 @@ void ShapeSnapshot::checkSelf(JSContext* cx) const {
     PropertyInfo prop = propSnapshot.prop;
 
     // Skip if the map no longer matches the snapshotted data. This can
-    // only happen for non-configurable dictionary properties.
-    if (PropertySnapshot(propMap, propMapIndex) != propSnapshot) {
+    // only happen for dictionary maps because they can be mutated or compacted
+    // after a shape change.
+    if (!propMap->hasKey(propMapIndex) ||
+        PropertySnapshot(propMap, propMapIndex) != propSnapshot) {
       MOZ_RELEASE_ASSERT(propMap->isDictionary());
-      MOZ_RELEASE_ASSERT(prop.configurable());
+      MOZ_RELEASE_ASSERT(object_->shape() != shape_);
       continue;
     }
 
@@ -9360,6 +9396,15 @@ JS_FOR_WASM_FEATURES(WASM_FEATURE)
 "     1 - fail during readTransfer() hook\n"
 "     2 - fail during read() hook\n"
 "  Set the log to null to clear it."),
+
+    JS_FN_HELP("JSONStringify", JSONStringify, 4, 0,
+"JSONStringify(value, behavior)",
+"  Same as JSON.stringify(value), but allows setting behavior:\n"
+"    Normal: the default\n"
+"    FastOnly: throw if the fast path bails\n"
+"    SlowOnly: skip the fast path entirely\n"
+"    Compare: run both the fast and slow paths and compare the result. Crash if\n"
+"      they do not match. If the fast path bails, no comparison is done."),
 
     JS_FN_HELP("helperThreadCount", HelperThreadCount, 0, 0,
 "helperThreadCount()",

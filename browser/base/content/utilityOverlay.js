@@ -24,7 +24,7 @@ ChromeUtils.defineESModuleGetters(this, {
   URILoadingHelper: "resource:///modules/URILoadingHelper.sys.mjs",
 });
 
-XPCOMUtils.defineLazyGetter(this, "ReferrerInfo", () =>
+ChromeUtils.defineLazyGetter(this, "ReferrerInfo", () =>
   Components.Constructor(
     "@mozilla.org/referrer-info;1",
     "nsIReferrerInfo",
@@ -162,7 +162,7 @@ function checkForMiddleClick(node, event) {
       event.metaKey,
       0,
       event,
-      event.mozInputSource
+      event.inputSource
     );
     node.dispatchEvent(cmdEvent);
 

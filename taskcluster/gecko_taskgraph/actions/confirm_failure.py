@@ -67,7 +67,23 @@ def get_failures(task_id, task_definition):
                 if "signature" in l.keys():
                     # dealing with a crash
                     test_path = l["test"].split(" ")[0]
-                    test_path = test_path.split(":")[-1]
+
+                    # tests with url params (wpt), will get confused here
+                    if "?" not in test_path:
+                        test_path = test_path.split(":")[-1]
+
+                    # edge case where a crash on shutdown has a "test" name == group name
+                    if test_path.endswith(".ini") or test_path.endswith(".list"):
+                        continue
+
+                    # edge cases with missing test names
+                    if (
+                        test_path is None
+                        or test_path == "None"
+                        or "SimpleTest" in test_path
+                    ):
+                        continue
+
                     if "web-platform" in task_definition["extra"]["suite"]:
                         test_path = fix_wpt_name(test_path)
                     else:
@@ -75,12 +91,27 @@ def get_failures(task_id, task_definition):
 
                     if test_path:
                         tests.update(test_path)
-
                 else:
                     test_path = l["test"]
-                    test_path = test_path.split(":")[-1]
+
+                    # tests with url params (wpt), will get confused here
+                    if "?" not in test_path:
+                        test_path = test_path.split(":")[-1]
+
                     if "==" in test_path or "!=" in test_path:
                         test_path = test_path.split(" ")[0]
+
+                    # edge case where a crash on shutdown has a "test" name == group name
+                    if test_path.endswith(".ini") or test_path.endswith(".list"):
+                        continue
+
+                    # edge cases with missing test names
+                    if (
+                        test_path is None
+                        or test_path == "None"
+                        or "SimpleTest" in test_path
+                    ):
+                        continue
 
                     if "status" not in l and "expected" not in l:
                         continue
@@ -99,8 +130,8 @@ def get_failures(task_id, task_definition):
                 if l["group"] in dirs:
                     dirs.remove(l["group"])
 
-            # TODO: this reduces jobs, but misses NEW failures if there are many failures
-            if len(tests) > 4:
+            # TODO: 10 is too much; how to get only NEW failures?
+            if len(tests) > 10:
                 break
 
         # turn group into dir by stripping off leafname
@@ -190,6 +221,8 @@ def create_confirm_failure_tasks(task_definition, failures, level):
                     )
                 else:
                     fpath = "testing/web-platform/tests" + fpath
+                # some wpt tests have params, those are not supported
+                fpath = fpath.split("?")[0]
             task_definition["payload"]["env"]["MOZHARNESS_TEST_PATHS"] = json.dumps(
                 {suite: [fpath]}, sort_keys=True
             )

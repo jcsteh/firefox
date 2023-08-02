@@ -96,6 +96,8 @@ class CanvasRenderingContext2D : public nsICanvasRenderingContextInternal,
     return mCanvasElement->GetOriginalCanvas();
   }
 
+  void GetContextAttributes(CanvasRenderingContext2DSettings& aSettings) const;
+
   void OnMemoryPressure() override;
   void OnBeforePaintTransaction() override;
   void OnDidPaintTransaction() override;
@@ -350,6 +352,13 @@ class CanvasRenderingContext2D : public nsICanvasRenderingContextInternal,
     }
   }
 
+  void EnsureActivePath() {
+    if (mPathPruned && !mPathBuilder->IsActive()) {
+      mPathBuilder->MoveTo(mPathBuilder->CurrentPoint());
+      mPathPruned = false;
+    }
+  }
+
   void ClosePath() {
     EnsureWritablePath();
 
@@ -388,6 +397,7 @@ class CanvasRenderingContext2D : public nsICanvasRenderingContextInternal,
       mPathPruned = true;
       return;
     }
+    EnsureActivePath();
     mPathBuilder->QuadraticBezierTo(cp1, cp2);
     mPathPruned = false;
   }
@@ -528,6 +538,7 @@ class CanvasRenderingContext2D : public nsICanvasRenderingContextInternal,
       mPathPruned = true;
       return;
     }
+    EnsureActivePath();
     mPathBuilder->LineTo(aPoint);
     mPathPruned = false;
   }
@@ -543,6 +554,7 @@ class CanvasRenderingContext2D : public nsICanvasRenderingContextInternal,
       mPathPruned = true;
       return;
     }
+    EnsureActivePath();
     mPathBuilder->BezierTo(aCP1, aCP2, aCP3);
     mPathPruned = false;
   }
@@ -914,10 +926,11 @@ class CanvasRenderingContext2D : public nsICanvasRenderingContextInternal,
 
   // text
 
+ public:
+  gfxFontGroup* GetCurrentFontStyle();
+
  protected:
   enum class TextDrawOperation : uint8_t { FILL, STROKE, MEASURE };
-
-  gfxFontGroup* GetCurrentFontStyle();
 
   /**
    * Implementation of the fillText, strokeText, and measure functions with

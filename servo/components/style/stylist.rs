@@ -50,13 +50,14 @@ use malloc_size_of::MallocSizeOf;
 use malloc_size_of::{MallocShallowSizeOf, MallocSizeOfOps, MallocUnconditionalShallowSizeOf};
 use selectors::attr::{CaseSensitivity, NamespaceConstraint};
 use selectors::bloom::BloomFilter;
-use selectors::matching::{matches_selector, MatchingContext, MatchingMode, NeedsSelectorFlags};
-use selectors::matching::{IgnoreNthChildForInvalidation, VisitedHandlingMode};
+use selectors::matching::{
+    matches_selector, MatchingContext, MatchingMode, NeedsSelectorFlags, SelectorCaches,
+};
+use selectors::matching::{MatchingForInvalidation, VisitedHandlingMode};
 use selectors::parser::{
-    AncestorHashes, Combinator, Component, Selector, SelectorIter, SelectorList,
+    ArcSelectorList, AncestorHashes, Combinator, Component, Selector, SelectorIter, SelectorList,
 };
 use selectors::visitor::{SelectorListKind, SelectorVisitor};
-use selectors::NthIndexCache;
 use servo_arc::{Arc, ArcBorrow};
 use smallbitvec::SmallBitVec;
 use smallvec::SmallVec;
@@ -569,7 +570,23 @@ impl From<StyleRuleInclusion> for RuleInclusion {
     }
 }
 
-type AncestorSelectorList<'a> = Cow<'a, SelectorList<SelectorImpl>>;
+enum AncestorSelectorList<'a> {
+    Borrowed(&'a SelectorList<SelectorImpl>),
+    Shared(ArcSelectorList<SelectorImpl>),
+}
+
+impl<'a> AncestorSelectorList<'a> {
+    fn into_shared(&mut self) -> &ArcSelectorList<SelectorImpl> {
+        if let Self::Borrowed(ref b) = *self {
+            let shared = b.to_shared();
+            *self = Self::Shared(shared);
+        }
+        match *self {
+            Self::Shared(ref shared) => return shared,
+            Self::Borrowed(..) => unsafe { debug_unreachable!() },
+        }
+    }
+}
 
 /// A struct containing state from ancestor rules like @layer / @import /
 /// @container / nesting.
@@ -1123,7 +1140,7 @@ impl Stylist {
     {
         debug_assert!(pseudo.is_lazy());
 
-        let mut nth_index_cache = Default::default();
+        let mut selector_caches = SelectorCaches::default();
         // No need to bother setting the selector flags when we're computing
         // default styles.
         let needs_selector_flags = if rule_inclusion == RuleInclusion::DefaultOnly {
@@ -1136,10 +1153,10 @@ impl Stylist {
         let mut matching_context = MatchingContext::<'_, E::Impl>::new(
             MatchingMode::ForStatelessPseudoElement,
             None,
-            &mut nth_index_cache,
+            &mut selector_caches,
             self.quirks_mode,
             needs_selector_flags,
-            IgnoreNthChildForInvalidation::No,
+            MatchingForInvalidation::No,
         );
 
         matching_context.pseudo_element_matching_fn = matching_fn;
@@ -1165,16 +1182,16 @@ impl Stylist {
         let mut visited_rules = None;
         if parent_style.visited_style().is_some() {
             let mut declarations = ApplicableDeclarationList::new();
-            let mut nth_index_cache = Default::default();
+            let mut selector_caches = SelectorCaches::default();
 
             let mut matching_context = MatchingContext::<'_, E::Impl>::new_for_visited(
                 MatchingMode::ForStatelessPseudoElement,
                 None,
-                &mut nth_index_cache,
+                &mut selector_caches,
                 VisitedHandlingMode::RelevantLinkVisited,
                 self.quirks_mode,
                 needs_selector_flags,
-                IgnoreNthChildForInvalidation::No,
+                MatchingForInvalidation::No,
             );
             matching_context.pseudo_element_matching_fn = matching_fn;
             matching_context.extra_data.originating_element_style = Some(originating_element_style);
@@ -1379,7 +1396,7 @@ impl Stylist {
         &self,
         element: E,
         bloom: Option<&BloomFilter>,
-        nth_index_cache: &mut NthIndexCache,
+        selector_caches: &mut SelectorCaches,
         needs_selector_flags: NeedsSelectorFlags,
     ) -> SmallBitVec
     where
@@ -1390,10 +1407,10 @@ impl Stylist {
         let mut matching_context = MatchingContext::new(
             MatchingMode::Normal,
             bloom,
-            nth_index_cache,
+            selector_caches,
             self.quirks_mode,
             needs_selector_flags,
-            IgnoreNthChildForInvalidation::No,
+            MatchingForInvalidation::No,
         );
 
         // Note that, by the time we're revalidating, we're guaranteed that the
@@ -2676,7 +2693,7 @@ impl CascadeData {
                     self.num_declarations += style_rule.block.read_with(&guard).len();
 
                     let has_nested_rules = style_rule.rules.is_some();
-                    let ancestor_selectors = containing_rule_state.ancestor_selector_lists.last();
+                    let mut ancestor_selectors = containing_rule_state.ancestor_selector_lists.last_mut();
                     if has_nested_rules {
                         selectors_for_nested_rules = Some(if ancestor_selectors.is_some() {
                             Cow::Owned(SelectorList(Default::default()))
@@ -2716,7 +2733,7 @@ impl CascadeData {
                         }
 
                         let selector = match ancestor_selectors {
-                            Some(s) => selector.replace_parent_selector(&s.0),
+                            Some(ref mut s) => selector.replace_parent_selector(&s.into_shared()),
                             None => selector.clone(),
                         };
 
@@ -2995,8 +3012,11 @@ impl CascadeData {
                     }
                 },
                 CssRule::Style(..) => {
-                    if let Some(s) = selectors_for_nested_rules {
-                        containing_rule_state.ancestor_selector_lists.push(s);
+                    if let Some(ref mut s) = selectors_for_nested_rules {
+                        containing_rule_state.ancestor_selector_lists.push(match s {
+                            Cow::Owned(ref mut list) => AncestorSelectorList::Shared(list.into_shared()),
+                            Cow::Borrowed(ref b) => AncestorSelectorList::Borrowed(b),
+                        });
                     }
                 },
                 CssRule::Container(ref rule) => {

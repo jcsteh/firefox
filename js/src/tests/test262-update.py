@@ -26,7 +26,6 @@ UNSUPPORTED_FEATURES = set(
         "legacy-regexp",  # Bug 1306461
         "json-modules",  # Bug 1670176
         "resizable-arraybuffer",  # Bug 1670026
-        "decorators",  # Bug 1435869
         "regexp-duplicate-named-groups",  # Bug 1773135
         "symbols-as-weakmap-keys",  # Bug 1710433
         "json-parse-with-source",  # Bug 1658310
@@ -39,8 +38,7 @@ FEATURE_CHECK_NEEDED = {
     "Temporal": "!this.hasOwnProperty('Temporal')",
     "WeakRef": "!this.hasOwnProperty('WeakRef')",
     "array-grouping": "!Object.groupBy",  # Bug 1792650
-    "change-array-by-copy": "!Array.prototype.with",  # Bug 1811054
-    "Array.fromAsync": "!Array.fromAsync",  # Bug 1746209
+    "decorators": "!(this.hasOwnProperty('getBuildConfiguration')&&getBuildConfiguration()['decorators'])",  # Bug 1435869
     "String.prototype.isWellFormed": "!String.prototype.isWellFormed",
     "String.prototype.toWellFormed": "!String.prototype.toWellFormed",
     "iterator-helpers": "!this.hasOwnProperty('Iterator')",  # Bug 1568906
@@ -51,8 +49,6 @@ SHELL_OPTIONS = {
     "import-assertions": "--enable-import-assertions",
     "ShadowRealm": "--enable-shadow-realms",
     "array-grouping": "--enable-array-grouping",
-    "change-array-by-copy": "--enable-change-array-by-copy",
-    "Array.fromAsync": "--enable-array-from-async",
     "String.prototype.isWellFormed": "--enable-well-formed-unicode-strings",
     "String.prototype.toWellFormed": "--enable-well-formed-unicode-strings",
     "iterator-helpers": "--enable-iterator-helpers",

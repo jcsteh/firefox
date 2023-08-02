@@ -9,7 +9,7 @@
 
 "use strict";
 
-XPCOMUtils.defineLazyGetter(this, "URL", function () {
+ChromeUtils.defineLazyGetter(this, "URL", function () {
   return "http://localhost:" + httpserver.identity.primaryPort;
 });
 
@@ -62,6 +62,23 @@ function setupChannel(path) {
   });
   chan.loadInfo.originAttributes = tests[i].originAttributes;
   chan.QueryInterface(Ci.nsIHttpChannel);
+
+  let loadGroup = Cc["@mozilla.org/network/load-group;1"].createInstance(
+    Ci.nsILoadGroup
+  );
+
+  if (chan.loadInfo.originAttributes.privateBrowsingId == 0) {
+    loadGroup.notificationCallbacks = Cu.createLoadContext();
+    chan.loadGroup = loadGroup;
+
+    chan.notificationCallbacks = Cu.createLoadContext();
+  } else {
+    loadGroup.notificationCallbacks = Cu.createPrivateLoadContext();
+    chan.loadGroup = loadGroup;
+
+    chan.notificationCallbacks = Cu.createPrivateLoadContext();
+  }
+
   return chan;
 }
 

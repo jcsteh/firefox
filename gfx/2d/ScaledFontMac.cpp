@@ -96,14 +96,8 @@ static CTFontRef CreateCTFontFromCGFontWithVariations(CGFontRef aCGFont,
   //    CreateCTFontFromCGFontWithVariations in cairo-quartz-font.c
   //    ctfont_create_exact_copy in SkFontHost_mac.cpp
   CTFontRef ctFont;
-  bool theHardWay =
 #if MOZ_WIDGET_COCOA
-      nsCocoaFeatures::OnSierraExactly() ||
-      (aInstalledFont && nsCocoaFeatures::OnHighSierraOrLater());
-#else
-      false;
-#endif
-  if (theHardWay) {
+  if (aInstalledFont) {
     CFDictionaryRef vars = CGFontCopyVariations(aCGFont);
     if (vars) {
       CFDictionaryRef varAttr = CFDictionaryCreate(
@@ -121,7 +115,9 @@ static CTFontRef CreateCTFontFromCGFontWithVariations(CGFontRef aCGFont,
     } else {
       ctFont = CTFontCreateWithGraphicsFont(aCGFont, aSize, nullptr, nullptr);
     }
-  } else {
+  } else
+#endif
+  {
     ctFont = CTFontCreateWithGraphicsFont(aCGFont, aSize, nullptr, nullptr);
   }
   return ctFont;
