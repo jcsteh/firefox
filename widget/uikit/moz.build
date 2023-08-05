@@ -26,6 +26,7 @@ SOURCES += [
     "nsWindow.mm",
     "ScreenHelperUIKit.mm",
     "TextInputHandler.mm",
+    "UIKitUtils.mm",
 ]
 
 include("/ipc/chromium/chromium-config.mozbuild")

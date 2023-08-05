@@ -4,6 +4,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #import <UIKit/UIEvent.h>
+#import <UIKit/UIKit.h>
 #import <UIKit/UIGraphics.h>
 #import <UIKit/UIInterface.h>
 #import <UIKit/UIScreen.h>
@@ -32,6 +33,7 @@
 #include "nsRegion.h"
 #include "nsTArray.h"
 #include "TextInputHandler.h"
+#include "UIKitUtils.h"
 
 #include "mozilla/BasicEvents.h"
 #include "mozilla/ProfilerLabels.h"
@@ -46,6 +48,7 @@ using namespace mozilla;
 using namespace mozilla::gfx;
 using namespace mozilla::layers;
 using mozilla::dom::Touch;
+using mozilla::widget::UIKitUtils;
 
 #define ALOG(args...)    \
   fprintf(stderr, args); \
@@ -512,6 +515,39 @@ class nsAutoRetainUIKitObject {
   return YES;
 }
 
+// UITextInputTraits
+
+- (UIKeyboardType)keyboardType {
+  if (!mGeckoChild || mGeckoChild->Destroyed()) {
+    return UIKeyboardTypeDefault;
+  }
+  return UIKitUtils::GetUIKeyboardType(mGeckoChild->GetInputContext());
+}
+
+- (UIReturnKeyType)returnKeyType {
+  if (!mGeckoChild || mGeckoChild->Destroyed()) {
+    return UIReturnKeyDefault;
+  }
+  return UIKitUtils::GetUIReturnKeyType(mGeckoChild->GetInputContext());
+}
+
+- (UITextAutocapitalizationType)autocapitalizationType {
+  if (!mGeckoChild || mGeckoChild->Destroyed()) {
+    return UITextAutocapitalizationTypeNone;
+  }
+  return UIKitUtils::GetUITextAutocapitalizationType(mGeckoChild->GetInputContext());
+}
+
+- (BOOL)isSecureTextEntry {
+  if (!mGeckoChild || mGeckoChild->Destroyed()) {
+    return NO;
+  }
+  if (mGeckoChild->GetInputContext().IsPasswordEditor()) {
+    return YES;
+  }
+  return NO;
+}
+
 @end
 
 nsWindow::nsWindow()
@@ -809,6 +845,8 @@ nsresult nsWindow::DispatchEvent(mozilla::WidgetGUIEvent* aEvent, nsEventStatus&
 void nsWindow::SetInputContext(const InputContext& aContext, const InputContextAction& aAction) {
   NS_OBJC_BEGIN_TRY_IGNORE_BLOCK;
 
+  const bool changingEnabledState = aContext.IsInputAttributeChanged(mInputContext);
+
   mInputContext = aContext;
 
   if (IsVirtualKeyboardDisabled()) {
@@ -818,7 +856,10 @@ void nsWindow::SetInputContext(const InputContext& aContext, const InputContextA
 
   [mNativeView becomeFirstResponder];
 
-  if (aAction.UserMightRequestOpenVKB()) {
+  if (aAction.UserMightRequestOpenVKB() || changingEnabledState) {
+    // TODO(m_kato):
+    // It is unnecessary to call reloadInputViews with changingEnabledState if virtual keyboard is
+    // disappeared.
     [mNativeView reloadInputViews];
   }
 
