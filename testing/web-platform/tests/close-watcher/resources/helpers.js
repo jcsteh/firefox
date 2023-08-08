@@ -1,10 +1,12 @@
 // TODO(domenic): consider using these in all test files.
 
 window.createRecordingCloseWatcher = (t, events, name) => {
+  const prefix = name === undefined ? "" : name + " ";;
+
   const watcher = new CloseWatcher();
   t.add_cleanup(() => watcher.destroy());
-  watcher.oncancel = () => events.push(name + " cancel");
-  watcher.onclose = () => events.push(name + " close");
+  watcher.addEventListener("cancel", () => events.push(prefix + "cancel"));
+  watcher.addEventListener("close", () => events.push(prefix + "close"));
 
   return watcher;
 };

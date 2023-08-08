@@ -1887,7 +1887,7 @@ var gBrowserInit = {
 
     FullScreen.init();
 
-    if (AppConstants.isPlatformAndVersionAtLeast("win", "10")) {
+    if (AppConstants.platform == "win") {
       MenuTouchModeObserver.init();
     }
 
@@ -2017,7 +2017,9 @@ var gBrowserInit = {
 
     CaptivePortalWatcher.delayedStartup();
 
-    ShoppingSidebarManager.init();
+    if (AppConstants.NIGHTLY_BUILD) {
+      ShoppingSidebarManager.init();
+    }
 
     SessionStore.promiseAllWindowsRestored.then(() => {
       this._schedulePerWindowIdleTasks();
@@ -2438,7 +2440,9 @@ var gBrowserInit = {
 
     FirefoxViewHandler.uninit();
 
-    ShoppingSidebarManager.uninit();
+    if (AppConstants.NIGHTLY_BUILD) {
+      ShoppingSidebarManager.uninit();
+    }
 
     // Now either cancel delayedStartup, or clean up the services initialized from
     // it.
@@ -2492,7 +2496,7 @@ var gBrowserInit = {
       );
       Services.obs.removeObserver(gKeywordURIFixup, "keyword-uri-fixup");
 
-      if (AppConstants.isPlatformAndVersionAtLeast("win", "10")) {
+      if (AppConstants.platform == "win") {
         MenuTouchModeObserver.uninit();
       }
       BrowserOffline.uninit();
@@ -5851,7 +5855,9 @@ var TabsProgressListener = {
 
     // Some shops use pushState to move between individual products, so
     // the shopping code needs to be told about all of these.
-    ShoppingSidebarManager.onLocationChange(aBrowser, aLocationURI);
+    if (AppConstants.NIGHTLY_BUILD) {
+      ShoppingSidebarManager.onLocationChange(aBrowser, aLocationURI);
+    }
 
     // Filter out location changes caused by anchor navigation
     // or history.push/pop/replaceState.
@@ -6557,14 +6563,14 @@ function updateToggleControlLabel(control) {
 
 var TabletModeUpdater = {
   init() {
-    if (AppConstants.isPlatformAndVersionAtLeast("win", "10")) {
+    if (AppConstants.platform == "win") {
       this.update(WindowsUIUtils.inTabletMode);
       Services.obs.addObserver(this, "tablet-mode-change");
     }
   },
 
   uninit() {
-    if (AppConstants.isPlatformAndVersionAtLeast("win", "10")) {
+    if (AppConstants.platform == "win") {
       Services.obs.removeObserver(this, "tablet-mode-change");
     }
   },
@@ -6653,7 +6659,7 @@ var gUIDensity = {
   getCurrentDensity() {
     // Automatically override the uidensity to touch in Windows tablet mode.
     if (
-      AppConstants.isPlatformAndVersionAtLeast("win", "10") &&
+      AppConstants.platform == "win" &&
       WindowsUIUtils.inTabletMode &&
       Services.prefs.getBoolPref(this.autoTouchModePref)
     ) {
@@ -9964,6 +9970,9 @@ var ShoppingSidebarManager = {
   },
 
   _updateVisibility() {
+    if (window.closed) {
+      return;
+    }
     let optedOut = this.optedInPref === 2;
     let isPBM = PrivateBrowsingUtils.isWindowPrivate(window);
 

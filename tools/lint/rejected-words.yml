@@ -224,7 +224,8 @@ avoid-blacklist-and-whitelist:
         - testing/mozharness/configs/unittests/win_unittest.py
         - testing/profiles/unittest-required/user.js
         - testing/raptor/browsertime/browsertime_scenario.js
-        - testing/talos/talos/tests/devtools/addon/content/pages/custom/debugger/static/js/main.js
+        - testing/talos/talos/tests/devtools/addon/content/pages/custom/debugger/app/config/webpack.config.prod.js
+        - testing/talos/talos/tests/devtools/addon/content/pages/custom/debugger/app-build/static/js/main.js
         - testing/web-platform/tests/tools/manifest/tests/test_manifest.py
         - toolkit/actors/RemotePageChild.sys.mjs
         - toolkit/actors/WebChannelChild.sys.mjs
@@ -299,8 +300,6 @@ avoid-blacklist-and-whitelist:
         - tools/fuzzing/messagemanager/MessageManagerFuzzer.h
         - tools/lint/eslint/eslint-plugin-mozilla/lib/rules/no-define-cc-etc.js
         - tools/lint/rejected-words.yml
-        - tools/tryselect/selectors/chooser/__init__.py
-        - tools/tryselect/task_config.py
         - widget/android/GfxInfo.cpp
         - widget/GfxInfoBase.cpp
         - widget/gtk/IMContextWrapper.cpp

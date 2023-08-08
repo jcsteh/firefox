@@ -226,7 +226,6 @@ pref("lightweightThemes.getMoreURL", "https://addons.mozilla.org/%LOCALE%/firefo
 pref("browser.uitour.enabled", true);
 pref("browser.uitour.loglevel", "Error");
 pref("browser.uitour.requireSecure", true);
-pref("browser.uitour.themeOrigin", "https://addons.mozilla.org/%LOCALE%/firefox/themes/");
 pref("browser.uitour.url", "https://www.mozilla.org/%LOCALE%/firefox/%VERSION%/tour/");
 // How long to show a Hearbeat survey (two hours, in seconds)
 pref("browser.uitour.surveyDuration", 7200);
@@ -1068,7 +1067,7 @@ pref("browser.history_swipe_animation.disabled", false);
   pref("mousewheel.with_alt.action", 2);
 #endif
 
-pref("mousewheel.with_win.action", 1);
+pref("mousewheel.with_meta.action", 1);
 
 pref("browser.xul.error_pages.expert_bad_cert", false);
 pref("browser.xul.error_pages.show_safe_browsing_details_on_load", false);

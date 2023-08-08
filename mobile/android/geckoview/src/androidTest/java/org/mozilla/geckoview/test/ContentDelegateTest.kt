@@ -657,4 +657,46 @@ class ContentDelegateTest : BaseSessionTest() {
             equalTo(true),
         )
     }
+
+    @Test
+    fun onProductUrl() {
+        mainSession.loadUri("https://example.com")
+        sessionRule.waitForPageStop()
+
+        mainSession.forCallbacksDuringWait(object : ContentDelegate {
+            @AssertCalled(count = 0)
+            override fun onProductUrl(session: GeckoSession) {}
+        })
+
+        // TODO: bug1845760 when toolkit example.com product page is available, verify onProductUrl is called
+    }
+
+    @Test
+    fun requestAnalysis() {
+        // TODO: bug1845760 replace with static example.com product page and enable in automation
+        if (!sessionRule.env.isAutomation) {
+            val result = mainSession.requestAnalysis("https://www.amazon.com/Furmax-Electric-Adjustable-Standing-Computer/dp/B09TJGHL5F/")
+            sessionRule.waitForResult(result).let {
+                assertThat("Product grade should match", it.grade, equalTo("A"))
+                assertThat("Product id should match", it.productId, equalTo("B09TJGHL5F"))
+                assertThat("Product adjusted rating should match", it.adjustedRating, equalTo(4.4))
+                assertThat("Product should not be reported that it was deleted", it.deletedProductReported, equalTo(false))
+                assertThat("Not a deleted product", it.deletedProduct, equalTo(false))
+            }
+        }
+    }
+
+    @Test
+    fun requestRecommendations() {
+        // TODO: bug1845760 replace with static example.com product page
+        if (!sessionRule.env.isAutomation) {
+            val result = mainSession.requestRecommendations("https://www.amazon.com/Furmax-Electric-Adjustable-Standing-Computer/dp/B09TJGHL5F/")
+            sessionRule.waitForResult(result)
+                .let {
+                    assertThat("First recommendation adjusted rating should match", it[0].adjustedRating, equalTo(4.6))
+                    assertThat("Another recommendation adjusted rating should match", it[2].adjustedRating, equalTo(4.5))
+                    assertThat("First recommendation sponsored field should match", it[0].sponsored, equalTo(true))
+                }
+        }
+    }
 }

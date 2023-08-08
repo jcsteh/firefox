@@ -205,7 +205,8 @@
 #include "nsError.h"
 #include "nsEscape.h"
 #include "nsFocusManager.h"
-#include "nsGlobalWindow.h"
+#include "nsGlobalWindowInner.h"
+#include "nsGlobalWindowOuter.h"
 #include "nsJSEnvironment.h"
 #include "nsNetCID.h"
 #include "nsNetUtil.h"
@@ -1279,9 +1280,8 @@ void nsDocShell::ThawFreezeNonRecursive(bool aThaw) {
     return;
   }
 
-  RefPtr<nsGlobalWindowInner> inner =
-      mScriptGlobal->GetCurrentInnerWindowInternal();
-  if (inner) {
+  if (RefPtr<nsGlobalWindowInner> inner =
+          nsGlobalWindowInner::Cast(mScriptGlobal->GetCurrentInnerWindow())) {
     if (aThaw) {
       inner->Thaw(false);
     } else {
@@ -1310,9 +1310,8 @@ void nsDocShell::FirePageHideShowNonRecursive(bool aShow) {
     RefPtr<Document> doc = contentViewer->GetDocument();
     if (doc) {
       doc->NotifyActivityChanged();
-      RefPtr<nsGlobalWindowInner> inner =
-          mScriptGlobal ? mScriptGlobal->GetCurrentInnerWindowInternal()
-                        : nullptr;
+      nsCOMPtr<nsPIDOMWindowInner> inner =
+          mScriptGlobal ? mScriptGlobal->GetCurrentInnerWindow() : nullptr;
       if (mBrowsingContext->IsTop()) {
         doc->NotifyPossibleTitleChange(false);
         if (inner) {
@@ -1551,7 +1550,7 @@ bool nsDocShell::SetCurrentURI(nsIURI* aURI, nsIRequest* aRequest,
     mTitleValidForCurrentURI = false;
   }
 
-  mCurrentURI = aURI;
+  SetCurrentURIInternal(aURI);
 
 #ifdef DEBUG
   mLastOpenedURI = aURI;
@@ -1575,6 +1574,13 @@ bool nsDocShell::SetCurrentURI(nsIURI* aURI, nsIRequest* aRequest,
     FireOnLocationChange(this, aRequest, aURI, aLocationFlags);
   }
   return !aFireOnLocationChange;
+}
+
+void nsDocShell::SetCurrentURIInternal(nsIURI* aURI) {
+  mCurrentURI = aURI;
+  if (mBrowsingContext) {
+    mBrowsingContext->ClearCachedValuesOfLocations();
+  }
 }
 
 NS_IMETHODIMP
@@ -2427,8 +2433,8 @@ nsDocShell::SetCustomUserAgent(const nsAString& aCustomUserAgent) {
 
 NS_IMETHODIMP
 nsDocShell::ClearCachedPlatform() {
-  RefPtr<nsGlobalWindowInner> win =
-      mScriptGlobal ? mScriptGlobal->GetCurrentInnerWindowInternal() : nullptr;
+  nsCOMPtr<nsPIDOMWindowInner> win =
+      mScriptGlobal ? mScriptGlobal->GetCurrentInnerWindow() : nullptr;
   if (win) {
     Navigator* navigator = win->Navigator();
     if (navigator) {
@@ -2441,8 +2447,8 @@ nsDocShell::ClearCachedPlatform() {
 
 NS_IMETHODIMP
 nsDocShell::ClearCachedUserAgent() {
-  RefPtr<nsGlobalWindowInner> win =
-      mScriptGlobal ? mScriptGlobal->GetCurrentInnerWindowInternal() : nullptr;
+  nsCOMPtr<nsPIDOMWindowInner> win =
+      mScriptGlobal ? mScriptGlobal->GetCurrentInnerWindow() : nullptr;
   if (win) {
     Navigator* navigator = win->Navigator();
     if (navigator) {
@@ -2526,11 +2532,10 @@ void nsDocShell::MaybeCreateInitialClientSource(nsIPrincipal* aPrincipal) {
 
   // If there is an existing document then there is no need to create
   // a client for a future initial about:blank document.
-  if (mScriptGlobal && mScriptGlobal->GetCurrentInnerWindowInternal() &&
-      mScriptGlobal->GetCurrentInnerWindowInternal()->GetExtantDoc()) {
-    MOZ_DIAGNOSTIC_ASSERT(mScriptGlobal->GetCurrentInnerWindowInternal()
-                              ->GetClientInfo()
-                              .isSome());
+  if (mScriptGlobal && mScriptGlobal->GetCurrentInnerWindow() &&
+      mScriptGlobal->GetCurrentInnerWindow()->GetExtantDoc()) {
+    MOZ_DIAGNOSTIC_ASSERT(
+        mScriptGlobal->GetCurrentInnerWindow()->GetClientInfo().isSome());
     MOZ_DIAGNOSTIC_ASSERT(!mInitialClientSource);
     return;
   }
@@ -2612,8 +2617,8 @@ Maybe<ClientInfo> nsDocShell::GetInitialClientInfo() const {
     return result;
   }
 
-  nsGlobalWindowInner* innerWindow =
-      mScriptGlobal ? mScriptGlobal->GetCurrentInnerWindowInternal() : nullptr;
+  nsPIDOMWindowInner* innerWindow =
+      mScriptGlobal ? mScriptGlobal->GetCurrentInnerWindow() : nullptr;
   Document* doc = innerWindow ? innerWindow->GetExtantDoc() : nullptr;
 
   if (!doc || !doc->IsInitialDocument()) {
@@ -4576,7 +4581,7 @@ nsDocShell::Destroy() {
   nsDocLoader::Destroy();
 
   mParentWidget = nullptr;
-  mCurrentURI = nullptr;
+  SetCurrentURIInternal(nullptr);
 
   if (mScriptGlobal) {
     mScriptGlobal->DetachFromDocShell(!mWillChangeProcess);
@@ -8191,7 +8196,7 @@ nsresult nsDocShell::SetupNewViewer(nsIContentViewer* aNewViewer,
     viewer->Close(nullptr);
     viewer->Destroy();
     mContentViewer = nullptr;
-    mCurrentURI = nullptr;
+    SetCurrentURIInternal(nullptr);
     NS_WARNING("ContentViewer Initialization failed");
     return NS_ERROR_FAILURE;
   }
@@ -9147,8 +9152,8 @@ nsresult nsDocShell::HandleSameDocumentNavigation(
   CopyFavicon(currentURI, newURI, UsePrivateBrowsing());
 
   RefPtr<nsGlobalWindowOuter> scriptGlobal = mScriptGlobal;
-  RefPtr<nsGlobalWindowInner> win =
-      scriptGlobal ? scriptGlobal->GetCurrentInnerWindowInternal() : nullptr;
+  nsCOMPtr<nsPIDOMWindowInner> win =
+      scriptGlobal ? scriptGlobal->GetCurrentInnerWindow() : nullptr;
 
   // ScrollToAnchor doesn't necessarily cause us to scroll the window;
   // the function decides whether a scroll is appropriate based on the

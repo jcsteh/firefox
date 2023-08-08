@@ -21,6 +21,10 @@ urlbar-group-best-match =
 urlbar-group-addon =
   .label = { -brand-product-name } extension
 
+# Label shown above a MDN suggestion in the urlbar results.
+urlbar-group-mdn =
+  .label = Recommended resource
+
 # Label shown above a Pocket suggestion in the urlbar results.
 urlbar-group-pocket =
   .label = Recommended reads
@@ -114,6 +118,17 @@ firefox-suggest-addons-reviews =
 
 # This string explaining that the add-on suggestion is a recommendation.
 firefox-suggest-addons-recommended = Recommended
+
+## These strings are used for MDN suggestions in the urlbar.
+
+# The term is defined in this file because the feature is en-US only. It should
+# be moved to toolkit/branding/brandings.ftl if the feature is exposed for
+# localization.
+-mdn-brand-name = MDN Web Docs
+
+# This string is shown in MDN suggestions and indicates the suggestion is from
+# MDN.
+firefox-suggest-mdn-bottom-text = { -mdn-brand-name }
 
 ## These strings are used for Pocket suggestions in the urlbar.
 
