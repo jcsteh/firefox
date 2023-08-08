@@ -172,6 +172,7 @@ static const char* gBlockedRemoteClients[] = {
     "flow.exe",        // Conexant Flow causes performance issues, bug 1569712
     "rtop_bg.exe",     // ByteFence Anti-Malware, bug 1713383
     "osk.exe",         // Windows On-Screen Keyboard, bug 1424505
+    "shtctky.exe",     // Lenovo Privacy Guard, bug 1777875
 };
 
 /**
