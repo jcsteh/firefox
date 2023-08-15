@@ -2685,13 +2685,6 @@
   value: false
   mirror: always
 
-# Whether fullscreen should make the rest of the document inert.
-# This matches other browsers but historically not Gecko.
-- name: dom.fullscreen.modal
-  type: bool
-  value: true
-  mirror: always
-
 # Whether the Gamepad API is enabled
 - name: dom.gamepad.enabled
   type: bool
@@ -2988,12 +2981,6 @@
   value: @IS_ANDROID@
   mirror: always
 
-# Is support for HTMLElement.enterKeyHint enabled?
-- name: dom.forms.enterkeyhint
-  type: bool
-  value: true
-  mirror: always
-
 # Is support for HTMLElement.inputMode enabled?
 - name: dom.forms.inputmode
   type: bool
@@ -3066,11 +3053,7 @@
 # disabled.
 - name: dom.keyboardevent.init_key_event.enabled_in_addons
   type: bool
-#if defined(RELEASE_OR_BETA)
-  value: true
-#else
-  value: false
-#endif
+  value: @IS_NOT_EARLY_BETA_OR_EARLIER@
   mirror: always
 
 # If this is true, keypress events for non-printable keys are dispatched only
@@ -5817,11 +5800,6 @@
   value: true # Match naive behavior, but hopefully we can stop soon!
   mirror: always
 
-- name: gfx.compositor.clearstate
-  type: RelaxedAtomicBool
-  value: false
-  mirror: always
-
 # Whether GL contexts can be migrated to a different GPU (to match the one the
 # OS is using for composition).
 #
@@ -8222,13 +8200,6 @@
   value: true
   mirror: always
 
-# Make `zoom` a `transform` + `transform-origin` alias.
-- name: layout.css.zoom-transform-hack.enabled
-  type: RelaxedAtomicBool
-  value: false
-  mirror: always
-  rust: true
-
 # Whether the `-moz-control-character-visibility` property is exposed to
 # content.
 #
@@ -8514,28 +8485,9 @@
 #   1 - only base system fonts
 #   2 - also fonts from optional language packs
 #   3 - also user-installed fonts
-- name: layout.css.font-visibility.standard
+- name: layout.css.font-visibility
   type: int32_t
   value: 3
-  mirror: always
-
-# font-visibility setting when Tracking Protection is enabled
-- name: layout.css.font-visibility.trackingprotection
-  type: int32_t
-  value: 3
-  mirror: always
-
-# Max font-visibility setting for Private Browsing contexts
-# (The actual value used in a private-browsing context will be the lesser of
-# the appropriate standard/trackingprotection/RFP value from above, and the
-# private-browsing level specified by this pref.)
-- name: layout.css.font-visibility.private
-  type: int32_t
-#if defined(NIGHTLY_BUILD)
-  value: 2
-#else
-  value: 3
-#endif
   mirror: always
 
 # Is support for GeometryUtils.getBoxQuads enabled?
@@ -8627,6 +8579,13 @@
 
 # Is support for motion-path offset-position enabled?
 - name: layout.css.motion-path-offset-position.enabled
+  type: RelaxedAtomicBool
+  value: @IS_NIGHTLY_BUILD@
+  mirror: always
+  rust: true
+
+# Is support for motion-path url enabled?
+- name: layout.css.motion-path-url.enabled
   type: RelaxedAtomicBool
   value: @IS_NIGHTLY_BUILD@
   mirror: always
@@ -8862,13 +8821,6 @@
 - name: layout.css.scroll-snap.prediction-sensitivity
   type: AtomicFloat
   value: 0.750f
-  mirror: always
-
-# Set the threshold distance in CSS pixels below which scrolling will snap to
-# an edge, when scroll snapping is set to "proximity".
-- name: layout.css.scroll-snap.proximity-threshold
-  type: RelaxedAtomicInt32
-  value: 200
   mirror: always
 
 # Stylo thread-pool size.
@@ -10136,6 +10088,33 @@
     mirror: always
 
 -   name: media.ffvpx.mp3.enabled
+    type: RelaxedAtomicBool
+#ifdef MOZ_FFVPX
+    value: true
+#else
+    value: false
+#endif
+    mirror: always
+
+-   name: media.ffvpx.vorbis.enabled
+    type: RelaxedAtomicBool
+#ifdef MOZ_FFVPX
+    value: true
+#else
+    value: false
+#endif
+    mirror: always
+
+-   name: media.ffvpx.opus.enabled
+    type: RelaxedAtomicBool
+#ifdef MOZ_FFVPX
+    value: true
+#else
+    value: false
+#endif
+    mirror: always
+
+-   name: media.ffvpx.wav.enabled
     type: RelaxedAtomicBool
 #ifdef MOZ_FFVPX
     value: true
@@ -11715,13 +11694,6 @@
   value: false
   mirror: always
 
-# Enables `<link rel="preload">` tag and `Link: rel=preload` response header
-# handling.
-- name: network.preload
-  type: RelaxedAtomicBool
-  value: true
-  mirror: always
-
 # Enables `<link rel="preconnect">` tag and `Link: rel=preconnect` response header
 # handling.
 - name: network.preconnect
@@ -12664,6 +12636,12 @@
   value: 5
   mirror: always
 
+  # If true, requests will be canceled if any of the response headers values has a NUL character
+- name: network.http.reject_NULs_in_response_header_values
+  type: RelaxedAtomicBool
+  value: true
+  mirror: always
+
   # If true, remove the resumption token when 0RTT failed.
 - name: network.http.remove_resumption_token_when_early_data_failed
   type: RelaxedAtomicBool
@@ -12783,11 +12761,6 @@
 - name: permissions.default.image
   type: RelaxedAtomicUint32
   value: 1
-  mirror: always
-
-- name: permissions.delegation.enabled
-  type: bool
-  value: true
   mirror: always
 
 - name: permissions.isolateBy.userContext
@@ -13808,6 +13781,7 @@
   type: RelaxedAtomicBool
   value: false
   mirror: always
+  rust: true
 
 # Dispatch WebAuthn requests to the Android platform API
 - name: security.webauth.webauthn_enable_android_fido2
@@ -13826,17 +13800,12 @@
   type: RelaxedAtomicBool
   value: @IS_NOT_MOBILE@
   mirror: always
+  rust: true
 
 # Skip direct attestation consent prompts (for tests).
 - name: security.webauth.webauthn_testing_allow_direct_attestation
   type: RelaxedAtomicBool
   value: false
-  mirror: always
-
-# Global counter for U2F soft token operations
-- name: security.webauth.softtoken_counter
-  type: RelaxedAtomicUint32
-  value: 0
   mirror: always
 
 # Block Worker/SharedWorker scripts with wrong MIME type.

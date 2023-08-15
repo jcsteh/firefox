@@ -72,7 +72,7 @@ using JS::AutoCheckCannotGC;
 using JS::IsArrayAnswer;
 using JS::ToUint32;
 
-static inline bool ObjectMayHaveExtraIndexedOwnProperties(JSObject* obj) {
+bool js::ObjectMayHaveExtraIndexedOwnProperties(JSObject* obj) {
   if (!obj->is<NativeObject>()) {
     return true;
   }
@@ -114,7 +114,7 @@ bool js::PrototypeMayHaveIndexedProperties(NativeObject* obj) {
  * elements. This includes other indexed properties in its shape hierarchy, and
  * indexed properties or elements along its prototype chain.
  */
-static bool ObjectMayHaveExtraIndexedProperties(JSObject* obj) {
+bool js::ObjectMayHaveExtraIndexedProperties(JSObject* obj) {
   MOZ_ASSERT_IF(obj->hasDynamicPrototype(), !obj->is<NativeObject>());
 
   if (ObjectMayHaveExtraIndexedOwnProperties(obj)) {
@@ -5258,14 +5258,12 @@ ArrayObject* js::NewDenseCopiedArrayWithProto(JSContext* cx, uint32_t length,
   return arr;
 }
 
-ArrayObject* js::NewDenseFullyAllocatedArrayWithTemplate(
-    JSContext* cx, uint32_t length, ArrayObject* templateObject) {
+ArrayObject* js::NewDenseFullyAllocatedArrayWithShape(
+    JSContext* cx, uint32_t length, Handle<SharedShape*> shape) {
   AutoSetNewObjectMetadata metadata(cx);
   gc::AllocKind allocKind = GuessArrayGCKind(length);
   MOZ_ASSERT(CanChangeToBackgroundAllocKind(allocKind, &ArrayObject::class_));
   allocKind = ForegroundToBackgroundAllocKind(allocKind);
-
-  Rooted<SharedShape*> shape(cx, templateObject->sharedShape());
 
   gc::Heap heap = GetInitialHeap(GenericObject, &ArrayObject::class_);
   ArrayObject* arr = ArrayObject::create(cx, allocKind, heap, shape, length,

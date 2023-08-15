@@ -135,17 +135,17 @@ class SyncedTabsInView extends ViewPage {
 
   async observe(subject, topic, errorState) {
     if (topic == TOPIC_SETUPSTATE_CHANGED) {
-      this.updateStates({ errorState });
+      this.updateStates(errorState);
     }
     if (topic == SYNCED_TABS_CHANGED) {
       this.getSyncedTabData();
     }
   }
 
-  updateStates({
-    stateIndex = TabsSetupFlowManager.uiStateIndex,
-    errorState = SyncedTabsErrorHandler.getErrorType(),
-  } = {}) {
+  updateStates(errorState) {
+    let stateIndex = TabsSetupFlowManager.uiStateIndex;
+    errorState = errorState || SyncedTabsErrorHandler.getErrorType();
+
     if (stateIndex == 4 && this._currentSetupStateIndex !== stateIndex) {
       // trigger an initial request for the synced tabs list
       this.getSyncedTabData();
@@ -296,11 +296,11 @@ class SyncedTabsInView extends ViewPage {
           data-l10n-id="firefoxview-syncedtabs-device-notabs"
         ></div>`;
     }
-    return html`<card-container>
-      <h2 slot="header">
+    return html`<card-container shortPageName="syncedtabs">
+      <h3 slot="header">
         <span class="icon ${deviceType}" role="presentation"></span>
         ${deviceName}
-      </h2>
+      </h3>
       <div
         slot="main"
         class="blackbox notabs"
@@ -332,14 +332,14 @@ class SyncedTabsInView extends ViewPage {
     }
     return html`${when(
         !this.overview,
-        () => html`<h2 slot="header">
+        () => html`<h3 slot="header">
           <span class="icon ${deviceType}" role="presentation"></span>
           ${deviceName}
-        </h2>`
+        </h3>`
       )}
       <fxview-tab-list
         slot="main"
-        class="syncedtabs"
+        class="with-context-menu"
         hasPopup="menu"
         .tabItems=${ifDefined(tabItems)}
         maxTabsLength=${this.maxTabsLength}
@@ -348,10 +348,10 @@ class SyncedTabsInView extends ViewPage {
       >
         ${when(
           this.overview,
-          () => html`<h2 slot="header">
+          () => html`<h3 slot="header">
             <span class="icon ${deviceType}" role="presentation"></span>
             ${deviceName}
-          </h2>`
+          </h3>`
         )}
         ${this.panelListTemplate()}
       </fxview-tab-list>`;
@@ -394,7 +394,7 @@ class SyncedTabsInView extends ViewPage {
           );
         } else {
           renderArray.push(
-            html`<card-container
+            html`<card-container shortPageName="syncedtabs"
               >${this.deviceTemplate(
                 renderInfo[id].name,
                 renderInfo[id].deviceType,
@@ -469,19 +469,22 @@ class SyncedTabsInView extends ViewPage {
       renderArray.push(
         html`<card-container
           preserveCollapseState
-          viewAllPage=${this._currentSetupStateIndex == 4 ? "syncedtabs" : null}
+          shortPageName="syncedtabs"
+          ?showViewAll=${this._currentSetupStateIndex == 4}
         >
           >
-          <h2
+          <h3
             slot="header"
             data-l10n-id="firefoxview-synced-tabs-header"
             class="overview-header"
-          ></h2>
+          ></h3>
           <div slot="main">${this.generateCardContent()}</div>
         </card-container>`
       );
     } else {
-      renderArray.push(this.generateCardContent());
+      renderArray.push(
+        html`<div class="cards-container">${this.generateCardContent()}</div>`
+      );
     }
     return renderArray;
   }
@@ -499,7 +502,8 @@ class SyncedTabsInView extends ViewPage {
       url: tab.url,
       primaryL10nId: "firefoxview-tabs-list-tab-button",
       primaryL10nArgs: JSON.stringify({ targetURI: tab.url }),
-      secondaryL10nId: "firefoxview-close-button",
+      secondaryL10nId: "fxviewtabrow-options-menu-button",
+      secondaryL10nArgs: JSON.stringify({ tabTitle: tab.title }),
     }));
   }
 

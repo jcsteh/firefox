@@ -1216,7 +1216,7 @@ XDRResult StencilXDR::codeSourceData(XDRState<mode>* const xdr,
 template <XDRMode mode>
 /* static */
 XDRResult StencilXDR::codeSource(XDRState<mode>* xdr,
-                                 const JS::DecodeOptions* maybeOptions,
+                                 const JS::ReadOnlyDecodeOptions* maybeOptions,
                                  RefPtr<ScriptSource>& source) {
   FrontendContext* fc = xdr->fc();
 
@@ -1310,9 +1310,9 @@ XDRResult StencilXDR::codeSource(XDRState<mode>* xdr,
   if (mode == XDR_DECODE) {
     source->introductionType_ = maybeOptions->introductionType;
     source->setIntroductionOffset(maybeOptions->introductionOffset);
-    if (maybeOptions->introducerFilename) {
+    if (maybeOptions->introducerFilename()) {
       if (!source->setIntroducerFilename(
-              fc, maybeOptions->introducerFilename.c_str())) {
+              fc, maybeOptions->introducerFilename().c_str())) {
         return xdr->fail(JS::TranscodeResult::Throw);
       }
     }
@@ -1326,12 +1326,12 @@ XDRResult StencilXDR::codeSource(XDRState<mode>* xdr,
 template /* static */
     XDRResult
     StencilXDR::codeSource(XDRState<XDR_ENCODE>* xdr,
-                           const JS::DecodeOptions* maybeOptions,
+                           const JS::ReadOnlyDecodeOptions* maybeOptions,
                            RefPtr<ScriptSource>& holder);
 template /* static */
     XDRResult
     StencilXDR::codeSource(XDRState<XDR_DECODE>* xdr,
-                           const JS::DecodeOptions* maybeOptions,
+                           const JS::ReadOnlyDecodeOptions* maybeOptions,
                            RefPtr<ScriptSource>& holder);
 
 JS_PUBLIC_API bool JS::GetScriptTranscodingBuildId(
@@ -1404,19 +1404,6 @@ static XDRResult VersionCheck(XDRState<mode>* xdr) {
   return Ok();
 }
 
-template <XDRMode mode>
-static XDRResult XDRStencilHeader(XDRState<mode>* xdr,
-                                  const JS::DecodeOptions* maybeOptions,
-                                  RefPtr<ScriptSource>& source) {
-  // The XDR-Stencil header is inserted at beginning of buffer, but it is
-  // computed at the end the incremental-encoding process.
-
-  MOZ_TRY(VersionCheck(xdr));
-  MOZ_TRY(frontend::StencilXDR::codeSource(xdr, maybeOptions, source));
-
-  return Ok();
-}
-
 XDRResult XDRStencilEncoder::codeStencil(
     const RefPtr<ScriptSource>& source,
     const frontend::CompilationStencil& stencil) {
@@ -1427,10 +1414,32 @@ XDRResult XDRStencilEncoder::codeStencil(
 
   MOZ_TRY(frontend::StencilXDR::checkCompilationStencil(this, stencil));
 
-  MOZ_TRY(XDRStencilHeader(this, nullptr,
-                           const_cast<RefPtr<ScriptSource>&>(source)));
+  MOZ_TRY(VersionCheck(this));
+
+  uint32_t dummy = 0;
+  size_t lengthOffset = buf->cursor();
+  MOZ_TRY(codeUint32(&dummy));
+  size_t hashOffset = buf->cursor();
+  MOZ_TRY(codeUint32(&dummy));
+
+  size_t contentOffset = buf->cursor();
+  MOZ_TRY(frontend::StencilXDR::codeSource(
+      this, nullptr, const_cast<RefPtr<ScriptSource>&>(source)));
   MOZ_TRY(frontend::StencilXDR::codeCompilationStencil(
       this, const_cast<frontend::CompilationStencil&>(stencil)));
+  size_t endOffset = buf->cursor();
+
+  if (endOffset > UINT32_MAX) {
+    ReportOutOfMemory(fc());
+    return fail(JS::TranscodeResult::Throw);
+  }
+
+  uint32_t length = endOffset - contentOffset;
+  codeUint32At(&length, lengthOffset);
+
+  const uint8_t* contentBegin = buf->bufferAt(contentOffset);
+  uint32_t hash = mozilla::HashBytes(contentBegin, length);
+  codeUint32At(&hash, hashOffset);
 
   return Ok();
 }
@@ -1468,7 +1477,8 @@ bool StencilIncrementalEncoderPtr::addDelazification(
 }
 
 XDRResult XDRStencilDecoder::codeStencil(
-    const JS::DecodeOptions& options, frontend::CompilationStencil& stencil) {
+    const JS::ReadOnlyDecodeOptions& options,
+    frontend::CompilationStencil& stencil) {
 #ifdef DEBUG
   auto sanityCheck = mozilla::MakeScopeExit(
       [&] { MOZ_ASSERT(validateResultCode(fc(), resultCode())); });
@@ -1477,7 +1487,23 @@ XDRResult XDRStencilDecoder::codeStencil(
   auto resetOptions = mozilla::MakeScopeExit([&] { options_ = nullptr; });
   options_ = &options;
 
-  MOZ_TRY(XDRStencilHeader(this, &options, stencil.source));
+  MOZ_TRY(VersionCheck(this));
+
+  uint32_t length;
+  MOZ_TRY(codeUint32(&length));
+
+  uint32_t hash;
+  MOZ_TRY(codeUint32(&hash));
+
+  const uint8_t* contentBegin;
+  MOZ_TRY(peekArray(length, &contentBegin));
+  uint32_t actualHash = mozilla::HashBytes(contentBegin, length);
+
+  if (MOZ_UNLIKELY(actualHash != hash)) {
+    return fail(JS::TranscodeResult::Failure_BadDecode);
+  }
+
+  MOZ_TRY(frontend::StencilXDR::codeSource(this, &options, stencil.source));
   MOZ_TRY(frontend::StencilXDR::codeCompilationStencil(this, stencil));
 
   return Ok();

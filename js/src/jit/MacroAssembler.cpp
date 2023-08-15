@@ -264,7 +264,8 @@ template void MacroAssembler::loadFromTypedBigIntArray(Scalar::Type arrayType,
 
 // Inlined version of gc::CheckAllocatorState that checks the bare essentials
 // and bails for anything that cannot be handled with our jit allocators.
-void MacroAssembler::checkAllocatorState(Label* fail) {
+void MacroAssembler::checkAllocatorState(Register temp, gc::AllocKind allocKind,
+                                         Label* fail) {
   // Don't execute the inline path if GC probes are built in.
 #ifdef JS_GC_PROBES
   jump(fail);
@@ -277,11 +278,16 @@ void MacroAssembler::checkAllocatorState(Label* fail) {
            fail);
 #endif
 
-  // Don't execute the inline path if the realm has an object metadata callback,
-  // as the metadata to use for the object may vary between executions of the
-  // op.
-  if (realm()->hasAllocationMetadataBuilder()) {
-    jump(fail);
+  // If the zone has a realm with an object allocation metadata hook, emit a
+  // guard for this. Note that IC stubs and some other trampolines can be shared
+  // across realms, so we don't bake in a realm pointer.
+  if (gc::IsObjectAllocKind(allocKind) &&
+      realm()->zone()->hasRealmWithAllocMetadataBuilder()) {
+    loadJSContext(temp);
+    loadPtr(Address(temp, JSContext::offsetOfRealm()), temp);
+    branchPtr(Assembler::NotEqual,
+              Address(temp, Realm::offsetOfAllocationMetadataBuilder()),
+              ImmWord(0), fail);
   }
 }
 
@@ -420,7 +426,7 @@ void MacroAssembler::allocateObject(Register result, Register temp,
                                     const AllocSiteInput& allocSite) {
   MOZ_ASSERT(gc::IsObjectAllocKind(allocKind));
 
-  checkAllocatorState(fail);
+  checkAllocatorState(temp, allocKind, fail);
 
   if (shouldNurseryAllocate(allocKind, initialHeap)) {
     MOZ_ASSERT(initialHeap == gc::Heap::Default);
@@ -496,28 +502,35 @@ void MacroAssembler::createPlainGCObject(
 }
 
 void MacroAssembler::createArrayWithFixedElements(
-    Register result, Register shape, Register temp, uint32_t arrayLength,
-    uint32_t arrayCapacity, gc::AllocKind allocKind, gc::Heap initialHeap,
+    Register result, Register shape, Register temp, Register dynamicSlotsTemp,
+    uint32_t arrayLength, uint32_t arrayCapacity, uint32_t numUsedDynamicSlots,
+    uint32_t numDynamicSlots, gc::AllocKind allocKind, gc::Heap initialHeap,
     Label* fail, const AllocSiteInput& allocSite) {
   MOZ_ASSERT(gc::IsObjectAllocKind(allocKind));
   MOZ_ASSERT(shape != temp, "shape can overlap with temp2, but not temp");
   MOZ_ASSERT(result != temp);
 
   // This only supports allocating arrays with fixed elements and does not
-  // support any dynamic slots or elements.
+  // support any dynamic elements.
   MOZ_ASSERT(arrayCapacity >= arrayLength);
   MOZ_ASSERT(gc::GetGCKindSlots(allocKind) >=
              arrayCapacity + ObjectElements::VALUES_PER_HEADER);
 
+  MOZ_ASSERT(numUsedDynamicSlots <= numDynamicSlots);
+
   // Allocate object.
-  allocateObject(result, temp, allocKind, 0, initialHeap, fail, allocSite);
+  allocateObject(result, temp, allocKind, numDynamicSlots, initialHeap, fail,
+                 allocSite);
 
   // Initialize shape field.
   storePtr(shape, Address(result, JSObject::offsetOfShape()));
 
-  // There are no dynamic slots.
-  storePtr(ImmPtr(emptyObjectSlots),
-           Address(result, NativeObject::offsetOfSlots()));
+  // If the object has dynamic slots, allocateObject will initialize
+  // the slots field. If not, we must initialize it now.
+  if (numDynamicSlots == 0) {
+    storePtr(ImmPtr(emptyObjectSlots),
+             Address(result, NativeObject::offsetOfSlots()));
+  }
 
   // Initialize elements pointer for fixed (inline) elements.
   computeEffectiveAddress(
@@ -531,6 +544,15 @@ void MacroAssembler::createArrayWithFixedElements(
   store32(Imm32(arrayCapacity),
           Address(temp, ObjectElements::offsetOfCapacity()));
   store32(Imm32(arrayLength), Address(temp, ObjectElements::offsetOfLength()));
+
+  // Initialize dynamic slots.
+  if (numUsedDynamicSlots > 0) {
+    MOZ_ASSERT(dynamicSlotsTemp != temp);
+    MOZ_ASSERT(dynamicSlotsTemp != InvalidReg);
+    loadPtr(Address(result, NativeObject::offsetOfSlots()), dynamicSlotsTemp);
+    fillSlotsWithUndefined(Address(dynamicSlotsTemp, 0), temp, 0,
+                           numUsedDynamicSlots);
+  }
 }
 
 // Inline version of Nursery::allocateString.
@@ -669,7 +691,7 @@ void MacroAssembler::allocateString(Register result, Register temp,
   MOZ_ASSERT(allocKind == gc::AllocKind::STRING ||
              allocKind == gc::AllocKind::FAT_INLINE_STRING);
 
-  checkAllocatorState(fail);
+  checkAllocatorState(temp, allocKind, fail);
 
   if (shouldNurseryAllocate(allocKind, initialHeap)) {
     MOZ_ASSERT(initialHeap == gc::Heap::Default);
@@ -692,14 +714,16 @@ void MacroAssembler::newGCFatInlineString(Register result, Register temp,
 
 void MacroAssembler::newGCBigInt(Register result, Register temp,
                                  gc::Heap initialHeap, Label* fail) {
-  checkAllocatorState(fail);
+  constexpr gc::AllocKind allocKind = gc::AllocKind::BIGINT;
 
-  if (shouldNurseryAllocate(gc::AllocKind::BIGINT, initialHeap)) {
+  checkAllocatorState(temp, allocKind, fail);
+
+  if (shouldNurseryAllocate(allocKind, initialHeap)) {
     MOZ_ASSERT(initialHeap == gc::Heap::Default);
     return nurseryAllocateBigInt(result, temp, fail);
   }
 
-  freeListAllocate(result, temp, gc::AllocKind::BIGINT, fail);
+  freeListAllocate(result, temp, allocKind, fail);
 }
 
 void MacroAssembler::copySlotsFromTemplate(
@@ -2054,6 +2078,12 @@ void MacroAssembler::loadJSContext(Register dest) {
 static const uint8_t* ContextRealmPtr(CompileRuntime* rt) {
   return (static_cast<const uint8_t*>(rt->mainContextPtr()) +
           JSContext::offsetOfRealm());
+}
+
+void MacroAssembler::loadGlobalObjectData(Register dest) {
+  loadPtr(AbsoluteAddress(ContextRealmPtr(runtime())), dest);
+  loadPtr(Address(dest, Realm::offsetOfActiveGlobal()), dest);
+  loadPrivate(Address(dest, GlobalObject::offsetOfGlobalDataSlot()), dest);
 }
 
 void MacroAssembler::switchToRealm(Register realm) {
@@ -4244,23 +4274,31 @@ void MacroAssembler::minMaxArrayNumber(Register array, FloatRegister result,
   bind(&done);
 }
 
-void MacroAssembler::branchIfNotRegExpPrototypeOptimizable(Register proto,
-                                                           Register temp,
-                                                           Label* fail) {
-  loadJSContext(temp);
-  loadPtr(Address(temp, JSContext::offsetOfRealm()), temp);
-  size_t offset = Realm::offsetOfRegExps() +
+void MacroAssembler::branchIfNotRegExpPrototypeOptimizable(
+    Register proto, Register temp, const GlobalObject* maybeGlobal,
+    Label* fail) {
+  if (maybeGlobal) {
+    movePtr(ImmGCPtr(maybeGlobal), temp);
+    loadPrivate(Address(temp, GlobalObject::offsetOfGlobalDataSlot()), temp);
+  } else {
+    loadGlobalObjectData(temp);
+  }
+  size_t offset = GlobalObjectData::offsetOfRegExpRealm() +
                   RegExpRealm::offsetOfOptimizableRegExpPrototypeShape();
   loadPtr(Address(temp, offset), temp);
   branchTestObjShapeUnsafe(Assembler::NotEqual, proto, temp, fail);
 }
 
-void MacroAssembler::branchIfNotRegExpInstanceOptimizable(Register regexp,
-                                                          Register temp,
-                                                          Label* label) {
-  loadJSContext(temp);
-  loadPtr(Address(temp, JSContext::offsetOfRealm()), temp);
-  size_t offset = Realm::offsetOfRegExps() +
+void MacroAssembler::branchIfNotRegExpInstanceOptimizable(
+    Register regexp, Register temp, const GlobalObject* maybeGlobal,
+    Label* label) {
+  if (maybeGlobal) {
+    movePtr(ImmGCPtr(maybeGlobal), temp);
+    loadPrivate(Address(temp, GlobalObject::offsetOfGlobalDataSlot()), temp);
+  } else {
+    loadGlobalObjectData(temp);
+  }
+  size_t offset = GlobalObjectData::offsetOfRegExpRealm() +
                   RegExpRealm::offsetOfOptimizableRegExpInstanceShape();
   loadPtr(Address(temp, offset), temp);
   branchTestObjShapeUnsafe(Assembler::NotEqual, regexp, temp, label);

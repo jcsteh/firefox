@@ -13557,6 +13557,10 @@ if (IsCSSPropertyPrefEnabled("layout.css.motion-path.enabled")) {
     );
   }
 
+  if (IsCSSPropertyPrefEnabled("layout.css.motion-path-url.enabled")) {
+    gCSSProperties["offset-path"]["other_values"].push("url(#svgPath)");
+  }
+
   gCSSProperties["offset-distance"] = {
     domProp: "offsetDistance",
     inherited: false,
@@ -13667,18 +13671,6 @@ if (IsCSSPropertyPrefEnabled("layout.css.backdrop-filter.enabled")) {
     initial_values: ["none"],
     other_values: gCSSProperties["filter"].other_values,
     invalid_values: gCSSProperties["filter"].invalid_values,
-  };
-}
-
-if (IsCSSPropertyPrefEnabled("layout.css.zoom-transform-hack.enabled")) {
-  gCSSProperties["zoom"] = {
-    domProp: "zoom",
-    inherited: false,
-    type: CSS_TYPE_LEGACY_SHORTHAND,
-    subproperties: ["transform", "transform-origin"],
-    initial_values: ["normal", "1.0", "0", "0%", "100%"],
-    other_values: ["10%", "2", "2.5"],
-    invalid_values: ["0 0", "foo", "10px"],
   };
 }
 

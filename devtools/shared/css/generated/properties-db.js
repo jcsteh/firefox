@@ -9362,6 +9362,7 @@ exports.CSS_PROPERTIES = {
       "stroke-box",
       "top",
       "unset",
+      "url",
       "view-box",
       "xywh"
     ]
@@ -9425,6 +9426,7 @@ exports.CSS_PROPERTIES = {
       "revert-layer",
       "stroke-box",
       "unset",
+      "url",
       "view-box",
       "xywh"
     ]
@@ -12300,27 +12302,3 @@ exports.CSS_PROPERTIES = {
     ]
   }
 };
-
-/**
- * A list of the pseudo elements.
- */
-exports.PSEUDO_ELEMENTS = [
-  "::after",
-  "::before",
-  "::marker",
-  "::backdrop",
-  "::cue",
-  "::first-letter",
-  "::first-line",
-  "::highlight",
-  "::selection",
-  "::-moz-focus-inner",
-  "::-moz-progress-bar",
-  "::-moz-range-track",
-  "::-moz-range-progress",
-  "::-moz-range-thumb",
-  "::-moz-meter-bar",
-  "::placeholder",
-  "::-moz-color-swatch",
-  "::file-selector-button"
-];

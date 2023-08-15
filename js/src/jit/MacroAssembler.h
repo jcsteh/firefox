@@ -1322,8 +1322,10 @@ class MacroAssembler : public MacroAssemblerSpecific {
                        FloatRegister temp, Register dest);
 
   void branchIfNotRegExpPrototypeOptimizable(Register proto, Register temp,
+                                             const GlobalObject* maybeGlobal,
                                              Label* label);
   void branchIfNotRegExpInstanceOptimizable(Register regexp, Register temp,
+                                            const GlobalObject* maybeGlobal,
                                             Label* label);
 
   void loadRegExpLastIndex(Register regexp, Register string, Register lastIndex,
@@ -4792,6 +4794,8 @@ class MacroAssembler : public MacroAssemblerSpecific {
 
   void loadJSContext(Register dest);
 
+  void loadGlobalObjectData(Register dest);
+
   void switchToRealm(Register realm);
   void switchToRealm(const void* realm, Register scratch);
   void switchToObjectRealm(Register obj, Register scratch);
@@ -5180,7 +5184,7 @@ class MacroAssembler : public MacroAssemblerSpecific {
 
   // Inline allocation.
  private:
-  void checkAllocatorState(Label* fail);
+  void checkAllocatorState(Register temp, gc::AllocKind allocKind, Label* fail);
   bool shouldNurseryAllocate(gc::AllocKind allocKind, gc::Heap initialHeap);
   void nurseryAllocateObject(
       Register result, Register temp, gc::AllocKind allocKind,
@@ -5229,10 +5233,14 @@ class MacroAssembler : public MacroAssemblerSpecific {
                            const AllocSiteInput& allocSite,
                            bool initContents = true);
 
+  // dynamicSlotsTemp is used to initialize the dynamic slots after allocating
+  // the object. If numUsedDynamicSlots == 0, it may be InvalidReg.
   void createArrayWithFixedElements(
-      Register result, Register shape, Register temp, uint32_t arrayLength,
-      uint32_t arrayCapacity, gc::AllocKind allocKind, gc::Heap initialHeap,
-      Label* fail, const AllocSiteInput& allocSite = AllocSiteInput());
+      Register result, Register shape, Register temp, Register dynamicSlotsTemp,
+      uint32_t arrayLength, uint32_t arrayCapacity,
+      uint32_t numUsedDynamicSlots, uint32_t numDynamicSlots,
+      gc::AllocKind allocKind, gc::Heap initialHeap, Label* fail,
+      const AllocSiteInput& allocSite = AllocSiteInput());
 
   void initGCThing(Register obj, Register temp,
                    const TemplateObject& templateObj, bool initContents = true);

@@ -39,7 +39,6 @@
 #include "jit/IonScript.h"
 #include "jit/JitcodeMap.h"
 #include "jit/JitFrames.h"
-#include "jit/JitRealm.h"
 #include "jit/JitRuntime.h"
 #include "jit/JitSpewer.h"
 #include "jit/JitZone.h"
@@ -959,7 +958,7 @@ CodeGenerator::CodeGenerator(MIRGenerator* gen, LIRGraph* graph,
       ionScriptLabels_(gen->alloc()),
       ionNurseryObjectLabels_(gen->alloc()),
       scriptCounts_(nullptr),
-      realmStubsToReadBarrier_(0) {}
+      zoneStubsToReadBarrier_(0) {}
 
 CodeGenerator::~CodeGenerator() { js_delete(scriptCounts_); }
 
@@ -1915,10 +1914,10 @@ static void UpdateRegExpStatics(MacroAssembler& masm, Register regexp,
 //
 // inputOutputDataStartOffset is the offset relative to the frame pointer
 // register. This offset is negative for the RegExpExecTest stub.
-static bool PrepareAndExecuteRegExp(JSContext* cx, MacroAssembler& masm,
-                                    Register regexp, Register input,
-                                    Register lastIndex, Register temp1,
-                                    Register temp2, Register temp3,
+static bool PrepareAndExecuteRegExp(MacroAssembler& masm, Register regexp,
+                                    Register input, Register lastIndex,
+                                    Register temp1, Register temp2,
+                                    Register temp3,
                                     int32_t inputOutputDataStartOffset,
                                     gc::Heap initialStringHeap, Label* notFound,
                                     Label* failure) {
@@ -2139,11 +2138,10 @@ static bool PrepareAndExecuteRegExp(JSContext* cx, MacroAssembler& masm,
   masm.branch32(Assembler::Equal, temp1, Imm32(RegExpRunStatus_Error), failure);
 
   // Lazily update the RegExpStatics.
-  RegExpStatics* res = GlobalObject::getRegExpStatics(cx, cx->global());
-  if (!res) {
-    return false;
-  }
-  masm.movePtr(ImmPtr(res), temp1);
+  size_t offset = GlobalObjectData::offsetOfRegExpRealm() +
+                  RegExpRealm::offsetOfRegExpStatics();
+  masm.loadGlobalObjectData(temp1);
+  masm.loadPtr(Address(temp1, offset), temp1);
   UpdateRegExpStatics(masm, regexp, input, lastIndex, temp1, temp2, temp3,
                       initialStringHeap, volatileRegs);
 
@@ -2443,20 +2441,6 @@ static JitCode* GenerateRegExpMatchStubShared(JSContext* cx,
   Address flagsSlot(regexp, RegExpObject::offsetOfFlags());
   Address lastIndexSlot(regexp, RegExpObject::offsetOfLastIndex());
 
-  ArrayObject* templateObject =
-      cx->realm()->regExps.getOrCreateMatchResultTemplateObject(cx);
-  if (!templateObject) {
-    return nullptr;
-  }
-  TemplateObject templateObj(templateObject);
-  const TemplateNativeObject& nativeTemplateObj =
-      templateObj.asTemplateNativeObject();
-
-  // The template object should have enough space for the maximum number of
-  // pairs this stub can handle.
-  MOZ_ASSERT(ObjectElements::VALUES_PER_HEADER + RegExpObject::MaxPairCount ==
-             gc::GetGCKindSlots(templateObj.getAllocKind()));
-
   TempAllocator temp(&cx->tempLifoAlloc());
   JitContext jcx(cx);
   StackMacroAssembler masm(cx, temp);
@@ -2478,7 +2462,7 @@ static JitCode* GenerateRegExpMatchStubShared(JSContext* cx,
   int32_t inputOutputDataStartOffset = 2 * sizeof(void*);
 
   Label notFound, oolEntry;
-  if (!PrepareAndExecuteRegExp(cx, masm, regexp, input, lastIndex, temp1, temp2,
+  if (!PrepareAndExecuteRegExp(masm, regexp, input, lastIndex, temp1, temp2,
                                temp3, inputOutputDataStartOffset,
                                initialStringHeap, &notFound, &oolEntry)) {
     return nullptr;
@@ -2499,34 +2483,64 @@ static JitCode* GenerateRegExpMatchStubShared(JSContext* cx,
                     Address(shared, RegExpShared::offsetOfFlags()),
                     Imm32(int32_t(JS::RegExpFlag::HasIndices)), &oolEntry);
 
+  Address pairCountAddress =
+      RegExpPairCountAddress(masm, inputOutputDataStartOffset);
+
   // Construct the result.
   Register object = temp1;
-  Label matchResultJoin;
-  masm.createGCObject(object, temp2, templateObj, gc::Heap::Default, &oolEntry);
-  masm.bind(&matchResultJoin);
+  {
+    // In most cases, the array will have just 1-2 elements, so we optimize for
+    // that by emitting separate code paths for capacity 2/6/14 (= 4/8/16 slots
+    // because two slots are used for the elements header).
 
-  MOZ_ASSERT(nativeTemplateObj.numFixedSlots() == 0);
-  // Dynamic slot count is always two less than a power of 2.
-  MOZ_ASSERT(nativeTemplateObj.numDynamicSlots() == 6);
-  static_assert(RegExpRealm::MatchResultObjectIndexSlot == 0,
-                "First slot holds the 'index' property");
-  static_assert(RegExpRealm::MatchResultObjectInputSlot == 1,
-                "Second slot holds the 'input' property");
-  static_assert(RegExpRealm::MatchResultObjectGroupsSlot == 2,
-                "Third slot holds the 'groups' property");
+    // Load the array length in temp2 and the shape in temp3.
+    Label allocated;
+    masm.load32(pairCountAddress, temp2);
+    size_t offset = GlobalObjectData::offsetOfRegExpRealm() +
+                    RegExpRealm::offsetOfNormalMatchResultShape();
+    masm.loadGlobalObjectData(temp3);
+    masm.loadPtr(Address(temp3, offset), temp3);
 
-  // Initialize the slots of the result object with the dummy values
-  // defined in createMatchResultTemplateObject.
-  masm.loadPtr(Address(object, NativeObject::offsetOfSlots()), temp2);
-  masm.storeValue(
-      nativeTemplateObj.getSlot(RegExpRealm::MatchResultObjectIndexSlot),
-      Address(temp2, RegExpRealm::offsetOfMatchResultObjectIndexSlot()));
-  masm.storeValue(
-      nativeTemplateObj.getSlot(RegExpRealm::MatchResultObjectInputSlot),
-      Address(temp2, RegExpRealm::offsetOfMatchResultObjectInputSlot()));
-  masm.storeValue(
-      nativeTemplateObj.getSlot(RegExpRealm::MatchResultObjectGroupsSlot),
-      Address(temp2, RegExpRealm::offsetOfMatchResultObjectGroupsSlot()));
+    auto emitAllocObject = [&](size_t elementCapacity) {
+      gc::AllocKind kind = GuessArrayGCKind(elementCapacity);
+      MOZ_ASSERT(CanChangeToBackgroundAllocKind(kind, &ArrayObject::class_));
+      kind = ForegroundToBackgroundAllocKind(kind);
+
+#ifdef DEBUG
+      // Assert all of the available slots are used for |elementCapacity|
+      // elements.
+      size_t usedSlots = ObjectElements::VALUES_PER_HEADER + elementCapacity;
+      MOZ_ASSERT(usedSlots == GetGCKindSlots(kind));
+#endif
+
+      constexpr size_t numUsedDynamicSlots =
+          RegExpRealm::MatchResultObjectSlotSpan;
+      constexpr size_t numDynamicSlots =
+          RegExpRealm::MatchResultObjectNumDynamicSlots;
+      constexpr size_t arrayLength = 1;
+      masm.createArrayWithFixedElements(object, temp3, temp2, temp3,
+                                        arrayLength, elementCapacity,
+                                        numUsedDynamicSlots, numDynamicSlots,
+                                        kind, gc::Heap::Default, &oolEntry);
+    };
+
+    Label moreThan2;
+    masm.branch32(Assembler::Above, temp2, Imm32(2), &moreThan2);
+    emitAllocObject(2);
+    masm.jump(&allocated);
+
+    Label moreThan6;
+    masm.bind(&moreThan2);
+    masm.branch32(Assembler::Above, temp2, Imm32(6), &moreThan6);
+    emitAllocObject(6);
+    masm.jump(&allocated);
+
+    masm.bind(&moreThan6);
+    static_assert(RegExpObject::MaxPairCount == 14);
+    emitAllocObject(RegExpObject::MaxPairCount);
+
+    masm.bind(&allocated);
+  }
 
   // clang-format off
    /*
@@ -2565,9 +2579,6 @@ static JitCode* GenerateRegExpMatchStubShared(JSContext* cx,
   static_assert(sizeof(MatchPair) == 2 * sizeof(int32_t),
                 "MatchPair consists of two int32 values representing the start"
                 "and the end offset of the match");
-
-  Address pairCountAddress =
-      RegExpPairCountAddress(masm, inputOutputDataStartOffset);
 
   int32_t pairsVectorStartOffset =
       RegExpPairsVectorStartOffset(inputOutputDataStartOffset);
@@ -2690,6 +2701,11 @@ static JitCode* GenerateRegExpMatchStubShared(JSContext* cx,
   Address firstMatchPairLimitAddress(
       FramePointer, pairsVectorStartOffset + MatchPair::offsetOfLimit());
 
+  static_assert(RegExpRealm::MatchResultObjectIndexSlot == 0,
+                "First slot holds the 'index' property");
+  static_assert(RegExpRealm::MatchResultObjectInputSlot == 1,
+                "Second slot holds the 'input' property");
+
   masm.loadPtr(Address(object, NativeObject::offsetOfSlots()), temp2);
 
   masm.load32(firstMatchPairStartAddress, temp3);
@@ -2761,12 +2777,12 @@ static JitCode* GenerateRegExpMatchStubShared(JSContext* cx,
   return code;
 }
 
-JitCode* JitRealm::generateRegExpMatcherStub(JSContext* cx) {
+JitCode* JitZone::generateRegExpMatcherStub(JSContext* cx) {
   return GenerateRegExpMatchStubShared(cx, initialStringHeap,
                                        /* isExecMatch = */ false);
 }
 
-JitCode* JitRealm::generateRegExpExecMatchStub(JSContext* cx) {
+JitCode* JitZone::generateRegExpExecMatchStub(JSContext* cx) {
   return GenerateRegExpMatchStubShared(cx, initialStringHeap,
                                        /* isExecMatch = */ true);
 }
@@ -2838,9 +2854,9 @@ void CodeGenerator::visitRegExpMatcher(LRegExpMatcher* lir) {
   OutOfLineRegExpMatcher* ool = new (alloc()) OutOfLineRegExpMatcher(lir);
   addOutOfLineCode(ool, lir->mir());
 
-  const JitRealm* jitRealm = gen->realm->jitRealm();
+  const JitZone* jitZone = gen->realm->zone()->jitZone();
   JitCode* regExpMatcherStub =
-      jitRealm->regExpMatcherStubNoBarrier(&realmStubsToReadBarrier_);
+      jitZone->regExpMatcherStubNoBarrier(&zoneStubsToReadBarrier_);
   masm.call(regExpMatcherStub);
   masm.branchTestUndefined(Assembler::Equal, JSReturnOperand, ool->entry());
   masm.bind(ool->rejoin());
@@ -2908,9 +2924,9 @@ void CodeGenerator::visitRegExpExecMatch(LRegExpExecMatch* lir) {
   auto* ool = new (alloc()) OutOfLineRegExpExecMatch(lir);
   addOutOfLineCode(ool, lir->mir());
 
-  const JitRealm* jitRealm = gen->realm->jitRealm();
+  const JitZone* jitZone = gen->realm->zone()->jitZone();
   JitCode* regExpExecMatchStub =
-      jitRealm->regExpExecMatchStubNoBarrier(&realmStubsToReadBarrier_);
+      jitZone->regExpExecMatchStubNoBarrier(&zoneStubsToReadBarrier_);
   masm.call(regExpExecMatchStub);
   masm.branchTestUndefined(Assembler::Equal, JSReturnOperand, ool->entry());
 
@@ -2918,7 +2934,7 @@ void CodeGenerator::visitRegExpExecMatch(LRegExpExecMatch* lir) {
   masm.freeStack(RegExpReservedStack);
 }
 
-JitCode* JitRealm::generateRegExpSearcherStub(JSContext* cx) {
+JitCode* JitZone::generateRegExpSearcherStub(JSContext* cx) {
   JitSpew(JitSpew_Codegen, "# Emitting RegExpSearcher stub");
 
   Register regexp = RegExpSearcherRegExpReg;
@@ -2940,7 +2956,7 @@ JitCode* JitRealm::generateRegExpSearcherStub(JSContext* cx) {
   TempAllocator temp(&cx->tempLifoAlloc());
   JitContext jcx(cx);
   StackMacroAssembler masm(cx, temp);
-  AutoCreatedBy acb(masm, "JitRealm::generateRegExpSearcherStub");
+  AutoCreatedBy acb(masm, "JitZone::generateRegExpSearcherStub");
 
 #ifdef JS_USE_LINK_REGISTER
   masm.pushReturnAddress();
@@ -2961,7 +2977,7 @@ JitCode* JitRealm::generateRegExpSearcherStub(JSContext* cx) {
   int32_t inputOutputDataStartOffset = 2 * sizeof(void*);
 
   Label notFound, oolEntry;
-  if (!PrepareAndExecuteRegExp(cx, masm, regexp, input, lastIndex, temp1, temp2,
+  if (!PrepareAndExecuteRegExp(masm, regexp, input, lastIndex, temp1, temp2,
                                temp3, inputOutputDataStartOffset,
                                initialStringHeap, &notFound, &oolEntry)) {
     return nullptr;
@@ -3098,9 +3114,9 @@ void CodeGenerator::visitRegExpSearcher(LRegExpSearcher* lir) {
   OutOfLineRegExpSearcher* ool = new (alloc()) OutOfLineRegExpSearcher(lir);
   addOutOfLineCode(ool, lir->mir());
 
-  const JitRealm* jitRealm = gen->realm->jitRealm();
+  const JitZone* jitZone = gen->realm->zone()->jitZone();
   JitCode* regExpSearcherStub =
-      jitRealm->regExpSearcherStubNoBarrier(&realmStubsToReadBarrier_);
+      jitZone->regExpSearcherStubNoBarrier(&zoneStubsToReadBarrier_);
   masm.call(regExpSearcherStub);
   masm.branch32(Assembler::Equal, ReturnReg, Imm32(RegExpSearcherResultFailed),
                 ool->entry());
@@ -3117,7 +3133,7 @@ void CodeGenerator::visitRegExpSearcherLastLimit(
   masm.loadAndClearRegExpSearcherLastLimit(result, scratch);
 }
 
-JitCode* JitRealm::generateRegExpExecTestStub(JSContext* cx) {
+JitCode* JitZone::generateRegExpExecTestStub(JSContext* cx) {
   JitSpew(JitSpew_Codegen, "# Emitting RegExpExecTest stub");
 
   Register regexp = RegExpExecTestRegExpReg;
@@ -3127,7 +3143,7 @@ JitCode* JitRealm::generateRegExpExecTestStub(JSContext* cx) {
   TempAllocator temp(&cx->tempLifoAlloc());
   JitContext jcx(cx);
   StackMacroAssembler masm(cx, temp);
-  AutoCreatedBy acb(masm, "JitRealm::generateRegExpExecTestStub");
+  AutoCreatedBy acb(masm, "JitZone::generateRegExpExecTestStub");
 
 #ifdef JS_USE_LINK_REGISTER
   masm.pushReturnAddress();
@@ -3171,7 +3187,7 @@ JitCode* JitRealm::generateRegExpExecTestStub(JSContext* cx) {
   static_assert(inputOutputDataStartOffset >= -256);
 
   Label notFound, oolEntry;
-  if (!PrepareAndExecuteRegExp(cx, masm, regexp, input, lastIndex, temp1, temp2,
+  if (!PrepareAndExecuteRegExp(masm, regexp, input, lastIndex, temp1, temp2,
                                temp3, inputOutputDataStartOffset,
                                initialStringHeap, &notFound, &oolEntry)) {
     return nullptr;
@@ -3271,9 +3287,9 @@ void CodeGenerator::visitRegExpExecTest(LRegExpExecTest* lir) {
   auto* ool = new (alloc()) OutOfLineRegExpExecTest(lir);
   addOutOfLineCode(ool, lir->mir());
 
-  const JitRealm* jitRealm = gen->realm->jitRealm();
+  const JitZone* jitZone = gen->realm->zone()->jitZone();
   JitCode* regExpExecTestStub =
-      jitRealm->regExpExecTestStubNoBarrier(&realmStubsToReadBarrier_);
+      jitZone->regExpExecTestStubNoBarrier(&zoneStubsToReadBarrier_);
   masm.call(regExpExecTestStub);
 
   masm.branch32(Assembler::Equal, ReturnReg, Imm32(RegExpExecTestResultFailed),
@@ -3334,7 +3350,10 @@ void CodeGenerator::visitRegExpPrototypeOptimizable(
       new (alloc()) OutOfLineRegExpPrototypeOptimizable(ins);
   addOutOfLineCode(ool, ins->mir());
 
-  masm.branchIfNotRegExpPrototypeOptimizable(object, temp, ool->entry());
+  const GlobalObject* global = gen->realm->maybeGlobal();
+  MOZ_ASSERT(global);
+  masm.branchIfNotRegExpPrototypeOptimizable(object, temp, global,
+                                             ool->entry());
   masm.move32(Imm32(0x1), output);
 
   masm.bind(ool->rejoin());
@@ -3385,7 +3404,9 @@ void CodeGenerator::visitRegExpInstanceOptimizable(
       new (alloc()) OutOfLineRegExpInstanceOptimizable(ins);
   addOutOfLineCode(ool, ins->mir());
 
-  masm.branchIfNotRegExpInstanceOptimizable(object, temp, ool->entry());
+  const GlobalObject* global = gen->realm->maybeGlobal();
+  MOZ_ASSERT(global);
+  masm.branchIfNotRegExpInstanceOptimizable(object, temp, global, ool->entry());
   masm.move32(Imm32(0x1), output);
 
   masm.bind(ool->rejoin());
@@ -7902,8 +7923,8 @@ void CodeGenerator::visitNewArrayObject(LNewArrayObject* lir) {
 
   masm.movePtr(ImmPtr(shape), shapeReg);
   masm.createArrayWithFixedElements(
-      objReg, shapeReg, temp0Reg, arrayLength, arrayCapacity, allocKind,
-      mir->initialHeap(), ool->entry(),
+      objReg, shapeReg, temp0Reg, InvalidReg, arrayLength, arrayCapacity, 0, 0,
+      allocKind, mir->initialHeap(), ool->entry(),
       AllocSiteInput(gc::CatchAllAllocSite::Optimized));
   masm.bind(ool->rejoin());
 }
@@ -11368,9 +11389,9 @@ void CodeGenerator::emitConcat(LInstruction* lir, Register lhs, Register rhs,
       lir, ArgList(lhs, rhs, static_cast<Imm32>(int32_t(gc::Heap::Default))),
       StoreRegisterTo(output));
 
-  const JitRealm* jitRealm = gen->realm->jitRealm();
+  const JitZone* jitZone = gen->realm->zone()->jitZone();
   JitCode* stringConcatStub =
-      jitRealm->stringConcatStubNoBarrier(&realmStubsToReadBarrier_);
+      jitZone->stringConcatStubNoBarrier(&zoneStubsToReadBarrier_);
   masm.call(stringConcatStub);
   masm.branchTestPtr(Assembler::Zero, output, output, ool->entry());
 
@@ -11700,13 +11721,13 @@ void CodeGenerator::visitSubstr(LSubstr* lir) {
   masm.bind(done);
 }
 
-JitCode* JitRealm::generateStringConcatStub(JSContext* cx) {
+JitCode* JitZone::generateStringConcatStub(JSContext* cx) {
   JitSpew(JitSpew_Codegen, "# Emitting StringConcat stub");
 
   TempAllocator temp(&cx->tempLifoAlloc());
   JitContext jcx(cx);
   StackMacroAssembler masm(cx, temp);
-  AutoCreatedBy acb(masm, "JitRealm::generateStringConcatStub");
+  AutoCreatedBy acb(masm, "JitZone::generateStringConcatStub");
 
   Register lhs = CallTempReg0;
   Register rhs = CallTempReg1;
@@ -13752,9 +13773,9 @@ void CodeGenerator::visitRest(LRest* lir) {
 
     Label joinAlloc, failAlloc;
     masm.movePtr(ImmGCPtr(shape), temp0);
-    masm.createArrayWithFixedElements(temp2, temp0, temp1, arrayLength,
-                                      arrayCapacity, allocKind,
-                                      gc::Heap::Default, &failAlloc);
+    masm.createArrayWithFixedElements(temp2, temp0, temp1, InvalidReg,
+                                      arrayLength, arrayCapacity, 0, 0,
+                                      allocKind, gc::Heap::Default, &failAlloc);
     masm.jump(&joinAlloc);
     {
       masm.bind(&failAlloc);
@@ -14177,8 +14198,8 @@ bool CodeGenerator::link(JSContext* cx, const WarpSnapshot* snapshot) {
 
   // Perform any read barriers which were skipped while compiling the
   // script, which may have happened off-thread.
-  const JitRealm* jr = gen->realm->jitRealm();
-  jr->performStubReadBarriers(realmStubsToReadBarrier_);
+  JitZone* jitZone = cx->zone()->jitZone();
+  jitZone->performStubReadBarriers(zoneStubsToReadBarrier_);
 
   if (scriptCounts_ && !script->hasScriptCounts() &&
       !script->initScriptCounts(cx)) {
@@ -14187,7 +14208,6 @@ bool CodeGenerator::link(JSContext* cx, const WarpSnapshot* snapshot) {
 
   IonCompilationId compilationId =
       cx->runtime()->jitRuntime()->nextCompilationId();
-  JitZone* jitZone = cx->zone()->jitZone();
   jitZone->currentCompilationIdRef().emplace(compilationId);
   auto resetCurrentId = mozilla::MakeScopeExit(
       [jitZone] { jitZone->currentCompilationIdRef().reset(); });

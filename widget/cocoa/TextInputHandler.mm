@@ -19,7 +19,6 @@
 #include "mozilla/ToString.h"
 
 #include "nsChildView.h"
-#include "nsCocoaFeatures.h"
 #include "nsObjCExceptions.h"
 #include "nsBidiUtils.h"
 #include "nsToolkit.h"
@@ -704,6 +703,9 @@ void TISInputSourceWrapper::InitByLayoutID(SInt32 aLayoutID, bool aOverrideKeybo
       break;
     case 12:
       InitByInputSourceID("com.apple.keylayout.Spanish");
+      break;
+    case 13:
+      InitByInputSourceID("com.apple.keylayout.French-PC");
       break;
     default:
       Clear();
@@ -4678,7 +4680,7 @@ bool IMEInputHandler::OnHandleEvent(NSEvent* aEvent) {
   }
 
   bool allowConsumeEvent = true;
-  if (nsCocoaFeatures::OnCatalinaOrLater() && !IsIMEComposing()) {
+  if (!IsIMEComposing()) {
     // Hack for bug of Korean IMEs on Catalina (10.15).
     // If we are inactivated during composition, active Korean IME keeps
     // consuming all mousedown events of any mouse buttons.  So, we should

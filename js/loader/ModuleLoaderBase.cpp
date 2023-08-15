@@ -14,6 +14,7 @@
 #include "js/Array.h"  // JS::GetArrayLength
 #include "js/CompilationAndEvaluation.h"
 #include "js/ContextOptions.h"        // JS::ContextOptionsRef
+#include "js/ErrorReport.h"           // JSErrorBase
 #include "js/friend/ErrorMessages.h"  // js::GetErrorMessage, JSMSG_*
 #include "js/Modules.h"  // JS::FinishDynamicModuleImport, JS::{G,S}etModuleResolveHook, JS::Get{ModulePrivate,ModuleScript,RequestedModule{s,Specifier,SourcePos}}, JS::SetModule{DynamicImport,Metadata}Hook
 #include "js/OffThreadScriptCompilation.h"
@@ -723,8 +724,8 @@ nsresult ModuleLoaderBase::HandleResolveFailure(
   }
 
   if (!JS::CreateError(aCx, JSEXN_TYPEERR, nullptr, filename, aLineNumber,
-                       aColumnNumber, nullptr, string, JS::NothingHandleValue,
-                       aErrorOut)) {
+                       JSErrorBase::fromZeroOriginToOneOrigin(aColumnNumber),
+                       nullptr, string, JS::NothingHandleValue, aErrorOut)) {
     return NS_ERROR_OUT_OF_MEMORY;
   }
 
@@ -1196,42 +1197,12 @@ nsresult ModuleLoaderBase::InitDebuggerDataForModuleGraph(
 }
 
 void ModuleLoaderBase::ProcessDynamicImport(ModuleLoadRequest* aRequest) {
-  // Instantiate and evaluate the imported module.
-  // See: https://tc39.es/ecma262/#sec-ContinueDynamicImport
-  //
-  // Since this is specced as happening on promise resolution (step 8) this must
-  // at least run as part of a microtask. We don't create the unobservable
-  // promise.
-
-  class DynamicImportMicroTask : public mozilla::MicroTaskRunnable {
-   public:
-    explicit DynamicImportMicroTask(ModuleLoadRequest* aRequest)
-        : MicroTaskRunnable(), mRequest(aRequest) {}
-
-    virtual void Run(mozilla::AutoSlowOperation& aAso) override {
-      mRequest->mLoader->InstantiateAndEvaluateDynamicImport(mRequest);
-      mRequest = nullptr;
-    }
-
-    virtual bool Suppressed() override {
-      return mRequest->mLoader->mGlobalObject->IsInSyncOperation();
-    }
-
-   private:
-    RefPtr<ModuleLoadRequest> mRequest;
-  };
-
-  MOZ_ASSERT(aRequest->mLoader == this);
-
   if (!aRequest->mModuleScript) {
     FinishDynamicImportAndReject(aRequest, NS_ERROR_FAILURE);
     return;
   }
 
-  CycleCollectedJSContext* context = CycleCollectedJSContext::Get();
-  RefPtr<DynamicImportMicroTask> runnable =
-      new DynamicImportMicroTask(aRequest);
-  context->DispatchToMicroTask(do_AddRef(runnable));
+  InstantiateAndEvaluateDynamicImport(aRequest);
 }
 
 void ModuleLoaderBase::InstantiateAndEvaluateDynamicImport(

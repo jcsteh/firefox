@@ -285,6 +285,14 @@ start = "2020-11-03"
 end = "2024-03-31"
 notes = "Maintained by the DevTools team at Mozilla and has no unsafe code."
 
+[[wildcard-audits.nss-gk-api]]
+who = "John M. Schanck <jschanck@mozilla.com>"
+criteria = "safe-to-deploy"
+user-id = 175410 # John Schanck (jschanck)
+start = "2022-11-14"
+end = "2024-06-20"
+notes = "Maintained by the CryptoEng team at Mozilla."
+
 [[wildcard-audits.ohttp]]
 who = "Martin Thomson <mt@lowentropy.net>"
 criteria = "safe-to-deploy"
@@ -2118,6 +2126,11 @@ who = "Teodor Tanasoaia <ttanasoaia@mozilla.com>"
 criteria = "safe-to-deploy"
 delta = "0.24.0 -> 0.25.0"
 
+[[audits.metal]]
+who = "Erich Gubler <egubler@mozilla.com>"
+criteria = "safe-to-deploy"
+delta = "0.25.0 -> 0.26.0"
+
 [[audits.midir]]
 who = "Bobby Holley <bobbyholley@gmail.com>"
 criteria = "safe-to-deploy"
@@ -2233,6 +2246,11 @@ delta = "0.11.0@git:f0edae8ce9e55eeef489fc53b10dc95fb79561cc -> 0.11.0@git:4b796
 who = "Nicolas Silva <nical@fastmail.com>"
 criteria = "safe-to-deploy"
 delta = "0.11.0@git:f59668ccfaf7bdb3a7e43d84363a21c77357b2fe -> 0.12.0@git:b99d58ea435090e561377949f428bce2c18451bb"
+
+[[audits.naga]]
+who = "Erich Gubler <egubler@mozilla.com"
+criteria = "safe-to-deploy"
+delta = "0.12.0@git:409239c0e2313bfd0dc4fd64f8c3021185ccef1b -> 0.13.0@git:bac2d82a430fbfcf100ee22b7c3bc12f3d593079"
 
 [[audits.naga]]
 who = "Nicolas Silva <nical@fastmail.com>"
@@ -3899,6 +3917,11 @@ delta = "0.15.0@git:f3bf0f782e4dfc561d48e758e1f1e04f77860925 -> 0.16.0@git:25cb9
 [[audits.wgpu-core]]
 who = "Erich Gubler <erichdongubler@gmail.com>"
 criteria = "safe-to-deploy"
+delta = "0.16.0@git:1161a22f4fbb4fc204eb06f2ac4243f83e0e980d -> 0.17.0@git:09b010b26af6876ce84991576a168a572172f08d"
+
+[[audits.wgpu-core]]
+who = "Erich Gubler <erichdongubler@gmail.com>"
+criteria = "safe-to-deploy"
 delta = "0.16.0@git:25cb9f61e9a6be572ee42536bbe57aa5f759a700 -> 0.16.0@git:f71a1bc736fde37509262ca03e91d8f56a13aeb5"
 
 [[audits.wgpu-core]]
@@ -3915,6 +3938,11 @@ delta = "0.16.0@git:e4eb5b38ecb5646ec354c16ff1128f7e49c0f020 -> 0.16.0@git:1161a
 who = "Teodor Tanasoaia <ttanasoaia@mozilla.com>"
 criteria = "safe-to-deploy"
 delta = "0.16.0@git:f71a1bc736fde37509262ca03e91d8f56a13aeb5 -> 0.16.0@git:dcad7dfba92dd85c3ca21bb553a61834e01b04f5"
+
+[[audits.wgpu-core]]
+who = "Erich Gubler <erichdongubler@gmail.com>"
+criteria = "safe-to-deploy"
+delta = "0.17.0@git:09b010b26af6876ce84991576a168a572172f08d -> 0.17.0@git:7c6b85756237f77bfe8d6231dfc7a1412ff662b6"
 
 [[audits.wgpu-hal]]
 who = "Dzmitry Malyshau <kvark@fastmail.com>"
@@ -3992,6 +4020,11 @@ delta = "0.15.1@git:f3bf0f782e4dfc561d48e758e1f1e04f77860925 -> 0.16.0@git:25cb9
 [[audits.wgpu-hal]]
 who = "Erich Gubler <erichdongubler@gmail.com>"
 criteria = "safe-to-deploy"
+delta = "0.16.0@git:1161a22f4fbb4fc204eb06f2ac4243f83e0e980d -> 0.17.0@git:09b010b26af6876ce84991576a168a572172f08d"
+
+[[audits.wgpu-hal]]
+who = "Erich Gubler <erichdongubler@gmail.com>"
+criteria = "safe-to-deploy"
 delta = "0.16.0@git:25cb9f61e9a6be572ee42536bbe57aa5f759a700 -> 0.16.0@git:f71a1bc736fde37509262ca03e91d8f56a13aeb5"
 
 [[audits.wgpu-hal]]
@@ -4008,6 +4041,11 @@ delta = "0.16.0@git:e4eb5b38ecb5646ec354c16ff1128f7e49c0f020 -> 0.16.0@git:1161a
 who = "Teodor Tanasoaia <ttanasoaia@mozilla.com>"
 criteria = "safe-to-deploy"
 delta = "0.16.0@git:f71a1bc736fde37509262ca03e91d8f56a13aeb5 -> 0.16.0@git:dcad7dfba92dd85c3ca21bb553a61834e01b04f5"
+
+[[audits.wgpu-hal]]
+who = "Erich Gubler <erichdongubler@gmail.com>"
+criteria = "safe-to-deploy"
+delta = "0.17.0@git:09b010b26af6876ce84991576a168a572172f08d -> 0.17.0@git:7c6b85756237f77bfe8d6231dfc7a1412ff662b6"
 
 [[audits.wgpu-types]]
 who = "Dzmitry Malyshau <kvark@fastmail.com>"
@@ -4085,6 +4123,11 @@ delta = "0.15.0@git:f3bf0f782e4dfc561d48e758e1f1e04f77860925 -> 0.16.0@git:25cb9
 [[audits.wgpu-types]]
 who = "Erich Gubler <erichdongubler@gmail.com>"
 criteria = "safe-to-deploy"
+delta = "0.16.0@git:1161a22f4fbb4fc204eb06f2ac4243f83e0e980d -> 0.17.0@git:09b010b26af6876ce84991576a168a572172f08d"
+
+[[audits.wgpu-types]]
+who = "Erich Gubler <erichdongubler@gmail.com>"
+criteria = "safe-to-deploy"
 delta = "0.16.0@git:25cb9f61e9a6be572ee42536bbe57aa5f759a700 -> 0.16.0@git:f71a1bc736fde37509262ca03e91d8f56a13aeb5"
 
 [[audits.wgpu-types]]
@@ -4101,6 +4144,11 @@ delta = "0.16.0@git:e4eb5b38ecb5646ec354c16ff1128f7e49c0f020 -> 0.16.0@git:1161a
 who = "Teodor Tanasoaia <ttanasoaia@mozilla.com>"
 criteria = "safe-to-deploy"
 delta = "0.16.0@git:f71a1bc736fde37509262ca03e91d8f56a13aeb5 -> 0.16.0@git:dcad7dfba92dd85c3ca21bb553a61834e01b04f5"
+
+[[audits.wgpu-types]]
+who = "Erich Gubler <erichdongubler@gmail.com>"
+criteria = "safe-to-deploy"
+delta = "0.17.0@git:09b010b26af6876ce84991576a168a572172f08d -> 0.17.0@git:7c6b85756237f77bfe8d6231dfc7a1412ff662b6"
 
 [[audits.whatsys]]
 who = "Bobby Holley <bobbyholley@gmail.com>"

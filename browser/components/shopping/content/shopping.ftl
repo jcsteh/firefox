@@ -7,6 +7,7 @@
 ### and strings are likely to change often.
 
 shopping-page-title = { -brand-product-name } Shopping
+
 # Title for page showing where a user can check the
 # review quality of online shopping product reviews
 shopping-main-container-title = Review quality check
@@ -16,6 +17,9 @@ shopping-close-button =
 # sidebar is still loading data.
 shopping-a11y-loading =
   .aria-label = Loading…
+
+more-to-consider-ad-label =
+  .label = More to consider
 
 ## Strings for the letter grade component.
 ## For now, we only support letter grades A, B, C, D and F.
@@ -45,6 +49,10 @@ shopping-message-bar-generic-error-message = Couldn’t load information. Please
 
 shopping-message-bar-warning-not-enough-reviews-title = Not enough reviews yet
 shopping-message-bar-warning-not-enough-reviews-message = When this product has more reviews, we’ll be able to analyze them.
+
+shopping-message-bar-warning-product-not-available-title = Product is not available
+shopping-message-bar-warning-product-not-available-message = If you see that this product is back in stock, report it to us and we’ll work on updating the analysis.
+shopping-message-bar-warning-product-not-available-button = Report this product is back in stock
 
 ## Strings for the product review snippets card
 
@@ -121,3 +129,5 @@ shopping-unanalyzed-product-analyze-link = Analyze reviews
 ## Onboarding message strings.
 
 shopping-onboarding-headline = Shop based on <b>real</b> reviews
+# Future localization note - "Yes, try it" will need to be directly referenced when the button is added to fluent so it maintains parity with this copy
+shopping-onboarding-opt-in-privacy-policy-and-terms-of-use = By selecting “Yes, try it” you agree to the <a data-l10n-name="privacy_policy">privacy policy</a> and <a data-l10n-name="terms_of_use">terms of use</a> of { -fakespot-brand-name }, a { -vendor-short-name } company.

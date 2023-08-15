@@ -225,6 +225,8 @@
 #include "mozilla/dom/StyleSheetApplicableStateChangeEvent.h"
 #include "mozilla/dom/StyleSheetApplicableStateChangeEventBinding.h"
 #include "mozilla/dom/StyleSheetList.h"
+#include "mozilla/dom/StyleSheetRemovedEvent.h"
+#include "mozilla/dom/StyleSheetRemovedEventBinding.h"
 #include "mozilla/dom/TimeoutManager.h"
 #include "mozilla/dom/ToggleEvent.h"
 #include "mozilla/dom/Touch.h"
@@ -1335,9 +1337,6 @@ Document::Document(const char* aContentType)
       mFlushingPendingLinkUpdates(false),
       mMayHaveDOMMutationObservers(false),
       mMayHaveAnimationObservers(false),
-      mHasCSP(false),
-      mHasUnsafeEvalCSP(false),
-      mHasUnsafeInlineCSP(false),
       mHasCSPDeliveredThroughHeader(false),
       mBFCacheDisallowed(false),
       mHasHadDefaultView(false),
@@ -1361,7 +1360,6 @@ Document::Document(const char* aContentType)
       mQuirkSheetAdded(false),
       mContentEditableSheetAdded(false),
       mDesignModeSheetAdded(false),
-      mSSApplicableStateNotificationPending(false),
       mMayHaveTitleElement(false),
       mDOMLoadingSet(false),
       mDOMInteractiveSet(false),
@@ -2297,17 +2295,6 @@ Document::~Document() {
 
     // don't report for about: pages
     if (!IsAboutPage()) {
-      // record CSP telemetry on this document
-      if (mHasCSP) {
-        Accumulate(Telemetry::CSP_DOCUMENTS_COUNT, 1);
-      }
-      if (mHasUnsafeInlineCSP) {
-        Accumulate(Telemetry::CSP_UNSAFE_INLINE_DOCUMENTS_COUNT, 1);
-      }
-      if (mHasUnsafeEvalCSP) {
-        Accumulate(Telemetry::CSP_UNSAFE_EVAL_DOCUMENTS_COUNT, 1);
-      }
-
       if (MOZ_UNLIKELY(mMathMLEnabled)) {
         ScalarAdd(Telemetry::ScalarID::MATHML_DOC_COUNT, 1);
       }
@@ -7427,17 +7414,6 @@ void Document::StyleSheetApplicableStateChanged(StyleSheet& aSheet) {
       RemoveStyleSheetFromStyleSets(aSheet);
     }
   }
-
-  PostStyleSheetApplicableStateChangeEvent(aSheet);
-
-  if (!mSSApplicableStateNotificationPending) {
-    MOZ_RELEASE_ASSERT(NS_IsMainThread());
-    nsCOMPtr<nsIRunnable> notification = NewRunnableMethod(
-        "Document::NotifyStyleSheetApplicableStateChanged", this,
-        &Document::NotifyStyleSheetApplicableStateChanged);
-    mSSApplicableStateNotificationPending =
-        NS_SUCCEEDED(Dispatch(TaskCategory::Other, notification.forget()));
-  }
 }
 
 void Document::PostStyleSheetApplicableStateChangeEvent(StyleSheet& aSheet) {
@@ -7462,14 +7438,24 @@ void Document::PostStyleSheetApplicableStateChangeEvent(StyleSheet& aSheet) {
   asyncDispatcher->PostDOMEvent();
 }
 
-void Document::NotifyStyleSheetApplicableStateChanged() {
-  mSSApplicableStateNotificationPending = false;
-  nsCOMPtr<nsIObserverService> observerService =
-      mozilla::services::GetObserverService();
-  if (observerService) {
-    observerService->NotifyObservers(
-        ToSupports(this), "style-sheet-applicable-state-changed", nullptr);
+void Document::PostStyleSheetRemovedEvent(StyleSheet& aSheet) {
+  if (!StyleSheetChangeEventsEnabled()) {
+    return;
   }
+
+  StyleSheetRemovedEventInit init;
+  init.mBubbles = true;
+  init.mCancelable = false;
+  init.mStylesheet = &aSheet;
+
+  RefPtr<StyleSheetRemovedEvent> event =
+      StyleSheetRemovedEvent::Constructor(this, u"StyleSheetRemoved"_ns, init);
+  event->SetTrusted(true);
+  event->SetTarget(this);
+  RefPtr<AsyncEventDispatcher> asyncDispatcher =
+      new AsyncEventDispatcher(this, event);
+  asyncDispatcher->mOnlyChromeDispatch = ChromeOnlyDispatch::eYes;
+  asyncDispatcher->PostDOMEvent();
 }
 
 static int32_t FindSheet(const nsTArray<RefPtr<StyleSheet>>& aSheets,
@@ -14150,8 +14136,8 @@ void Document::MaybeWarnAboutZoom() {
   if (mHasWarnedAboutZoom) {
     return;
   }
-  const bool usedZoom = Servo_IsPropertyIdRecordedInUseCounter(
-      mStyleUseCounters.get(), eCSSProperty_zoom);
+  const bool usedZoom = Servo_IsUnknownPropertyRecordedInUseCounter(
+      mStyleUseCounters.get(), CountedUnknownProperty::Zoom);
   if (!usedZoom) {
     return;
   }
@@ -14775,7 +14761,7 @@ bool Document::PopFullscreenElement(UpdateViewport aUpdateViewport) {
 
 void Document::SetFullscreenElement(Element& aElement) {
   ElementState statesToAdd = ElementState::FULLSCREEN;
-  if (StaticPrefs::dom_fullscreen_modal() && !IsInChromeDocShell()) {
+  if (!IsInChromeDocShell()) {
     // Don't make the document modal in chrome documents, since we don't want
     // the browser UI like the context menu / etc to be inert.
     statesToAdd |= ElementState::MODAL;
@@ -14927,7 +14913,7 @@ void Document::GetWireframeWithoutFlushing(bool aIncludeNodes,
   }
 
   auto& wireframe = aWireframe.SetValue();
-  wireframe.mCanvasBackground = shell->ComputeCanvasBackground().mColor;
+  wireframe.mCanvasBackground = shell->ComputeCanvasBackground().mViewportColor;
 
   FrameForPointOptions options;
   options.mBits += FrameForPointOption::IgnoreCrossDoc;
@@ -17340,10 +17326,12 @@ Document::CreatePermissionGrantPromise(
                   if (!autoGrant) {
                     p->Resolve(choice, __func__);
                   } else {
+                    // We capture sapr here to prevent it from destructing
+                    // before the callbacks complete.
                     sapr->MaybeDelayAutomaticGrants()->Then(
                         GetCurrentSerialEventTarget(), __func__,
-                        [p, choice] { p->Resolve(choice, __func__); },
-                        [p] { p->Reject(false, __func__); });
+                        [p, sapr, choice] { p->Resolve(choice, __func__); },
+                        [p, sapr] { p->Reject(false, __func__); });
                   }
                   return;
                 }

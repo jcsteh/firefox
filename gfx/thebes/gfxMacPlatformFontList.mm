@@ -292,7 +292,7 @@ void gfxMacPlatformFontList::InitAliasesForSingleFaceList() {
       if (facePtrs[i].IsNull()) {
         continue;
       }
-      auto face = static_cast<const fontlist::Face*>(facePtrs[i].ToPtr(list));
+      auto* face = facePtrs[i].ToPtr<const fontlist::Face>(list);
       if (face->mDescriptor.AsString(list).Equals(aliasName)) {
         // Found it! Create an entry in the Alias table.
         GenerateFontListKey(aliasName, key);
