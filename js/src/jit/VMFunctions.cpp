@@ -28,6 +28,7 @@
 #include "js/friend/WindowProxy.h"    // js::IsWindow
 #include "js/Printf.h"
 #include "js/TraceKind.h"
+#include "proxy/ScriptedProxyHandler.h"
 #include "vm/ArrayObject.h"
 #include "vm/Compartment.h"
 #include "vm/Interpreter.h"
@@ -1635,6 +1636,26 @@ bool GetNativeDataPropertyPureWithCacheLookup(JSContext* cx, JSObject* obj,
   return GetNativeDataPropertyPureImpl(cx, obj, id, entry, vp);
 }
 
+bool CheckProxyGetByValueResult(JSContext* cx, HandleObject obj,
+                                HandleValue idVal, HandleValue value,
+                                MutableHandleValue result) {
+  MOZ_ASSERT(idVal.isString() || idVal.isSymbol());
+  RootedId rootedId(cx);
+  if (!PrimitiveValueToId<CanGC>(cx, idVal, &rootedId)) {
+    return false;
+  }
+
+  auto validation =
+      ScriptedProxyHandler::checkGetTrapResult(cx, obj, rootedId, value);
+  if (validation != ScriptedProxyHandler::GetTrapValidationResult::OK) {
+    ScriptedProxyHandler::reportGetTrapValidationError(cx, rootedId,
+                                                       validation);
+    return false;
+  }
+  result.set(value);
+  return true;
+}
+
 bool GetNativeDataPropertyPure(JSContext* cx, JSObject* obj, PropertyKey id,
                                MegamorphicCacheEntry* entry, Value* vp) {
   AutoUnsafeCallWithABI unsafe;
@@ -1967,7 +1988,7 @@ static bool TryAddOrSetPlainObjectProperty(JSContext* cx,
 
   // Don't support "__proto__". This lets us take advantage of the
   // hasNonWritableOrAccessorPropExclProto optimization below.
-  if (MOZ_UNLIKELY(!obj->isExtensible() || key.isAtom(cx->names().proto))) {
+  if (MOZ_UNLIKELY(!obj->isExtensible() || key.isAtom(cx->names().proto_))) {
     return true;
   }
 

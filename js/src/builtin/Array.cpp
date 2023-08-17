@@ -45,7 +45,6 @@
 #include "vm/StringType.h"
 #include "vm/ToSource.h"  // js::ValueToSource
 #include "vm/TypedArrayObject.h"
-#include "vm/WellKnownAtom.h"  // js_*_str
 #include "vm/WrapperObject.h"
 #ifdef ENABLE_RECORD_TUPLE
 #  include "vm/TupleType.h"
@@ -1033,7 +1032,7 @@ static MOZ_ALWAYS_INLINE bool IsArraySpecies(JSContext* cx,
     return false;
   }
 
-  return IsSelfHostedFunctionWithName(getter, cx->names().ArraySpecies);
+  return IsSelfHostedFunctionWithName(getter, cx->names().dollar_ArraySpecies_);
 }
 
 static bool ArraySpeciesCreate(JSContext* cx, HandleObject origArray,
@@ -1266,7 +1265,7 @@ bool js::array_join(JSContext* cx, unsigned argc, Value* vp) {
   }
 
   if (detector.foundCycle()) {
-    args.rval().setString(cx->names().empty);
+    args.rval().setString(cx->names().empty_);
     return true;
   }
 
@@ -1288,7 +1287,7 @@ bool js::array_join(JSContext* cx, unsigned argc, Value* vp) {
       return false;
     }
   } else {
-    sepstr = cx->names().comma;
+    sepstr = cx->names().comma_;
   }
 
   // Steps 5-8 (When the length is zero, directly return the empty string).
@@ -1393,7 +1392,7 @@ static bool array_toLocaleString(JSContext* cx, unsigned argc, Value* vp) {
 
   // Avoid calling into self-hosted code if the array is empty.
   if (obj->is<ArrayObject>() && obj->as<ArrayObject>().length() == 0) {
-    args.rval().setString(cx->names().empty);
+    args.rval().setString(cx->names().empty_);
     return true;
   }
 
@@ -1403,7 +1402,7 @@ static bool array_toLocaleString(JSContext* cx, unsigned argc, Value* vp) {
   }
 
   if (detector.foundCycle()) {
-    args.rval().setString(cx->names().empty);
+    args.rval().setString(cx->names().empty_);
     return true;
   }
 
@@ -4841,9 +4840,9 @@ static bool array_concat(JSContext* cx, unsigned argc, Value* vp) {
 }
 
 static const JSFunctionSpec array_methods[] = {
-    JS_FN(js_toSource_str, array_toSource, 0, 0),
-    JS_SELF_HOSTED_FN(js_toString_str, "ArrayToString", 0, 0),
-    JS_FN(js_toLocaleString_str, array_toLocaleString, 0, 0),
+    JS_FN("toSource", array_toSource, 0, 0),
+    JS_SELF_HOSTED_FN("toString", "ArrayToString", 0, 0),
+    JS_FN("toLocaleString", array_toLocaleString, 0, 0),
 
     /* Perl-ish methods. */
     JS_INLINABLE_FN("join", array_join, 1, 0, ArrayJoin),
@@ -5376,7 +5375,8 @@ void js::ArraySpeciesLookup::initialize(JSContext* cx) {
     return;
   }
   JSFunction* speciesFun = &speciesGetter->as<JSFunction>();
-  if (!IsSelfHostedFunctionWithName(speciesFun, cx->names().ArraySpecies)) {
+  if (!IsSelfHostedFunctionWithName(speciesFun,
+                                    cx->names().dollar_ArraySpecies_)) {
     return;
   }
 

@@ -54,6 +54,15 @@ shopping-message-bar-warning-product-not-available-title = Product is not availa
 shopping-message-bar-warning-product-not-available-message = If you see that this product is back in stock, report it to us and we’ll work on updating the analysis.
 shopping-message-bar-warning-product-not-available-button = Report this product is back in stock
 
+shopping-message-bar-warning-product-not-available-reported-title = Analysis coming soon
+shopping-message-bar-warning-product-not-available-reported-message = An updated analysis should be ready within 24 hours. Please check back.
+
+shopping-message-bar-warning-offline-title = No network connection
+shopping-message-bar-warning-offline-message = Check your network connection. Then, try reloading the page.
+
+shopping-message-bar-analysis-in-progress-title = Analysis coming soon
+shopping-message-bar-analysis-in-progress-message = When it’s done, we’ll automatically show the updated info here.
+
 ## Strings for the product review snippets card
 
 shopping-highlights-label =
@@ -64,6 +73,11 @@ shopping-highlight-quality = Quality
 shopping-highlight-shipping = Shipping
 shopping-highlight-competitiveness = Competitiveness
 shopping-highlight-packaging = Packaging
+
+## Strings for show more card
+
+shopping-show-more-button = Show more
+shopping-show-less-button = Show less
 
 ## Strings for the settings card
 

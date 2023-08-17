@@ -25,7 +25,8 @@
 #include "debugger/NoExecute.h"  // for LeaveDebuggeeNoExecute
 #include "debugger/Script.h"     // for DebuggerScript
 #include "debugger/Source.h"     // for DebuggerSource
-#include "gc/Tracer.h"  // for TraceManuallyBarrieredCrossCompartmentEdge
+#include "gc/Tracer.h"        // for TraceManuallyBarrieredCrossCompartmentEdge
+#include "js/ColumnNumber.h"  // JS::ColumnNumberZeroOrigin
 #include "js/CompilationAndEvaluation.h"  //  for Compile
 #include "js/Conversions.h"               // for ToObject
 #include "js/experimental/JitInfo.h"      // for JSJitInfo
@@ -68,7 +69,6 @@
 #include "vm/Shape.h"                    // for Shape
 #include "vm/Stack.h"                    // for InvokeArgs
 #include "vm/StringType.h"               // for JSAtom, PropertyName
-#include "vm/WellKnownAtom.h"            // for js_apply_str
 #include "vm/WrapperObject.h"            // for JSObject::is, WrapperObject
 
 #include "gc/StableCellHasher-inl.h"
@@ -988,7 +988,7 @@ bool DebuggerObject::CallData::applyMethod() {
   if (args.length() >= 2 && !args[1].isNullOrUndefined()) {
     if (!args[1].isObject()) {
       JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr,
-                                JSMSG_BAD_APPLY_ARGS, js_apply_str);
+                                JSMSG_BAD_APPLY_ARGS, "apply");
       return false;
     }
 
@@ -1261,7 +1261,7 @@ bool DebuggerObject::CallData::createSource() {
 
   JS::CompileOptions compileOptions(cx);
   compileOptions.lineno = startLine;
-  compileOptions.column = startColumn;
+  compileOptions.column = JS::ColumnNumberZeroOrigin(startColumn);
 
   if (!JS::StringHasLatin1Chars(url)) {
     JS_ReportErrorASCII(cx, "URL must be a narrow string");
@@ -1926,7 +1926,7 @@ bool DebuggerObject::getErrorColumnNumber(JSContext* cx,
     return true;
   }
 
-  result.setNumber(report->column);
+  result.setNumber(report->column.oneOriginValue());
   return true;
 }
 

@@ -762,6 +762,7 @@ let JSWINDOWACTORS = {
       esModuleURI: "resource:///actors/ShoppingSidebarChild.sys.mjs",
       events: {
         ContentReady: { wantUntrusted: true },
+        PolledRequestMade: { wantUntrusted: true },
         // This is added so the actor instantiates immediately and makes
         // methods available to the page js on load.
         DOMDocElementInserted: {},
@@ -2809,6 +2810,18 @@ BrowserGlue.prototype = {
         name: "initializeFOG",
         task: () => {
           Services.fog.initializeFOG();
+
+          // Register Glean to listen for experiment updates releated to the
+          // "gleanInternalSdk" feature defined in the t/c/nimbus/FeatureManifest.yaml
+          // This feature is intended for internal Glean use only. For features wishing
+          // to set a remote metric configuration, please use the "glean" feature for
+          // the purpose of setting the data-control-plane features via Server Knobs.
+          lazy.NimbusFeatures.gleanInternalSdk.onUpdate(() => {
+            let cfg = lazy.NimbusFeatures.gleanInternalSdk.getVariable(
+              "gleanMetricConfiguration"
+            );
+            Services.fog.setMetricsFeatureConfig(JSON.stringify(cfg));
+          });
 
           // Register Glean to listen for experiment updates releated to the
           // "glean" feature defined in the t/c/nimbus/FeatureManifest.yaml

@@ -4,14 +4,15 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#include "TrackBuffersManager.h"
 #include "ContainerParser.h"
+#include "MP4Demuxer.h"
 #include "MediaInfo.h"
 #include "MediaSourceDemuxer.h"
 #include "MediaSourceUtils.h"
 #include "SourceBuffer.h"
 #include "SourceBufferResource.h"
 #include "SourceBufferTask.h"
+#include "TrackBuffersManager.h"
 #include "WebMDemuxer.h"
 #include "mozilla/ErrorResult.h"
 #include "mozilla/Preferences.h"
@@ -19,10 +20,6 @@
 #include "mozilla/ProfilerMarkers.h"
 #include "mozilla/StaticPrefs_media.h"
 #include "nsMimeTypes.h"
-
-#ifdef MOZ_FMP4
-#  include "MP4Demuxer.h"
-#endif
 
 #include <limits>
 
@@ -1047,14 +1044,12 @@ void TrackBuffersManager::CreateDemuxerforMIMEType() {
     return;
   }
 
-#ifdef MOZ_FMP4
   if (mType.Type() == MEDIAMIMETYPE(VIDEO_MP4) ||
       mType.Type() == MEDIAMIMETYPE(AUDIO_MP4)) {
     mInputDemuxer = new MP4Demuxer(mCurrentInputBuffer);
     DDLINKCHILD("demuxer", mInputDemuxer.get());
     return;
   }
-#endif
   NS_WARNING("Not supported (yet)");
 }
 
@@ -2508,14 +2503,40 @@ uint32_t TrackBuffersManager::RemoveFrames(const TimeIntervals& aIntervals,
       DumpTimeRanges(aTrackData.mSanitizedBufferedRanges).get());
 
   // If all frames are removed, both buffer and buffered range should be empty.
-  MOZ_DIAGNOSTIC_ASSERT_IF(data.IsEmpty(),
-                           aTrackData.mBufferedRanges.IsEmpty());
-  TimeUnit duration = TimeUnit::Zero(aTrackData.mHighestStartTimestamp);
-  for (const auto& sample : data) {
-    duration += sample->mDuration;
+  if (data.IsEmpty()) {
+    MOZ_ASSERT(aTrackData.mBufferedRanges.IsEmpty());
+    // We still can't figure out why above assertion would fail, so we keep it
+    // on debug build, and do a workaround for other builds to ensure that
+    // buffered range should match the data.
+    if (!aTrackData.mBufferedRanges.IsEmpty()) {
+      NS_WARNING(
+          nsPrintfCString("Empty data but has non-empty buffered range %s ?!",
+                          DumpTimeRanges(aTrackData.mBufferedRanges).get())
+              .get());
+      aTrackData.mBufferedRanges.Clear();
+    }
   }
-  MOZ_DIAGNOSTIC_ASSERT_IF(aTrackData.mBufferedRanges.IsEmpty(),
-                           duration.IsZero());
+  if (aTrackData.mBufferedRanges.IsEmpty()) {
+    TimeIntervals sampleIntervals;
+    for (const auto& sample : data) {
+      sampleIntervals += TimeInterval(sample->mTime, sample->GetEndTime());
+    }
+    MOZ_ASSERT(sampleIntervals.IsEmpty());
+    // We still can't figure out why above assertion would fail, so we keep it
+    // on debug build, and do a workaround for other builds to ensure that
+    // buffered range should match the data.
+    if (!sampleIntervals.IsEmpty()) {
+      NS_WARNING(
+          nsPrintfCString(
+              "Empty buffer range but has non-empty sample intervals %s ?!",
+              DumpTimeRanges(sampleIntervals).get())
+              .get());
+      aTrackData.mBufferedRanges += sampleIntervals;
+      TimeIntervals range(sampleIntervals);
+      range.SetFuzz(aTrackData.mLongestFrameDuration / 2);
+      aTrackData.mSanitizedBufferedRanges += range;
+    }
+  }
 
   return firstRemovedIndex.ref();
 }

@@ -3644,11 +3644,11 @@ void frontend::DumpTaggedParserAtomIndex(js::JSONPrinter& json,
     json.property("tag", "WellKnown");
     auto index = taggedIndex.toWellKnownAtomId();
     switch (index) {
-      case WellKnownAtomId::empty:
+      case WellKnownAtomId::empty_:
         json.property("atom", "");
         break;
 
-#  define CASE_(_, name, _2) case WellKnownAtomId::name:
+#  define CASE_(name, _) case WellKnownAtomId::name:
         FOR_EACH_NONTINY_COMMON_PROPERTYNAME(CASE_)
 #  undef CASE_
 
@@ -3722,11 +3722,11 @@ void frontend::DumpTaggedParserAtomIndexNoQuote(
   if (taggedIndex.isWellKnownAtomId()) {
     auto index = taggedIndex.toWellKnownAtomId();
     switch (index) {
-      case WellKnownAtomId::empty:
+      case WellKnownAtomId::empty_:
         out.put("#<zero-length name>");
         break;
 
-#  define CASE_(_, name, _2) case WellKnownAtomId::name:
+#  define CASE_(name, _) case WellKnownAtomId::name:
         FOR_EACH_NONTINY_COMMON_PROPERTYNAME(CASE_)
 #  undef CASE_
 
@@ -4421,7 +4421,7 @@ void ScriptStencilExtra::dumpFields(js::JSONPrinter& json) const {
   json.property("toStringStart", extent.toStringStart);
   json.property("toStringEnd", extent.toStringEnd);
   json.property("lineno", extent.lineno);
-  json.property("column", extent.column);
+  json.property("column", extent.column.zeroOriginValue());
   json.endObject();
 
   json.property("memberInitializers", memberInitializers_);
@@ -4584,7 +4584,7 @@ static void DumpInputScriptFields(js::JSONPrinter& json,
     json.property("toStringStart", extent.toStringStart);
     json.property("toStringEnd", extent.toStringEnd);
     json.property("lineno", extent.lineno);
-    json.property("column", extent.column);
+    json.property("column", extent.column.zeroOriginValue());
   }
   json.endObject();
 

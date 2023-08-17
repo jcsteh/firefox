@@ -608,11 +608,7 @@
 #    (multiplied then by pixelsPerLineStep which in GNOME-web is 40).
 -   name: apz.gtk.pangesture.delta_mode
     type: uint32_t
-#ifdef NIGHTLY_BUILD
-    value: 2
-#else
     value: 0
-#endif
     mirror: always
 
 -   name: apz.gtk.pangesture.page_delta_mode_multiplier
@@ -1660,11 +1656,6 @@
 # Testing-only pref to cause PBrowser creation for a specific BrowsingContext to
 # fail, to test the errored codepath.
 - name: browser.tabs.remote.testOnly.failPBrowserCreation.enabled
-  type: bool
-  value: false
-  mirror: always
-
-- name: browser.tabs.remote.desktopbehavior
   type: bool
   value: false
   mirror: always
@@ -10525,11 +10516,7 @@
 
 - name: media.mp4.enabled
   type: RelaxedAtomicBool
-#ifdef MOZ_FMP4
   value: true
-#else
-  value: false
-#endif
   mirror: always
 
 - name: media.mp4.sniff_iso_brand
@@ -12439,7 +12426,7 @@
 # When a Http/3 connection failed, whether to retry with a different IP address.
 - name: network.http.http3.retry_different_ip_family
   type: RelaxedAtomicBool
-  value: true
+  value: false
   mirror: always
 
 # This is for testing purpose. When true, nsUDPSocket::SendWithAddress will
@@ -12912,14 +12899,6 @@
 - name: print.cups.monochrome.enabled
   type: RelaxedAtomicBool
   value: true
-  mirror: always
-
-# The maximum amount of time CUPS should spend enumerating print destinations
-# (in milliseconds).
-# The default value chosen here is completely arbitrary.
-- name: print.cups.enum_dests_timeout_ms
-  type: RelaxedAtomicUint32
-  value: 150
   mirror: always
 
 #---------------------------------------------------------------------------
@@ -15381,10 +15360,9 @@
   mirror: always
 
 #ifdef MOZ_WAYLAND
-# Force fractional scaling using wp_viewporter. Valid values: 0.5 - 8
-- name: widget.wayland.fractional_buffer_scale
-  type: float
-  value: 0.0f
+- name: widget.wayland.fractional-scale.enabled
+  type: bool
+  value: false
   mirror: once
 
 # Use opaque region for MozContainer wl_surface
@@ -15623,17 +15601,28 @@
   value: 0.05f
   mirror: always
 
+# When using pixel deltas for pan input, how many pixels do we consider a whole
+# swipe?
+#
 # The values for this pref are derived from trial and error in an effort to
 # match the existing behavior on the respective platforms.
-- name: widget.swipe.whole-page-pixel-size
+- name: widget.swipe.pixel-size
   type: float
-#if defined(XP_WIN)
-  value: 1100.0f
-#elif defined(XP_MACOSX)
+#if defined(XP_MACOSX)
   value: 550.0f
 #else
-  value: 40.0f
+  value: 1100.0f
 #endif
+  mirror: always
+
+# When using page deltas for pan input, how many pages do we consider a whole
+# swipe navigation?
+#
+# This is only relevant for GTK which is as of right now the only platform
+# which supports page-based pan gestures.
+- name: widget.swipe.page-size
+  type: float
+  value: 40.0f
   mirror: always
 
 - name: widget.transparent-windows

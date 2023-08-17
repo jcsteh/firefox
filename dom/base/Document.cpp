@@ -4323,9 +4323,7 @@ void Document::NoteScriptTrackingStatus(const nsACString& aURL,
 
 bool Document::IsScriptTracking(JSContext* aCx) const {
   JS::AutoFilename filename;
-  uint32_t line = 0;
-  uint32_t column = 0;
-  if (!JS::DescribeScriptedCaller(aCx, &filename, &line, &column)) {
+  if (!JS::DescribeScriptedCaller(aCx, &filename)) {
     return false;
   }
   return mTrackingScripts.Contains(nsDependentCString(filename.get()));
@@ -14132,6 +14130,35 @@ void Document::SetDevToolsWatchingDOMMutations(bool aValue) {
   }
 }
 
+void EvaluateMediaQueryLists(nsTArray<RefPtr<MediaQueryList>>& aListsToNotify,
+                             Document& aDocument, bool aRecurse) {
+  if (nsPresContext* pc = aDocument.GetPresContext()) {
+    pc->FlushPendingMediaFeatureValuesChanged();
+  }
+
+  for (MediaQueryList* mql : aDocument.MediaQueryLists()) {
+    if (mql->EvaluateOnRenderingUpdate()) {
+      aListsToNotify.AppendElement(mql);
+    }
+  }
+  if (!aRecurse) {
+    return;
+  }
+  auto recurse = [&](Document& aSubDoc) {
+    EvaluateMediaQueryLists(aListsToNotify, aSubDoc, true);
+    return CallState::Continue;
+  };
+  aDocument.EnumerateSubDocuments(recurse);
+}
+
+void Document::EvaluateMediaQueriesAndReportChanges(bool aRecurse) {
+  AutoTArray<RefPtr<MediaQueryList>, 32> mqls;
+  EvaluateMediaQueryLists(mqls, *this, aRecurse);
+  for (auto& mql : mqls) {
+    mql->FireChangeEvent();
+  }
+}
+
 void Document::MaybeWarnAboutZoom() {
   if (mHasWarnedAboutZoom) {
     return;
@@ -17257,94 +17284,123 @@ Document::CreatePermissionGrantPromise(
 
   return [inner, self, principal, aHasUserInteraction, aTopLevelBaseDomain,
           aFrameOnly]() {
-    // Create the user prompt
     RefPtr<StorageAccessAPIHelper::StorageAccessPermissionGrantPromise::Private>
         p = new StorageAccessAPIHelper::StorageAccessPermissionGrantPromise::
             Private(__func__);
-    RefPtr<StorageAccessPermissionRequest> sapr =
-        StorageAccessPermissionRequest::Create(
-            inner, principal, aTopLevelBaseDomain, aFrameOnly,
-            // Allow
-            [p] {
-              Telemetry::AccumulateCategorical(
-                  Telemetry::LABELS_STORAGE_ACCESS_API_UI::Allow);
-              p->Resolve(StorageAccessAPIHelper::eAllow, __func__);
-            },
-            // Block
-            [p] {
-              Telemetry::AccumulateCategorical(
-                  Telemetry::LABELS_STORAGE_ACCESS_API_UI::Deny);
-              p->Reject(false, __func__);
-            });
 
-    using PromptResult = ContentPermissionRequestBase::PromptResult;
-    PromptResult pr = sapr->CheckPromptPrefs();
+    RefPtr<PWindowGlobalChild::HasStorageAccessPermissionPromise> promise;
+    // Test the permission
+    MOZ_ASSERT(XRE_IsContentProcess());
 
-    if (pr == PromptResult::Pending) {
-      // We're about to show a prompt, record the request attempt
-      Telemetry::AccumulateCategorical(
-          Telemetry::LABELS_STORAGE_ACCESS_API_UI::Request);
-    }
+    WindowGlobalChild* wgc = inner->GetWindowGlobalChild();
+    MOZ_ASSERT(wgc);
 
-    // Try to auto-grant the storage access so the user doesn't see the prompt.
-    self->AutomaticStorageAccessPermissionCanBeGranted(aHasUserInteraction)
-        ->Then(
-            GetCurrentSerialEventTarget(), __func__,
-            // If the autogrant check didn't fail, call this function
-            [p, pr, sapr, inner](
-                const Document::AutomaticStorageAccessPermissionGrantPromise::
-                    ResolveOrRejectValue& aValue) -> void {
-              // Make a copy because we can't modified copy-captured lambda
-              // variables.
-              PromptResult pr2 = pr;
+    promise = wgc->SendHasStorageAccessPermission();
+    MOZ_ASSERT(promise);
+    promise->Then(
+        GetCurrentSerialEventTarget(), __func__,
+        [self, p, inner, principal, aHasUserInteraction, aTopLevelBaseDomain,
+         aFrameOnly](bool aGranted) {
+          if (aGranted) {
+            p->Resolve(true, __func__);
+            return;
+          }
 
-              // If the user didn't already click "allow" and we can autogrant,
-              // do that!
-              bool storageAccessCanBeGrantedAutomatically =
-                  aValue.IsResolve() && aValue.ResolveValue();
-              bool autoGrant = false;
-              if (pr2 == PromptResult::Pending &&
-                  storageAccessCanBeGrantedAutomatically) {
-                pr2 = PromptResult::Granted;
-                autoGrant = true;
+          // Create the user prompt
+          RefPtr<StorageAccessPermissionRequest> sapr =
+              StorageAccessPermissionRequest::Create(
+                  inner, principal, aTopLevelBaseDomain, aFrameOnly,
+                  // Allow
+                  [p] {
+                    Telemetry::AccumulateCategorical(
+                        Telemetry::LABELS_STORAGE_ACCESS_API_UI::Allow);
+                    p->Resolve(StorageAccessAPIHelper::eAllow, __func__);
+                  },
+                  // Block
+                  [p] {
+                    Telemetry::AccumulateCategorical(
+                        Telemetry::LABELS_STORAGE_ACCESS_API_UI::Deny);
+                    p->Reject(false, __func__);
+                  });
 
-                Telemetry::AccumulateCategorical(
-                    Telemetry::LABELS_STORAGE_ACCESS_API_UI::
-                        AllowAutomatically);
-              }
+          using PromptResult = ContentPermissionRequestBase::PromptResult;
+          PromptResult pr = sapr->CheckPromptPrefs();
 
-              // If we can complete the permission request, do so.
-              if (pr2 != PromptResult::Pending) {
-                MOZ_ASSERT_IF(pr2 != PromptResult::Granted,
-                              pr2 == PromptResult::Denied);
-                if (pr2 == PromptResult::Granted) {
-                  StorageAccessAPIHelper::StorageAccessPromptChoices choice =
-                      StorageAccessAPIHelper::eAllow;
-                  if (autoGrant) {
-                    choice = StorageAccessAPIHelper::eAllowAutoGrant;
-                  }
-                  if (!autoGrant) {
-                    p->Resolve(choice, __func__);
-                  } else {
-                    // We capture sapr here to prevent it from destructing
-                    // before the callbacks complete.
-                    sapr->MaybeDelayAutomaticGrants()->Then(
-                        GetCurrentSerialEventTarget(), __func__,
-                        [p, sapr, choice] { p->Resolve(choice, __func__); },
-                        [p, sapr] { p->Reject(false, __func__); });
-                  }
-                  return;
-                }
-                p->Reject(false, __func__);
-                return;
-              }
+          if (pr == PromptResult::Pending) {
+            // We're about to show a prompt, record the request attempt
+            Telemetry::AccumulateCategorical(
+                Telemetry::LABELS_STORAGE_ACCESS_API_UI::Request);
+          }
 
-              // If we get here, the auto-decision failed and we need to
-              // wait for the user prompt to complete.
-              sapr->RequestDelayedTask(
-                  inner->EventTargetFor(TaskCategory::Other),
-                  ContentPermissionRequestBase::DelayedTaskType::Request);
-            });
+          // Try to auto-grant the storage access so the user doesn't see the
+          // prompt.
+          self->AutomaticStorageAccessPermissionCanBeGranted(
+                  aHasUserInteraction)
+              ->Then(
+                  GetCurrentSerialEventTarget(), __func__,
+                  // If the autogrant check didn't fail, call this function
+                  [p, pr, sapr,
+                   inner](const Document::
+                              AutomaticStorageAccessPermissionGrantPromise::
+                                  ResolveOrRejectValue& aValue) -> void {
+                    // Make a copy because we can't modified copy-captured
+                    // lambda variables.
+                    PromptResult pr2 = pr;
+
+                    // If the user didn't already click "allow" and we can
+                    // autogrant, do that!
+                    bool storageAccessCanBeGrantedAutomatically =
+                        aValue.IsResolve() && aValue.ResolveValue();
+                    bool autoGrant = false;
+                    if (pr2 == PromptResult::Pending &&
+                        storageAccessCanBeGrantedAutomatically) {
+                      pr2 = PromptResult::Granted;
+                      autoGrant = true;
+
+                      Telemetry::AccumulateCategorical(
+                          Telemetry::LABELS_STORAGE_ACCESS_API_UI::
+                              AllowAutomatically);
+                    }
+
+                    // If we can complete the permission request, do so.
+                    if (pr2 != PromptResult::Pending) {
+                      MOZ_ASSERT_IF(pr2 != PromptResult::Granted,
+                                    pr2 == PromptResult::Denied);
+                      if (pr2 == PromptResult::Granted) {
+                        StorageAccessAPIHelper::StorageAccessPromptChoices
+                            choice = StorageAccessAPIHelper::eAllow;
+                        if (autoGrant) {
+                          choice = StorageAccessAPIHelper::eAllowAutoGrant;
+                        }
+                        if (!autoGrant) {
+                          p->Resolve(choice, __func__);
+                        } else {
+                          // We capture sapr here to prevent it from destructing
+                          // before the callbacks complete.
+                          sapr->MaybeDelayAutomaticGrants()->Then(
+                              GetCurrentSerialEventTarget(), __func__,
+                              [p, sapr, choice] {
+                                p->Resolve(choice, __func__);
+                              },
+                              [p, sapr] { p->Reject(false, __func__); });
+                        }
+                        return;
+                      }
+                      p->Reject(false, __func__);
+                      return;
+                    }
+
+                    // If we get here, the auto-decision failed and we need to
+                    // wait for the user prompt to complete.
+                    sapr->RequestDelayedTask(
+                        inner->EventTargetFor(TaskCategory::Other),
+                        ContentPermissionRequestBase::DelayedTaskType::Request);
+                  });
+        },
+        [p](mozilla::ipc::ResponseRejectReason aError) {
+          p->Reject(false, __func__);
+          return p;
+        });
 
     return p;
   };
@@ -18297,12 +18353,12 @@ nsICookieJarSettings* Document::CookieJarSettings() {
   return mCookieJarSettings;
 }
 
-bool Document::HasStorageAccessPermissionGranted() {
+bool Document::UsingStorageAccess() {
   // The HasStoragePermission flag in LoadInfo remains fixed when
   // it is set in the parent process, so we need to check the cache
   // to see if the permission is granted afterwards.
   nsPIDOMWindowInner* inner = GetInnerWindow();
-  if (inner && inner->HasStorageAccessPermissionGranted()) {
+  if (inner && inner->UsingStorageAccess()) {
     return true;
   }
 
@@ -18573,19 +18629,48 @@ bool Document::HasThirdPartyChannel() {
   return false;
 }
 
+bool Document::IsContentInaccessibleAboutBlank() const {
+  if (!mDocumentURI || !NS_IsAboutBlank(mDocumentURI)) {
+    return false;
+  }
+  nsIPrincipal* prin = NodePrincipal();
+  if (!prin->GetIsNullPrincipal()) {
+    return false;
+  }
+  nsCOMPtr<nsIPrincipal> prec = prin->GetPrecursorPrincipal();
+  if (prec) {
+    return false;
+  }
+  // FIXME(emilio): This doesn't account for internal about:blank documents we
+  // do on cross-process navigations in iframes. That makes our per-document
+  // telemetry probes not really reliable but doesn't affect the correctness of
+  // our page probes, so it's not too terrible.
+  BrowsingContext* bc = GetBrowsingContext();
+  return bc && bc->IsTop() && bc->Group()->Toplevels().Length() == 1;
+}
+
 bool Document::ShouldIncludeInTelemetry(bool aAllowExtensionURIs) {
-  if (!(IsContentDocument() || IsResourceDoc())) {
+  if (!IsContentDocument() && !IsResourceDoc()) {
     return false;
   }
 
-  if (!aAllowExtensionURIs &&
-      NodePrincipal()->GetIsAddonOrExpandedAddonPrincipal()) {
+  if (IsContentInaccessibleAboutBlank()) {
     return false;
   }
 
-  return !NodePrincipal()->SchemeIs("about") &&
-         !NodePrincipal()->SchemeIs("chrome") &&
-         !NodePrincipal()->SchemeIs("resource");
+  nsIPrincipal* prin = NodePrincipal();
+  if (!aAllowExtensionURIs && prin->GetIsAddonOrExpandedAddonPrincipal()) {
+    return false;
+  }
+
+  // TODO(emilio): Should this use GetIsContentPrincipal() +
+  // GetPrecursorPrincipal() instead (accounting for add-ons separately)?
+  if (prin->IsSystemPrincipal() || prin->SchemeIs("about") ||
+      prin->SchemeIs("chrome") || prin->SchemeIs("resource")) {
+    return false;
+  }
+
+  return true;
 }
 
 void Document::GetConnectedShadowRoots(

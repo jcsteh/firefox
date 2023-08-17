@@ -1424,8 +1424,8 @@ class Document : public nsINode,
   // Returns the cookie jar settings for this and sub contexts.
   nsICookieJarSettings* CookieJarSettings();
 
-  // Returns whether this document has the storage access permission.
-  bool HasStorageAccessPermissionGranted();
+  // Returns whether this document is using unpartitioned cookies
+  bool UsingStorageAccess();
 
   // Returns whether the storage access permission of the document is granted by
   // the allow list.
@@ -3581,6 +3581,9 @@ class Document : public nsINode,
 
   void MaybeWarnAboutZoom();
 
+  // https://drafts.csswg.org/cssom-view/#evaluate-media-queries-and-report-changes
+  void EvaluateMediaQueriesAndReportChanges(bool aRecurse);
+
   // ParentNode
   nsIHTMLCollection* Children();
   uint32_t ChildElementCount();
@@ -4044,6 +4047,10 @@ class Document : public nsINode,
   void SetPrototypeDocument(nsXULPrototypeDocument* aPrototype);
 
   nsIPermissionDelegateHandler* PermDelegateHandler();
+
+  // Returns whether this is a top-level about:blank page without an opener
+  // (and thus not accessible by content).
+  bool IsContentInaccessibleAboutBlank() const;
 
   // CSS prefers-color-scheme media feature for this document.
   enum class IgnoreRFP { No, Yes };

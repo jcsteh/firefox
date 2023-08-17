@@ -12,11 +12,32 @@ class ShoppingMessageBar extends MozLitElement {
     ["generic-error", this.getGenericErrorTemplate()],
     ["not-enough-reviews", this.getNotEnoughReviewsTemplate()],
     ["product-not-available", this.getProductNotAvailableTemplate()],
+    [
+      "product-not-available-reported",
+      this.getProductNotAvailableReportedTemplate(),
+    ],
+    ["offline", this.getOfflineWarningTemplate()],
+    ["analysis-in-progress", this.getAnalysisInProgressTemplate()],
   ]);
 
   static properties = {
     type: { type: String },
   };
+
+  static get queries() {
+    return {
+      reAnalysisLinkEl: "#message-bar-reanalysis-link",
+    };
+  }
+
+  onClickAnalysisLink() {
+    this.dispatchEvent(
+      new CustomEvent("ReAnalysisRequested", {
+        bubbles: true,
+        composed: true,
+      })
+    );
+  }
 
   getStaleWarningTemplate() {
     // TODO: Bug 1843142 - add proper stale analysis link once finalized
@@ -30,9 +51,11 @@ class ShoppingMessageBar extends MozLitElement {
           data-l10n-id="shopping-message-bar-warning-stale-analysis-message"
         ></span>
         <a
+          id="message-bar-reanalysis-link"
           target="_blank"
           data-l10n-id="shopping-message-bar-warning-stale-analysis-link"
           href="#"
+          @click=${this.onClickAnalysisLink}
         ></a>
       </article>
     </message-bar>`;
@@ -78,6 +101,49 @@ class ShoppingMessageBar extends MozLitElement {
           class="small-button"
           data-l10n-id="shopping-message-bar-warning-product-not-available-button"
         ></button>
+      </article>
+    </message-bar>`;
+  }
+
+  getProductNotAvailableReportedTemplate() {
+    return html`<message-bar type="warning">
+      <article id="message-bar-container" aria-labelledby="header">
+        <strong
+          id="header"
+          data-l10n-id="shopping-message-bar-warning-product-not-available-reported-title"
+        ></strong>
+        <span
+          data-l10n-id="shopping-message-bar-warning-product-not-available-reported-message"
+        ></span>
+      </article>
+    </message-bar>`;
+  }
+
+  getAnalysisInProgressTemplate() {
+    // TODO: Bug 1847839 - insert spinner into message-bar
+    return html` <message-bar>
+      <article id="message-bar-container" aria-labelledby="header">
+        <strong
+          id="header"
+          data-l10n-id="shopping-message-bar-analysis-in-progress-title"
+        ></strong>
+        <span
+          data-l10n-id="shopping-message-bar-analysis-in-progress-message"
+        ></span>
+      </article>
+    </message-bar>`;
+  }
+
+  getOfflineWarningTemplate() {
+    return html` <message-bar type="warning">
+      <article id="message-bar-container" aria-labelledby="header">
+        <strong
+          id="header"
+          data-l10n-id="shopping-message-bar-warning-offline-title"
+        ></strong>
+        <span
+          data-l10n-id="shopping-message-bar-warning-offline-message"
+        ></span>
       </article>
     </message-bar>`;
   }

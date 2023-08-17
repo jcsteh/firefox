@@ -1814,6 +1814,11 @@ class MacroAssembler : public MacroAssemblerSpecific {
   void branchIfObjectNotExtensible(Register obj, Register scratch,
                                    Label* label);
 
+  void branchTestObjectNeedsProxyResultValidation(Condition condition,
+                                                  Register obj,
+                                                  Register scratch,
+                                                  Label* label);
+
   inline void branchTestClassIsProxy(bool proxy, Register clasp, Label* label);
 
   inline void branchTestObjectIsProxy(bool proxy, Register object,
@@ -4999,6 +5004,8 @@ class MacroAssembler : public MacroAssemblerSpecific {
 
   void debugAssertObjectHasClass(Register obj, Register scratch,
                                  const JSClass* clasp);
+
+  void debugAssertGCThingIsTenured(Register ptr, Register temp);
 
   void branchArrayIsNotPacked(Register array, Register temp1, Register temp2,
                               Label* label);

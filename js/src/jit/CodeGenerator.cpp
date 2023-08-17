@@ -52,11 +52,13 @@
 #include "jit/SharedICRegisters.h"
 #include "jit/VMFunctions.h"
 #include "jit/WarpSnapshot.h"
+#include "js/ColumnNumber.h"  // JS::LimitedColumnNumberZeroOrigin
 #include "js/experimental/JitInfo.h"  // JSJit{Getter,Setter}CallArgs, JSJitMethodCallArgsTraits, JSJitInfo
 #include "js/friend/DOMProxy.h"  // JS::ExpandoAndGeneration
 #include "js/RegExpFlags.h"      // JS::RegExpFlag
 #include "js/ScalarType.h"       // js::Scalar::Type
 #include "proxy/DOMProxy.h"
+#include "proxy/ScriptedProxyHandler.h"
 #include "util/CheckedArithmetic.h"
 #include "util/Unicode.h"
 #include "vm/ArrayBufferViewObject.h"
@@ -1887,6 +1889,7 @@ static void UpdateRegExpStatics(MacroAssembler& masm, Register regexp,
                           RegExpStatics::offsetOfMatchesInput(),
                           temp1 /* prev */, temp2 /* next */, volatileRegs);
   } else {
+    masm.debugAssertGCThingIsTenured(input, temp1);
     masm.storePtr(input, pendingInputAddress);
     masm.storePtr(input, matchesInputAddress);
   }
@@ -2230,7 +2233,7 @@ void CreateDependentString::generate(MacroAssembler& masm,
 
   // Zero length matches use the empty string.
   masm.branchTest32(Assembler::NonZero, temp1_, temp1_, &nonEmpty);
-  masm.movePtr(ImmGCPtr(names.empty), string_);
+  masm.movePtr(ImmGCPtr(names.empty_), string_);
   masm.jump(&done);
 
   masm.bind(&nonEmpty);
@@ -2411,6 +2414,9 @@ static JitCode* GenerateRegExpMatchStubShared(JSContext* cx,
   } else {
     JitSpew(JitSpew_Codegen, "# Emitting RegExpMatcher stub");
   }
+
+  // |initialStringHeap| could be stale after a GC.
+  JS::AutoCheckCannotGC nogc(cx);
 
   Register regexp = RegExpMatcherRegExpReg;
   Register input = RegExpMatcherStringReg;
@@ -4585,6 +4591,18 @@ void CodeGenerator::visitGuardIsTypedArray(LGuardIsTypedArray* guard) {
   Label bail;
   masm.loadObjClassUnsafe(obj, temp);
   masm.branchIfClassIsNotTypedArray(temp, &bail);
+  bailoutFrom(&bail, guard->snapshot());
+}
+
+void CodeGenerator::visitGuardHasProxyHandler(LGuardHasProxyHandler* guard) {
+  Register obj = ToRegister(guard->input());
+
+  Label bail;
+
+  Address handlerAddr(obj, ProxyObject::offsetOfHandler());
+  masm.branchPtr(Assembler::NotEqual, handlerAddr,
+                 ImmPtr(guard->mir()->handler()), &bail);
+
   bailoutFrom(&bail, guard->snapshot());
 }
 
@@ -7255,22 +7273,18 @@ bool CodeGenerator::generateBody() {
 #ifdef JS_JITSPEW
     const char* filename = nullptr;
     size_t lineNumber = 0;
-    unsigned columnNumber = 0;
+    JS::LimitedColumnNumberZeroOrigin columnNumber;
     if (current->mir()->info().script()) {
       filename = current->mir()->info().script()->filename();
       if (current->mir()->pc()) {
         lineNumber = PCToLineNumber(current->mir()->info().script(),
                                     current->mir()->pc(), &columnNumber);
       }
-    } else {
-#  ifdef DEBUG
-      lineNumber = current->mir()->lineno();
-      columnNumber = current->mir()->columnIndex();
-#  endif
     }
     JitSpew(JitSpew_Codegen, "--------------------------------");
     JitSpew(JitSpew_Codegen, "# block%zu %s:%zu:%u%s:", i,
-            filename ? filename : "?", lineNumber, columnNumber,
+            filename ? filename : "?", lineNumber,
+            columnNumber.zeroOriginValue(),
             current->mir()->isLoopHeader() ? " (loop header)" : "");
 #endif
 
@@ -8547,7 +8561,7 @@ void CodeGenerator::visitFunctionName(LFunctionName* lir) {
   Label bail;
 
   const JSAtomState& names = gen->runtime->names();
-  masm.loadFunctionName(function, output, ImmGCPtr(names.empty), &bail);
+  masm.loadFunctionName(function, output, ImmGCPtr(names.empty_), &bail);
 
   bailoutFrom(&bail, lir->snapshot());
 }
@@ -11601,7 +11615,7 @@ void CodeGenerator::visitSubstr(LSubstr* lir) {
   // Zero length, return emptystring.
   masm.branchTest32(Assembler::NonZero, length, length, &nonZero);
   const JSAtomState& names = gen->runtime->names();
-  masm.movePtr(ImmGCPtr(names.empty), output);
+  masm.movePtr(ImmGCPtr(names.empty_), output);
   masm.jump(done);
 
   // Substring from 0..|str.length|, return str.
@@ -12041,7 +12055,7 @@ void CodeGenerator::visitCharAtMaybeOutOfBounds(LCharAtMaybeOutOfBounds* lir) {
 
   // Return the empty string for out-of-bounds access.
   const JSAtomState& names = gen->runtime->names();
-  masm.movePtr(ImmGCPtr(names.empty), output);
+  masm.movePtr(ImmGCPtr(names.empty_), output);
 
   masm.spectreBoundsCheck32(index, Address(str, JSString::offsetOfLength()),
                             temp0, oolFromCharCode->rejoin());
@@ -13597,7 +13611,7 @@ void CodeGenerator::visitArrayJoin(LArrayJoin* lir) {
     Label notEmpty;
     masm.branch32(Assembler::NotEqual, length, Imm32(0), &notEmpty);
     const JSAtomState& names = gen->runtime->names();
-    masm.movePtr(ImmGCPtr(names.empty), output);
+    masm.movePtr(ImmGCPtr(names.empty_), output);
     masm.jump(&skipCall);
 
     masm.bind(&notEmpty);
@@ -14085,7 +14099,7 @@ bool CodeGenerator::generate() {
   JitSpew(JitSpew_Codegen, "# Emitting code for script %s:%u:%u",
           gen->outerInfo().script()->filename(),
           gen->outerInfo().script()->lineno(),
-          gen->outerInfo().script()->column());
+          gen->outerInfo().script()->column().zeroOriginValue());
 
   // Initialize native code table with an entry to the start of
   // top-level script.
@@ -14534,6 +14548,77 @@ void CodeGenerator::visitMegamorphicSetElement(LMegamorphicSetElement* lir) {
   restoreVolatile(temp0);
 
   masm.bind(&done);
+}
+
+void CodeGenerator::visitLoadScriptedProxyHandler(
+    LLoadScriptedProxyHandler* ins) {
+  const Register obj = ToRegister(ins->getOperand(0));
+  Register output = ToRegister(ins->output());
+
+  masm.loadPtr(Address(obj, ProxyObject::offsetOfReservedSlots()), output);
+  masm.unboxObject(Address(output, js::detail::ProxyReservedSlots::offsetOfSlot(
+                                       ScriptedProxyHandler::HANDLER_EXTRA)),
+                   output);
+}
+
+#ifdef JS_PUNBOX64
+void CodeGenerator::visitCheckScriptedProxyGetResult(
+    LCheckScriptedProxyGetResult* ins) {
+  ValueOperand target = ToValue(ins, LCheckScriptedProxyGetResult::TargetIndex);
+  ValueOperand value = ToValue(ins, LCheckScriptedProxyGetResult::ValueIndex);
+  ValueOperand id = ToValue(ins, LCheckScriptedProxyGetResult::IdIndex);
+  Register scratch = ToRegister(ins->temp0());
+  Register scratch2 = ToRegister(ins->temp1());
+
+  using Fn = bool (*)(JSContext*, HandleObject, HandleValue, HandleValue,
+                      MutableHandleValue);
+  OutOfLineCode* ool = oolCallVM<Fn, CheckProxyGetByValueResult>(
+      ins, ArgList(scratch, id, value), StoreValueTo(value));
+
+  masm.unboxObject(target, scratch);
+  masm.branchTestObjectNeedsProxyResultValidation(Assembler::NonZero, scratch,
+                                                  scratch2, ool->entry());
+  masm.bind(ool->rejoin());
+}
+#endif
+
+void CodeGenerator::visitIdToStringOrSymbol(LIdToStringOrSymbol* ins) {
+  ValueOperand id = ToValue(ins, LIdToStringOrSymbol::IdIndex);
+  ValueOperand output = ToOutValue(ins);
+  Register scratch = ToRegister(ins->temp0());
+
+  masm.moveValue(id, output);
+
+  Label done, callVM;
+  Maybe<Label> bail;
+
+  MDefinition* idDef = ins->mir()->idVal();
+  if (idDef->isBox()) {
+    idDef = idDef->toBox()->input();
+  }
+  if (idDef->type() != MIRType::Int32) {
+    bail.emplace();
+    ScratchTagScope tag(masm, output);
+    masm.splitTagForTest(output, tag);
+    masm.branchTestString(Assembler::Equal, tag, &done);
+    masm.branchTestSymbol(Assembler::Equal, tag, &done);
+    masm.branchTestInt32(Assembler::NotEqual, tag, &*bail);
+  }
+
+  masm.unboxInt32(output, scratch);
+
+  using Fn = JSLinearString* (*)(JSContext*, int);
+  OutOfLineCode* ool = oolCallVM<Fn, Int32ToString<CanGC>>(
+      ins, ArgList(scratch), StoreRegisterTo(output.scratchReg()));
+
+  emitIntToString(scratch, output.scratchReg(), ool->entry());
+
+  masm.bind(ool->rejoin());
+  masm.tagValue(JSVAL_TYPE_STRING, output.scratchReg(), output);
+  masm.bind(&done);
+  if (bail) {
+    bailoutFrom(&*bail, ins->snapshot());
+  }
 }
 
 void CodeGenerator::visitLoadFixedSlotV(LLoadFixedSlotV* ins) {
