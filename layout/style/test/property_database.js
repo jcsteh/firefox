@@ -3773,9 +3773,9 @@ var gCSSProperties = {
     domProp: "transformBox",
     inherited: false,
     type: CSS_TYPE_LONGHAND,
-    initial_values: ["border-box"],
-    other_values: ["fill-box", "view-box"],
-    invalid_values: ["content-box", "padding-box", "stroke-box", "margin-box"],
+    initial_values: ["view-box"],
+    other_values: ["fill-box", "border-box"],
+    invalid_values: ["padding-box", "margin-box"],
   },
   "transform-origin": {
     domProp: "transformOrigin",
@@ -5851,6 +5851,7 @@ var gCSSProperties = {
       "font-synthesis-weight",
       "font-synthesis-style",
       "font-synthesis-small-caps",
+      "font-synthesis-position",
     ],
     applies_to_first_letter: true,
     applies_to_first_line: true,
@@ -5858,24 +5859,37 @@ var gCSSProperties = {
     applies_to_placeholder: true,
     applies_to_cue: true,
     initial_values: [
-      "weight style small-caps",
-      "weight small-caps style",
-      "small-caps weight style",
-      "small-caps style weight",
-      "style weight small-caps",
-      "style small-caps weight",
+      "weight style small-caps position",
+      "weight small-caps style position",
+      "small-caps weight position style",
+      "small-caps style position weight",
+      "style position weight small-caps",
+      "style position small-caps weight",
     ],
     other_values: [
       "none",
       "weight",
       "style",
       "small-caps",
+      "position",
       "weight style",
       "style weight",
       "weight small-caps",
       "small-caps weight",
+      "weight position",
+      "position weight",
       "style small-caps",
       "small-caps style",
+      "style position",
+      "position style",
+      "small-caps position",
+      "position small-caps",
+      "weight style small-caps",
+      "small-caps weight style",
+      "weight style position",
+      "position weight style",
+      "weight small-caps position",
+      "position weight small-caps",
     ],
     invalid_values: [
       "10px",
@@ -5888,6 +5902,8 @@ var gCSSProperties = {
       "style style",
       "small-caps none",
       "small-caps small-caps",
+      "position none",
+      "position position",
     ],
   },
   "font-synthesis-weight": {
@@ -5928,6 +5944,19 @@ var gCSSProperties = {
     initial_values: ["auto"],
     other_values: ["none"],
     invalid_values: ["auto none", "small-caps", "normal", "0"],
+  },
+  "font-synthesis-position": {
+    domProp: "fontSynthesisPosition",
+    inherited: true,
+    type: CSS_TYPE_LONGHAND,
+    applies_to_first_letter: true,
+    applies_to_first_line: true,
+    applies_to_marker: true,
+    applies_to_placeholder: true,
+    applies_to_cue: true,
+    initial_values: ["auto"],
+    other_values: ["none"],
+    invalid_values: ["auto none", "position", "normal", "0"],
   },
   "font-variant": {
     domProp: "fontVariant",
@@ -11965,6 +11994,15 @@ if (IsCSSPropertyPrefEnabled("layout.css.individual-transform.enabled")) {
       "10 calc(1 + 10px)",
     ],
   };
+}
+
+if (
+  IsCSSPropertyPrefEnabled("layout.css.transform-box-content-stroke.enabled")
+) {
+  gCSSProperties["transform-box"]["other_values"].push(
+    "content-box",
+    "stroke-box"
+  );
 }
 
 gCSSProperties["touch-action"] = {

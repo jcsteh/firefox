@@ -6304,8 +6304,10 @@ void Document::ChangeContentEditableCount(Element* aElement, int32_t aChange) {
 
   mContentEditableCount += aChange;
 
-  nsContentUtils::AddScriptRunner(
-      new DeferredContentEditableCountChangeEvent(this, aElement));
+  if (aElement) {
+    nsContentUtils::AddScriptRunner(
+        new DeferredContentEditableCountChangeEvent(this, aElement));
+  }
 }
 
 void Document::DeferredContentEditableCountChange(Element* aElement) {
@@ -14431,13 +14433,22 @@ void Document::SetFullscreenRoot(Document* aRoot) {
   mFullscreenRoot = do_GetWeakReference(aRoot);
 }
 
-void Document::TryCancelDialog() {
-  // Check if the document is blocked by modal dialog
+// https://github.com/whatwg/html/issues/9143
+// We need to consider the precedence between active modal dialog, topmost auto
+// popover and fullscreen element once it's specified.
+void Document::HandleEscKey() {
   for (const nsWeakPtr& weakPtr : Reversed(mTopLayer)) {
     nsCOMPtr<Element> element(do_QueryReferent(weakPtr));
     if (auto* dialog = HTMLDialogElement::FromNodeOrNull(element)) {
       dialog->QueueCancelDialog();
       break;
+    }
+    if (RefPtr<nsGenericHTMLElement> popoverHTMLEl =
+            nsGenericHTMLElement::FromNodeOrNull(element)) {
+      if (element->IsAutoPopover() && element->IsPopoverOpen()) {
+        popoverHTMLEl->HidePopover(IgnoreErrors());
+        break;
+      }
     }
   }
 }
@@ -18753,6 +18764,15 @@ void Document::ClearOOPChildrenLoading() {
   if (!oopChildrenLoading.IsEmpty()) {
     UnblockOnload(false);
   }
+}
+
+bool Document::MayHaveDOMActivateListeners() const {
+  if (nsPIDOMWindowInner* inner = GetInnerWindow()) {
+    return inner->HasDOMActivateEventListeners();
+  }
+
+  // If we can't get information from the window object, default to true.
+  return true;
 }
 
 HighlightRegistry& Document::HighlightRegistry() {

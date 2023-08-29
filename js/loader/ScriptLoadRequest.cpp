@@ -37,11 +37,13 @@ NS_IMPL_CYCLE_COLLECTION(ScriptFetchOptions, mTriggeringPrincipal, mElement)
 
 ScriptFetchOptions::ScriptFetchOptions(
     mozilla::CORSMode aCORSMode, mozilla::dom::ReferrerPolicy aReferrerPolicy,
-    const nsAString& aNonce, const ParserMetadata aParserMetadata,
-    nsIPrincipal* aTriggeringPrincipal, mozilla::dom::Element* aElement)
+    const nsAString& aNonce, mozilla::dom::RequestPriority aFetchPriority,
+    const ParserMetadata aParserMetadata, nsIPrincipal* aTriggeringPrincipal,
+    mozilla::dom::Element* aElement)
     : mCORSMode(aCORSMode),
       mReferrerPolicy(aReferrerPolicy),
       mNonce(aNonce),
+      mFetchPriority(aFetchPriority),
       mParserMetadata(aParserMetadata),
       mTriggeringPrincipal(aTriggeringPrincipal),
       mElement(aElement) {}
@@ -160,20 +162,6 @@ const ModuleLoadRequest* ScriptLoadRequest::AsModuleRequest() const {
 void ScriptLoadRequest::SetBytecode() {
   MOZ_ASSERT(IsUnknownDataType());
   mDataType = DataType::eBytecode;
-}
-
-bool ScriptLoadRequest::IsUTF8ParsingEnabled() {
-  if (HasLoadContext()) {
-    if (mLoadContext->IsWindowContext()) {
-      return mozilla::StaticPrefs::
-          dom_script_loader_external_scripts_utf8_parsing_enabled();
-    }
-    if (mLoadContext->IsWorkerContext()) {
-      return mozilla::StaticPrefs::
-          dom_worker_script_loader_utf8_parsing_enabled();
-    }
-  }
-  return false;
 }
 
 void ScriptLoadRequest::ClearScriptSource() {

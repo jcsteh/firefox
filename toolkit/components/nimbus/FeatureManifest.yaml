@@ -902,6 +902,28 @@ featureCallout:
     path: "browser/components/newtab/content-src/asrouter/schemas/MessagingExperiment.schema.json"
   variables: {}
 
+fullPageTranslation:
+  description: This feature opens a popup panel to offer to translate a page.
+  owner: gtatum@mozilla.com
+  hasExposure: false
+  isEarlyStartup: true
+  variables:
+    boolean:
+      description: Set to true to enable the translations feature
+      type: boolean
+      setPref: browser.translations.enable
+
+fullPageTranslationAutomaticPopup:
+  description: Controls whether the popup automatically shows for translations.
+  owner: gtatum@mozilla.com
+  hasExposure: false
+  isEarlyStartup: true
+  variables:
+    boolean:
+      description: Set to true to automatically popup, and false to only show the button.
+      type: boolean
+      setPref: browser.translations.automaticallyPopup
+
 # fxms-message-* placeholder feature ids
 #
 # https://docs.google.com/spreadsheets/d/119YbeKStLL0Fg2QkK-yN93mrtD1rlneGZGTl_jAwtyw/edit#gid=1903378504
@@ -1728,3 +1750,14 @@ backgroundUpdate:
         directory can be written.
       type: boolean
       fallbackPref: app.update.background.allowUpdatesForUnelevatedInstallations
+
+bookmarks:
+  description: Prefs to control aspects of the bookmarks system.
+  owner: omc@mozilla.com
+  hasExposure: false
+  isEarlyStartup: true
+  variables:
+    enableBookmarksToolbar:
+      type: string
+      setPref: browser.toolbars.bookmarks.visibility
+      description: If the bookmarks toolbar should never, always, or only show on newtab.

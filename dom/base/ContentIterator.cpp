@@ -121,30 +121,6 @@ static bool NodeIsInTraversalRange(nsINode* aNode, bool aIsPreMode,
   return ComparePostMode(aStart, aEnd, *aNode);
 }
 
-// Each concrete class of ContentIteratorBase<RefPtr<nsINode>> may be owned by
-// another class which may be owned by JS.  Therefore, all of them should be in
-// the cycle collection.  However, we cannot make non-refcountable classes only
-// with the macros.  So, we need to make them cycle collectable without the
-// macros.
-template <typename NodeType>
-void ImplCycleCollectionTraverse(nsCycleCollectionTraversalCallback& aCallback,
-                                 ContentIteratorBase<NodeType>& aField,
-                                 const char* aName, uint32_t aFlags /* = 0 */) {
-  ImplCycleCollectionTraverse(aCallback, aField.mCurNode, aName, aFlags);
-  ImplCycleCollectionTraverse(aCallback, aField.mFirst, aName, aFlags);
-  ImplCycleCollectionTraverse(aCallback, aField.mLast, aName, aFlags);
-  ImplCycleCollectionTraverse(aCallback, aField.mClosestCommonInclusiveAncestor,
-                              aName, aFlags);
-}
-
-template <typename NodeType>
-void ImplCycleCollectionUnlink(ContentIteratorBase<NodeType>& aField) {
-  ImplCycleCollectionUnlink(aField.mCurNode);
-  ImplCycleCollectionUnlink(aField.mFirst);
-  ImplCycleCollectionUnlink(aField.mLast);
-  ImplCycleCollectionUnlink(aField.mClosestCommonInclusiveAncestor);
-}
-
 void ImplCycleCollectionTraverse(nsCycleCollectionTraversalCallback& aCallback,
                                  PostContentIterator& aField, const char* aName,
                                  uint32_t aFlags = 0) {
@@ -614,20 +590,13 @@ nsIContent* ContentIteratorBase<NodeType>::GetNextSibling(nsINode* aNode) {
     return nullptr;
   }
 
-  if (aNode->GetNextSibling()) {
-    return aNode->GetNextSibling();
+  if (nsIContent* next = aNode->GetNextSibling()) {
+    return next;
   }
 
   nsINode* parent = aNode->GetParentNode();
   if (NS_WARN_IF(!parent)) {
     return nullptr;
-  }
-
-  // XXX This is a hack to preserve previous behaviour: This should be fixed
-  // in bug 1404916. If we were positioned on anonymous content, move to
-  // the first child of our parent.
-  if (parent->GetLastChild() && parent->GetLastChild() != aNode) {
-    return parent->GetFirstChild();
   }
 
   return ContentIteratorBase::GetNextSibling(parent);
@@ -641,20 +610,13 @@ nsIContent* ContentIteratorBase<NodeType>::GetPrevSibling(nsINode* aNode) {
     return nullptr;
   }
 
-  if (aNode->GetPreviousSibling()) {
-    return aNode->GetPreviousSibling();
+  if (nsIContent* prev = aNode->GetPreviousSibling()) {
+    return prev;
   }
 
   nsINode* parent = aNode->GetParentNode();
   if (NS_WARN_IF(!parent)) {
     return nullptr;
-  }
-
-  // XXX This is a hack to preserve previous behaviour: This should be fixed
-  // in bug 1404916. If we were positioned on anonymous content, move to
-  // the last child of our parent.
-  if (parent->GetFirstChild() && parent->GetFirstChild() != aNode) {
-    return parent->GetLastChild();
   }
 
   return ContentIteratorBase::GetPrevSibling(parent);

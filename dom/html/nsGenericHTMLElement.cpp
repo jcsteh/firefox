@@ -3447,7 +3447,7 @@ void nsGenericHTMLElement::FocusPreviousElementAfterHidingPopover() {
     return;
   }
 
-  // Run the focusing steps for previouslyFocusedElement
+  // Run the focusing steps for previouslyFocusedElement.
   FocusOptions options;
   options.mPreventScroll = true;
   control->Focus(options, CallerType::NonSystem, IgnoreErrors());

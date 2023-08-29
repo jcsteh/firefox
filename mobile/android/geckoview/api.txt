@@ -835,6 +835,7 @@ package org.mozilla.geckoview {
     method public boolean getDoubleTapZoomingEnabled();
     method public boolean getEnterpriseRootsEnabled();
     method @AnyThread @Nullable public ExperimentDelegate getExperimentDelegate();
+    method @Nullable public Boolean getExtensionsProcessEnabled();
     method public boolean getExtensionsWebAPIEnabled();
     method @NonNull public Bundle getExtras();
     method public boolean getFontInflationEnabled();
@@ -861,6 +862,7 @@ package org.mozilla.geckoview {
     method @NonNull public GeckoRuntimeSettings setConsoleOutputEnabled(boolean);
     method @NonNull public GeckoRuntimeSettings setDoubleTapZoomingEnabled(boolean);
     method @NonNull public GeckoRuntimeSettings setEnterpriseRootsEnabled(boolean);
+    method @NonNull public GeckoRuntimeSettings setExtensionsProcessEnabled(boolean);
     method @NonNull public GeckoRuntimeSettings setExtensionsWebAPIEnabled(boolean);
     method @NonNull public GeckoRuntimeSettings setFontInflationEnabled(boolean);
     method @NonNull public GeckoRuntimeSettings setFontSizeFactor(float);
@@ -900,6 +902,7 @@ package org.mozilla.geckoview {
     method @NonNull public GeckoRuntimeSettings.Builder doubleTapZoomingEnabled(boolean);
     method @NonNull public GeckoRuntimeSettings.Builder enterpriseRootsEnabled(boolean);
     method @AnyThread @NonNull public GeckoRuntimeSettings.Builder experimentDelegate(@Nullable ExperimentDelegate);
+    method @NonNull public GeckoRuntimeSettings.Builder extensionsProcessEnabled(boolean);
     method @NonNull public GeckoRuntimeSettings.Builder extensionsWebAPIEnabled(boolean);
     method @NonNull public GeckoRuntimeSettings.Builder extras(@NonNull Bundle);
     method @NonNull public GeckoRuntimeSettings.Builder fontInflation(boolean);
@@ -1637,7 +1640,7 @@ package org.mozilla.geckoview {
     field public final boolean deletedProductReported;
     field @Nullable public final String grade;
     field @Nullable public final GeckoSession.ReviewAnalysis.Highlight highlights;
-    field public final int lastAnalysisTime;
+    field public final long lastAnalysisTime;
     field public final boolean needsAnalysis;
     field @Nullable public final String productId;
   }
@@ -2361,6 +2364,7 @@ package org.mozilla.geckoview {
   public static class WebExtension.InstallException extends Exception {
     ctor protected InstallException();
     field public final int code;
+    field @Nullable public final String extensionName;
   }
 
   @Retention(value=RetentionPolicy.SOURCE) public static interface WebExtension.InstallException.Codes {
@@ -2488,6 +2492,7 @@ package org.mozilla.geckoview {
     method @Nullable @UiThread public WebExtension.Download createDownload(int);
     method @AnyThread @NonNull public GeckoResult<WebExtension> disable(@NonNull WebExtension, int);
     method @AnyThread @NonNull public GeckoResult<WebExtension> enable(@NonNull WebExtension, int);
+    method @AnyThread public void enableExtensionProcessSpawning();
     method @AnyThread @NonNull public GeckoResult<WebExtension> ensureBuiltIn(@NonNull String, @Nullable String);
     method @Nullable @UiThread public WebExtensionController.PromptDelegate getPromptDelegate();
     method @AnyThread @NonNull public GeckoResult<WebExtension> install(@NonNull String);
@@ -2496,6 +2501,7 @@ package org.mozilla.geckoview {
     method @UiThread public void setAddonManagerDelegate(@Nullable WebExtensionController.AddonManagerDelegate);
     method @AnyThread @NonNull public GeckoResult<WebExtension> setAllowedInPrivateBrowsing(@NonNull WebExtension, boolean);
     method @UiThread public void setDebuggerDelegate(@NonNull WebExtensionController.DebuggerDelegate);
+    method @UiThread public void setExtensionProcessDelegate(@Nullable WebExtensionController.ExtensionProcessDelegate);
     method @UiThread public void setPromptDelegate(@Nullable WebExtensionController.PromptDelegate);
     method @AnyThread public void setTabActive(@NonNull GeckoSession, boolean);
     method @AnyThread @NonNull public GeckoResult<Void> uninstall(@NonNull WebExtension);
@@ -2507,6 +2513,7 @@ package org.mozilla.geckoview {
     method @UiThread default public void onDisabling(@NonNull WebExtension);
     method @UiThread default public void onEnabled(@NonNull WebExtension);
     method @UiThread default public void onEnabling(@NonNull WebExtension);
+    method @UiThread default public void onInstallationFailed(@Nullable WebExtension, @NonNull WebExtension.InstallException);
     method @UiThread default public void onInstalled(@NonNull WebExtension);
     method @UiThread default public void onInstalling(@NonNull WebExtension);
     method @UiThread default public void onUninstalled(@NonNull WebExtension);
@@ -2524,6 +2531,10 @@ package org.mozilla.geckoview {
   }
 
   @Retention(value=RetentionPolicy.SOURCE) public static interface WebExtensionController.EnableSources {
+  }
+
+  public static interface WebExtensionController.ExtensionProcessDelegate {
+    method @UiThread default public void onDisabledProcessSpawning();
   }
 
   @UiThread public static interface WebExtensionController.PromptDelegate {

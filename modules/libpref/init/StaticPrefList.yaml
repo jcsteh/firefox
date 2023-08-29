@@ -1834,29 +1834,6 @@
 # Prefs starting with "canvas."
 #---------------------------------------------------------------------------
 
-# Add support for canvas path objects
-- name: canvas.path.enabled
-  type: RelaxedAtomicBool
-  value: true
-  mirror: always
-
-- name: canvas.capturestream.enabled
-  type: bool
-  value: true
-  mirror: always
-
-# Is support for CanvasRenderingContext2D.filter enabled?
-- name: canvas.filters.enabled
-  type: RelaxedAtomicBool
-  value: true
-  mirror: always
-
-# Provide ability to turn on support for canvas focus rings.
-- name: canvas.focusring.enabled
-  type: bool
-  value: true
-  mirror: always
-
 # Is support for CanvasRenderingContext2D's createConicGradient API enabled?
 - name: canvas.createConicGradient.enabled
   type: RelaxedAtomicBool
@@ -2513,6 +2490,29 @@
   value: @IS_NOT_NIGHTLY_BUILD@
   mirror: always
 
+# If this pref is set to true, typing a surrogate pair causes one `keypress`
+# event whose `charCode` stores the unicode code point over 0xFFFF.  This is
+# compatible with Safari and Chrome in non-Windows platforms.
+# Otherwise, typing a surrogate pair causes two `keypress` events.  This is
+# compatible with legacy web apps which does
+# `String.fromCharCode(event.charCode)`.
+- name: dom.event.keypress.dispatch_once_per_surrogate_pair
+  type: bool
+  value: false
+  mirror: always
+
+# This is meaningful only when `dispatch_once_per_surrogate_pair` is false.
+# If this pref is set to true, `.key` of the first `keypress` is set to the
+# high-surrogate and `.key` of the other is set to the low-surrogate.
+# Therefore, setting this exposing ill-formed UTF-16 string with `.key`.
+# (And also `InputEvent.data` if pressed in an editable element.)
+# Otherwise, `.key` of the first `keypress` is set to the surrogate pair, and
+# `.key` of the second `keypress` is set to the empty string.
+- name: dom.event.keypress.key.allow_lone_surrogate
+  type: bool
+  value: @IS_NOT_EARLY_BETA_OR_EARLIER@
+  mirror: always
+
 # Whether wheel event target's should be grouped. When enabled, all wheel
 # events that occur in a given wheel transaction have the same event target.
 - name: dom.event.wheel-event-groups.enabled
@@ -2722,14 +2722,6 @@
   value: false
   mirror: always
 
-# <img loading="lazy">
-#
-# See https://github.com/whatwg/html/pull/3752
-- name: dom.image-lazy-loading.enabled
-  type: RelaxedAtomicBool
-  value: true
-  mirror: always
-
 # The root margin for image lazy loading, defined as four (value, percentage)
 # pairs.
 - name: dom.image-lazy-loading.root-margin.top
@@ -2833,11 +2825,6 @@
 # Enable not moving the cursor to end when a text input or textarea has .value
 # set to the value it already has.  By default, enabled.
 - name: dom.input.skip_cursor_move_for_same_value_set
-  type: bool
-  value: true
-  mirror: always
-
-- name: dom.ipc.cancel_content_js_when_navigating
   type: bool
   value: true
   mirror: always
@@ -3592,14 +3579,6 @@
 - name: dom.script_loader.delazification.min_mem
   type: int32_t
   value: 2
-  mirror: always
-
-# Is support for decoding external (non-inline) classic or module DOM scripts
-# (i.e. anything but workers) as UTF-8, then directly compiling without
-# inflating to UTF-16, enabled?
-- name: dom.script_loader.external_scripts.utf8_parsing.enabled
-  type: bool
-  value: true
   mirror: always
 
 # Enable  speculative off main thread parsing of external scripts as
@@ -4575,12 +4554,6 @@
   value: @IS_NOT_MOBILE@
   mirror: always
 
-# Is the 'assign' API for slot element enabled?
-- name: dom.shadowdom.slot.assign.enabled
-  type: bool
-  value: true
-  mirror: always
-
 # NOTE: This preference is used in unit tests. If it is removed or its default
 # value changes, please update test_sharedMap_static_prefs.js accordingly.
 - name: dom.webcomponents.shadowdom.report_usage
@@ -4705,13 +4678,6 @@
 - name: dom.worker.canceling.timeoutMilliseconds
   type: RelaxedAtomicUint32
   value: 30000    # 30 seconds
-  mirror: always
-
-# Is support for compiling DOM worker scripts directly from UTF-8 (without ever
-# inflating to UTF-16) enabled?
-- name: dom.worker.script_loader.utf8_parsing.enabled
-  type: RelaxedAtomicBool
-  value: true
   mirror: always
 
 - name: dom.worker.use_medium_high_event_queue
@@ -5743,6 +5709,16 @@
   value: false
 #endif
   mirror: always
+
+- name: gfx.canvas.willreadfrequently.enabled
+  type: bool
+#if defined(XP_WIN)
+  value: false
+#else
+  value: true
+#endif
+  mirror: once
+
 
 - name: gfx.color_management.display_profile
   type: DataMutexString
@@ -8143,6 +8119,13 @@
   mirror: always
   rust: true
 
+# Whether content-box and stroke-box are enabled for transform-box.
+- name: layout.css.transform-box-content-stroke.enabled
+  type: RelaxedAtomicBool
+  value: @IS_NIGHTLY_BUILD@
+  mirror: always
+  rust: true
+
 # Whether trigonometric constants and functions are enabled in calc().
 - name: layout.css.trig.enabled
   type: RelaxedAtomicBool
@@ -9682,6 +9665,18 @@
 - name: media.cloneElementVisually.testing
   type: bool
   value: false
+  mirror: always
+
+# Does the GMPlugin process initialize minimal XPCOM
+- name: media.gmp.use-minimal-xpcom
+  type: RelaxedAtomicBool
+  value: false
+  mirror: always
+
+# Does the GMPlugin process initialize minimal XPCOM
+- name: media.gmp.use-native-event-processing
+  type: RelaxedAtomicBool
+  value: true
   mirror: always
 
 #if defined(XP_LINUX) && defined(MOZ_SANDBOX)
@@ -11681,6 +11676,13 @@
   value: false
   mirror: always
 
+# Indicates whether the `fetchpriority` attribute for elements which support it
+# (e.g. `<script>`) is enabled.
+- name: network.fetchpriority.enabled
+  type: bool
+  value: false
+  mirror: always
+
 # Enables `<link rel="preconnect">` tag and `Link: rel=preconnect` response header
 # handling.
 - name: network.preconnect
@@ -12258,6 +12260,12 @@
   value: false
   mirror: always
 
+  # If true, will be more strict with status code parsing
+- name: network.url.strict_data_url_base64_placement
+  type: RelaxedAtomicBool
+  value: true
+  mirror: always
+
 # Force remapping of remote port numbers to allow reaching local testing
 # servers or port forwarders listening on non-standard ports.  Note that
 # this is not changing the origin URL in the addressbar, only internally
@@ -12625,6 +12633,12 @@
 
   # If true, requests will be canceled if any of the response headers values has a NUL character
 - name: network.http.reject_NULs_in_response_header_values
+  type: RelaxedAtomicBool
+  value: true
+  mirror: always
+
+  # If true, will be more strict with status code parsing
+- name: network.http.strict_response_status_line_parsing
   type: RelaxedAtomicBool
   value: true
   mirror: always
@@ -13324,6 +13338,11 @@
 - name: privacy.partition.bloburl_per_agent_cluster
   type: RelaxedAtomicBool
   value: false
+  mirror: always
+
+- name: privacy.partition.bloburl_per_partition_key
+  type: bool
+  value: @IS_NIGHTLY_BUILD@
   mirror: always
 
 - name: privacy.window.name.update.enabled

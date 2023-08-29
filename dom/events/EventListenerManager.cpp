@@ -29,6 +29,7 @@
 #include "mozilla/dom/Event.h"
 #include "mozilla/dom/EventTargetBinding.h"
 #include "mozilla/dom/PopupBlocker.h"
+#include "mozilla/dom/RequestBinding.h"
 #include "mozilla/dom/ScriptLoader.h"
 #include "mozilla/dom/ScriptSettings.h"
 #include "mozilla/dom/TouchEvent.h"
@@ -121,7 +122,8 @@ class ListenerMapEntryComparator {
 uint32_t EventListenerManager::sMainThreadCreatedCount = 0;
 
 EventListenerManagerBase::EventListenerManagerBase()
-    : mMayHavePaintEventListener(false),
+    : mMayHaveDOMActivateEventListener(false),
+      mMayHavePaintEventListener(false),
       mMayHaveMutationListeners(false),
       mMayHaveCapturingListeners(false),
       mMayHaveSystemGroupListeners(false),
@@ -343,6 +345,12 @@ void EventListenerManager::AddEventListenerInternal(
         mMayHavePaintEventListener = true;
         if (nsPIDOMWindowInner* window = GetInnerWindowForTarget()) {
           window->SetHasPaintEventListeners();
+        }
+        break;
+      case eLegacyDOMActivate:
+        mMayHaveDOMActivateEventListener = true;
+        if (nsPIDOMWindowInner* window = GetInnerWindowForTarget()) {
+          window->SetHasDOMActivateEventListeners();
         }
         break;
       case eLegacySubtreeModified:
@@ -1246,7 +1254,8 @@ nsresult EventListenerManager::CompileEventHandlerInternal(
   RefPtr<JS::loader::ScriptFetchOptions> fetchOptions =
       new JS::loader::ScriptFetchOptions(
           CORS_NONE, aElement->OwnerDoc()->GetReferrerPolicy(),
-          /* aNonce = */ u""_ns, JS::loader::ParserMetadata::NotParserInserted,
+          /* aNonce = */ u""_ns, RequestPriority::Auto,
+          JS::loader::ParserMetadata::NotParserInserted,
           aElement->OwnerDoc()->NodePrincipal());
 
   RefPtr<JS::loader::EventScript> eventScript =

@@ -223,10 +223,14 @@ def run_test_iteration(test_status, test_loader, test_source_kwargs, test_source
         if test_type == "testharness":
             tests_to_run[test_type] = []
             for test in test_loader.tests[test_type]:
-                if ((test.testdriver and not executor_cls.supports_testdriver) or
-                        (test.jsshell and not executor_cls.supports_jsshell)):
+                skip_reason = None
+                if test.testdriver and not executor_cls.supports_testdriver:
+                    skip_reason = "Executor does not support testdriver.js"
+                elif test.jsshell and not executor_cls.supports_jsshell:
+                    skip_reason = "Executor does not support jsshell"
+                if skip_reason:
                     logger.test_start(test.id)
-                    logger.test_end(test.id, status="SKIP")
+                    logger.test_end(test.id, status="SKIP", message=skip_reason)
                     test_status.skipped += 1
                 else:
                     tests_to_run[test_type].append(test)
@@ -266,7 +270,9 @@ def run_test_iteration(test_status, test_loader, test_source_kwargs, test_source
                           kwargs["debug_info"],
                           not kwargs["no_capture_stdio"],
                           kwargs["restart_on_new_group"],
-                          recording=recording) as manager_group:
+                          recording=recording,
+                          max_restarts=kwargs["max_restarts"],
+                          ) as manager_group:
             try:
                 handle_interrupt_signals()
                 manager_group.run(tests_to_run)

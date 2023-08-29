@@ -92,7 +92,7 @@ use style::gecko_bindings::structs::{nsINode as RawGeckoNode, Element as RawGeck
 use style::gecko_bindings::sugar::ownership::Strong;
 use style::gecko_bindings::sugar::refptr::RefPtr;
 use style::global_style_data::{
-    GlobalStyleData, StyleThreadPool, GLOBAL_STYLE_DATA, STYLE_THREAD_POOL,
+    GlobalStyleData, PlatformThreadHandle, StyleThreadPool, GLOBAL_STYLE_DATA, STYLE_THREAD_POOL,
 };
 use style::invalidation::element::restyle_hints::RestyleHint;
 use style::invalidation::stylesheets::RuleChangeKind;
@@ -697,7 +697,7 @@ pub extern "C" fn Servo_AnimationValue_Serialize(
             buffer,
             None,
             None, /* No extra custom properties */
-            &data.stylist.device(),
+            &data.stylist,
         );
     debug_assert!(rv.is_ok());
 }
@@ -1561,6 +1561,11 @@ pub unsafe extern "C" fn Servo_StyleSheet_FromUTF8BytesAsync(
 pub unsafe extern "C" fn Servo_ShutdownThreadPool() {
     debug_assert!(is_main_thread() && !is_in_servo_traversal());
     StyleThreadPool::shutdown();
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn Servo_ThreadPool_GetThreadHandles(handles: &mut ThinVec<PlatformThreadHandle>) {
+    StyleThreadPool::get_thread_handles(handles);
 }
 
 #[no_mangle]
@@ -4130,7 +4135,7 @@ fn get_pseudo_style(
     }
 
     Some(style.unwrap_or_else(|| {
-        StyleBuilder::for_inheritance(stylist.device(), Some(styles.primary()), Some(pseudo))
+        StyleBuilder::for_inheritance(stylist.device(), Some(stylist), Some(styles.primary()), Some(pseudo))
             .build()
     }))
 }
@@ -4149,7 +4154,7 @@ pub unsafe extern "C" fn Servo_ComputedValues_Inherit(
     debug_assert!(pseudo.is_anon_box());
 
     let mut style =
-        StyleBuilder::for_inheritance(data.stylist.device(), parent_style_context, Some(&pseudo));
+        StyleBuilder::for_inheritance(data.stylist.device(), Some(&data.stylist), parent_style_context, Some(&pseudo));
 
     if for_text {
         StyleAdjuster::new(&mut style).adjust_for_text();
@@ -4596,7 +4601,7 @@ pub extern "C" fn Servo_DeclarationBlock_SerializeOneValue(
         buffer,
         computed_values,
         custom_properties,
-        &data.stylist.device(),
+        &data.stylist,
     );
     debug_assert!(rv.is_ok());
 }
@@ -5932,7 +5937,7 @@ fn create_context_for_animation<'a>(
     container_size_query: ContainerSizeQuery<'a>,
 ) -> Context<'a> {
     Context::new_for_animation(
-        StyleBuilder::for_animation(per_doc_data.stylist.device(), style, parent_style),
+        StyleBuilder::for_animation(per_doc_data.stylist.device(), Some(&per_doc_data.stylist), style, parent_style),
         for_smil_animation,
         per_doc_data.stylist.quirks_mode(),
         rule_cache_conditions,
