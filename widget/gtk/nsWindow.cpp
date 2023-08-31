@@ -518,7 +518,7 @@ void nsWindow::MaybeDispatchResized() {
                           << mBounds << " size state " << mSizeMode;
     }
 
-    if (mWindowType == WindowType::TopLevel) {
+    if (IsTopLevelWindowType()) {
       UpdateTopLevelOpaqueRegion();
     }
 
@@ -695,7 +695,7 @@ double nsWindow::GetDefaultScaleInternal() { return FractionalScaleFactor(); }
 DesktopToLayoutDeviceScale nsWindow::GetDesktopToDeviceScale() {
 #ifdef MOZ_WAYLAND
   if (GdkIsWaylandDisplay()) {
-    return DesktopToLayoutDeviceScale(GdkCeiledScaleFactor());
+    return DesktopToLayoutDeviceScale(FractionalScaleFactor());
   }
 #endif
 
@@ -1084,8 +1084,7 @@ void nsWindow::Move(double aX, double aY) {
 
   LOG("nsWindow::Move to %d x %d\n", x, y);
 
-  if (mSizeMode != nsSizeMode_Normal && (mWindowType == WindowType::TopLevel ||
-                                         mWindowType == WindowType::Dialog)) {
+  if (mSizeMode != nsSizeMode_Normal && IsTopLevelWindowType()) {
     LOG("  size state is not normal, bailing");
     return;
   }
@@ -1156,7 +1155,7 @@ void nsWindow::RemovePopupFromHierarchyList() {
 bool nsWindow::WaylandPopupRemoveNegativePosition(int* aX, int* aY) {
   // https://gitlab.gnome.org/GNOME/gtk/-/issues/4071 applies to temporary
   // windows only
-  GdkWindow* window = gtk_widget_get_window(mShell);
+  GdkWindow* window = GetToplevelGdkWindow();
   if (!window || gdk_window_get_window_type(window) != GDK_WINDOW_TEMP) {
     return false;
   }
@@ -1670,13 +1669,10 @@ void nsWindow::LogPopupHierarchy() {
 }
 #endif
 
-nsWindow* nsWindow::WaylandPopupGetTopmostWindow() {
-  nsView* view = nsView::GetViewFor(this);
-  if (view) {
-    nsView* parentView = view->GetParent();
-    if (parentView) {
-      nsIWidget* parentWidget = parentView->GetNearestWidget(nullptr);
-      if (parentWidget) {
+nsWindow* nsWindow::GetTopmostWindow() {
+  if (nsView* view = nsView::GetViewFor(this)) {
+    if (nsView* parentView = view->GetParent()) {
+      if (nsIWidget* parentWidget = parentView->GetNearestWidget(nullptr)) {
         nsWindow* parentnsWindow = static_cast<nsWindow*>(parentWidget);
         LOG("  Topmost window: %p [nsWindow]\n", parentnsWindow);
         return parentnsWindow;
@@ -1778,7 +1774,7 @@ void nsWindow::AddWindowToPopupHierarchy() {
 
   // Check if we're already in the hierarchy
   if (!IsInPopupHierarchy()) {
-    mWaylandToplevel = WaylandPopupGetTopmostWindow();
+    mWaylandToplevel = GetTopmostWindow();
     AppendPopupToHierarchyList(mWaylandToplevel);
   }
 }
@@ -2670,7 +2666,7 @@ void nsWindow::WaylandPopupMovePlain(int aX, int aY) {
   // gdk_window_move() sets position_method to POSITION_METHOD_MOVE_RESIZE
   // so we'll use plain move when popup is shown.
   if (!gtk_widget_get_mapped(mShell)) {
-    GdkWindow* window = gtk_widget_get_window(mShell);
+    GdkWindow* window = GetToplevelGdkWindow();
     if (window) {
       gdk_window_move(window, aX, aY);
     }
@@ -2883,7 +2879,7 @@ void nsWindow::GetWorkspaceID(nsAString& workspaceID) {
   LOG("nsWindow::GetWorkspaceID()\n");
 
   // Get the gdk window for this widget.
-  GdkWindow* gdk_window = gtk_widget_get_window(mShell);
+  GdkWindow* gdk_window = GetToplevelGdkWindow();
   if (!gdk_window) {
     LOG("  missing Gdk window, quit.");
     return;
@@ -2929,7 +2925,7 @@ void nsWindow::MoveToWorkspace(const nsAString& workspaceIDStr) {
 
 #ifdef MOZ_X11
   // Get the gdk window for this widget.
-  GdkWindow* gdk_window = gtk_widget_get_window(mShell);
+  GdkWindow* gdk_window = GetToplevelGdkWindow();
   if (!gdk_window) {
     LOG("  failed to get GdkWindow, quit.");
     return;
@@ -2987,7 +2983,7 @@ void nsWindow::SetUserTimeAndStartupTokenForActivatedWindow() {
     // approximation ... using the timestamp of the remote command
     // being received as a guess for the timestamp of the user event
     // that triggered it.
-    gdk_window_focus(gtk_widget_get_window(mShell), timestamp);
+    gdk_window_focus(GetToplevelGdkWindow(), timestamp);
   }
 
   // If we used the startup ID, that already contains the focus timestamp;
@@ -3093,7 +3089,7 @@ void nsWindow::SetFocus(Raise aRaise, mozilla::dom::CallerType aCallerType) {
       !gtk_widget_has_focus(toplevelWidget)) {
     if (gtk_widget_get_visible(mShell)) {
       LOG("  toplevel is not focused");
-      gdk_window_show_unraised(gtk_widget_get_window(mShell));
+      gdk_window_show_unraised(GetToplevelGdkWindow());
       // Unset the urgency hint if possible.
       SetUrgencyHint(mShell, false);
     }
@@ -3236,8 +3232,7 @@ LayoutDeviceIntRect nsWindow::GetClientBounds() {
 }
 
 void nsWindow::RecomputeClientOffset(bool aNotify) {
-  if (mWindowType != WindowType::Dialog &&
-      mWindowType != WindowType::TopLevel) {
+  if (!IsTopLevelWindowType()) {
     return;
   }
 
@@ -4038,8 +4033,7 @@ gboolean nsWindow::OnConfigureEvent(GtkWidget* aWidget,
 
   // Don't fire configure event for scale changes, we handle that
   // OnScaleChanged event. Skip that for toplevel windows only.
-  if (mGdkWindow && (mWindowType == WindowType::TopLevel ||
-                     mWindowType == WindowType::Dialog)) {
+  if (mGdkWindow && IsTopLevelWindowType()) {
     if (mWindowScaleFactor != gdk_window_get_scale_factor(mGdkWindow)) {
       LOG("  scale factor changed to %d,return early",
           gdk_window_get_scale_factor(mGdkWindow));
@@ -4049,8 +4043,7 @@ gboolean nsWindow::OnConfigureEvent(GtkWidget* aWidget,
 
   LayoutDeviceIntRect screenBounds = GetScreenBounds();
 
-  if (mWindowType == WindowType::TopLevel ||
-      mWindowType == WindowType::Dialog) {
+  if (IsTopLevelWindowType()) {
     // This check avoids unwanted rollup on spurious configure events from
     // Cygwin/X (bug 672103).
     if (mBounds.x != screenBounds.x || mBounds.y != screenBounds.y) {
@@ -4310,9 +4303,7 @@ void nsWindow::OnLeaveNotifyEvent(GdkEventCrossing* aEvent) {
 
   // The filter out for subwindows should make sure that this is targeted to
   // this nsWindow.
-  const bool leavingTopLevel =
-      mWindowType == WindowType::TopLevel || mWindowType == WindowType::Dialog;
-
+  const bool leavingTopLevel = IsTopLevelWindowType();
   if (leavingTopLevel && IsBogusLeaveNotifyEvent(mGdkWindow, aEvent)) {
     return;
   }
@@ -4655,9 +4646,8 @@ void nsWindow::OnButtonPressEvent(GdkEventButton* aEvent) {
 
   // Check to see if the event is within our window's resize region
   if (auto edge = CheckResizerEdge(refPoint)) {
-    gdk_window_begin_resize_drag(gtk_widget_get_window(mShell), *edge,
-                                 aEvent->button, aEvent->x_root, aEvent->y_root,
-                                 aEvent->time);
+    gdk_window_begin_resize_drag(GetToplevelGdkWindow(), *edge, aEvent->button,
+                                 aEvent->x_root, aEvent->y_root, aEvent->time);
     return;
   }
 
@@ -4829,8 +4819,7 @@ void nsWindow::OnContainerFocusInEvent(GdkEventFocus* aEvent) {
 void nsWindow::OnContainerFocusOutEvent(GdkEventFocus* aEvent) {
   LOG("OnContainerFocusOutEvent");
 
-  if (mWindowType == WindowType::TopLevel ||
-      mWindowType == WindowType::Dialog) {
+  if (IsTopLevelWindowType()) {
     // Rollup menus when a window is focused out unless a drag is occurring.
     // This check is because drags grab the keyboard and cause a focus out on
     // versions of GTK before 2.18.
@@ -5945,8 +5934,7 @@ nsresult nsWindow::Create(nsIWidget* aParent, nsNativeWidget aNativeParent,
   // gfxVars, used below.
   Unused << gfxPlatform::GetPlatform();
 
-  if (mWindowType == WindowType::TopLevel ||
-      mWindowType == WindowType::Dialog) {
+  if (IsTopLevelWindowType()) {
     mGtkWindowDecoration = GetSystemGtkWindowDecoration();
   }
 
@@ -6047,8 +6035,8 @@ nsresult nsWindow::Create(nsIWidget* aParent, nsNativeWidget aNativeParent,
       // WM_TAKE_FOCUS, focus is requested on the parent window.
       if (GdkIsX11Display()) {
         gtk_widget_realize(mShell);
-        gdk_window_add_filter(gtk_widget_get_window(mShell),
-                              popup_take_focus_filter, nullptr);
+        gdk_window_add_filter(GetToplevelGdkWindow(), popup_take_focus_filter,
+                              nullptr);
       }
 #endif
     }
@@ -6192,6 +6180,15 @@ nsresult nsWindow::Create(nsIWidget* aParent, nsNativeWidget aNativeParent,
   }
 #endif
 
+  if (mWindowType == WindowType::TopLevel && gKioskMode) {
+    if (gKioskMonitor != -1) {
+      mKioskMonitor = Some(gKioskMonitor);
+      LOG("  set kiosk mode monitor %d", mKioskMonitor.value());
+    } else {
+      LOG("  set kiosk mode");
+    }
+  }
+
   if (mWindowType == WindowType::Popup) {
     MOZ_ASSERT(aInitData);
     // gdk does not automatically set the cursor for "temporary"
@@ -6215,8 +6212,7 @@ nsresult nsWindow::Create(nsIWidget* aParent, nsNativeWidget aNativeParent,
   if (mDrawToContainer) {
     // Also label mShell toplevel window,
     // property_notify_event_cb callback also needs to find its way home
-    g_object_set_data(G_OBJECT(gtk_widget_get_window(mShell)), "nsWindow",
-                      this);
+    g_object_set_data(G_OBJECT(GetToplevelGdkWindow()), "nsWindow", this);
   }
 
   g_object_set_data(G_OBJECT(mContainer), "nsWindow", this);
@@ -6309,7 +6305,7 @@ nsresult nsWindow::Create(nsIWidget* aParent, nsNativeWidget aNativeParent,
   // Only use for toplevel windows for now, see bug 1619246.
   if (GdkIsWaylandDisplay() &&
       StaticPrefs::widget_wayland_vsync_enabled_AtStartup() &&
-      mWindowType == WindowType::TopLevel) {
+      IsTopLevelWindowType()) {
     mWaylandVsyncSource = new WaylandVsyncSource(this);
     mWaylandVsyncDispatcher = new VsyncDispatcher(mWaylandVsyncSource);
     LOG_VSYNC("  created WaylandVsyncSource");
@@ -6359,7 +6355,7 @@ nsresult nsWindow::Create(nsIWidget* aParent, nsNativeWidget aNativeParent,
 }
 
 void nsWindow::RefreshWindowClass(void) {
-  GdkWindow* gdkWindow = gtk_widget_get_window(mShell);
+  GdkWindow* gdkWindow = GetToplevelGdkWindow();
   if (!gdkWindow) {
     return;
   }
@@ -6539,7 +6535,7 @@ void nsWindow::NativeMoveResize(bool aMoved, bool aResized) {
 #define COMPOSITOR_PAUSE_TIMEOUT (1000)
 
 void nsWindow::PauseCompositorFlickering() {
-  bool pauseCompositor = (mWindowType == WindowType::TopLevel) &&
+  bool pauseCompositor = IsTopLevelWindowType() &&
                          mCompositorState == COMPOSITOR_ENABLED &&
                          mCompositorWidgetDelegate && !mIsDestroyed;
   if (!pauseCompositor) {
@@ -6832,8 +6828,7 @@ gint nsWindow::GetInputRegionMarginInGdkCoords() {
 void nsWindow::SetInputRegion(const InputRegion& aInputRegion) {
   mInputRegion = aInputRegion;
 
-  GdkWindow* window =
-      mDrawToContainer ? gtk_widget_get_window(mShell) : mGdkWindow;
+  GdkWindow* window = mDrawToContainer ? GetToplevelGdkWindow() : mGdkWindow;
   if (!window) {
     return;
   }
@@ -6909,8 +6904,7 @@ void nsWindow::UpdateTopLevelOpaqueRegion(void) {
     return;
   }
 
-  GdkWindow* window =
-      mDrawToContainer ? gtk_widget_get_window(mShell) : mGdkWindow;
+  GdkWindow* window = mDrawToContainer ? GetToplevelGdkWindow() : mGdkWindow;
   if (!window) {
     return;
   }
@@ -7118,7 +7112,7 @@ LayoutDeviceIntRect nsWindow::GetTitlebarRect() {
 
   int height = 0;
   if (DoDrawTilebarCorners()) {
-    height = GdkCeiledScaleFactor() * TITLEBAR_HEIGHT;
+    height = std::ceil(FractionalScaleFactor() * TITLEBAR_HEIGHT);
   }
   return LayoutDeviceIntRect(0, 0, mBounds.width, height);
 }
@@ -7397,6 +7391,26 @@ bool nsWindow::SynchronouslyRepaintOnResize() {
   return true;
 }
 
+void nsWindow::KioskLockOnMonitor() {
+  // Available as of GTK 3.18+
+  static auto sGdkWindowFullscreenOnMonitor =
+      (void (*)(GdkWindow* window, gint monitor))dlsym(
+          RTLD_DEFAULT, "gdk_window_fullscreen_on_monitor");
+
+  if (!sGdkWindowFullscreenOnMonitor) {
+    return;
+  }
+
+  int monitor = mKioskMonitor.value();
+  if (monitor < 0 || monitor >= ScreenHelperGTK::GetMonitorCount()) {
+    LOG("nsWindow::KioskLockOnMonitor() wrong monitor number! (%d)\n", monitor);
+    return;
+  }
+
+  LOG("nsWindow::KioskLockOnMonitor() locked on %d\n", monitor);
+  sGdkWindowFullscreenOnMonitor(GetToplevelGdkWindow(), monitor);
+}
+
 static bool IsFullscreenSupported(GtkWidget* aShell) {
 #ifdef MOZ_X11
   GdkScreen* screen = gtk_widget_get_screen(aShell);
@@ -7428,8 +7442,17 @@ nsresult nsWindow::MakeFullScreen(bool aFullScreen) {
       }
     }
 
-    gtk_window_fullscreen(GTK_WINDOW(mShell));
+    if (mKioskMonitor.isSome()) {
+      KioskLockOnMonitor();
+    } else {
+      gtk_window_fullscreen(GTK_WINDOW(mShell));
+    }
   } else {
+    // Kiosk mode always use fullscreen mode.
+    if (gKioskMode) {
+      return NS_ERROR_NOT_AVAILABLE;
+    }
+
     gtk_window_unfullscreen(GTK_WINDOW(mShell));
 
     if (mIsPIPWindow) {
@@ -7451,7 +7474,7 @@ void nsWindow::SetWindowDecoration(BorderStyle aStyle) {
 
   // We can't use mGdkWindow directly here as it can be
   // derived from mContainer which is not a top-level GdkWindow.
-  GdkWindow* window = gtk_widget_get_window(mShell);
+  GdkWindow* window = GetToplevelGdkWindow();
 
   // Sawfish, metacity, and presumably other window managers get
   // confused if we change the window decorations while the window
@@ -8862,8 +8885,7 @@ void nsWindow::SetDrawsInTitlebar(bool aState) {
 
     // Label mShell toplevel window so property_notify_event_cb callback
     // can find its way home.
-    g_object_set_data(G_OBJECT(gtk_widget_get_window(mShell)), "nsWindow",
-                      this);
+    g_object_set_data(G_OBJECT(GetToplevelGdkWindow()), "nsWindow", this);
 
     if (AreBoundsSane()) {
       GdkRectangle size = DevicePixelsToGdkSizeRoundUp(mBounds.Size());
@@ -8900,7 +8922,13 @@ GtkWindow* nsWindow::GetCurrentTopmostWindow() const {
   return topmostParentWindow;
 }
 
+// We're called from Renderer/Compositor thread where EGL Window size is set.
+// Just return what we have and keep scale update to main thread.
+gint nsWindow::GetCachedCeiledScaleFactor() const { return mWindowScaleFactor; }
+
 gint nsWindow::GdkCeiledScaleFactor() {
+  MOZ_ASSERT(NS_IsMainThread());
+
   // We depend on notify::scale-factor callback which is reliable for toplevel
   // windows only, so don't use scale cache for popup windows.
   if (mWindowType == WindowType::TopLevel && !mWindowScaleFactorChanged) {
@@ -9444,7 +9472,7 @@ void nsWindow::SetProgress(unsigned long progressPercent) {
 
   progressPercent = MIN(progressPercent, 100);
 
-  set_window_hint_cardinal(GDK_WINDOW_XID(gtk_widget_get_window(mShell)),
+  set_window_hint_cardinal(GDK_WINDOW_XID(GetToplevelGdkWindow()),
                            PROGRESS_HINT, progressPercent);
 #endif  // MOZ_X11
 }
@@ -9457,7 +9485,7 @@ void nsWindow::SetCompositorHint(WindowComposeRequest aState) {
 
   gulong value = aState;
   GdkAtom cardinal_atom = gdk_x11_xatom_to_atom(XA_CARDINAL);
-  gdk_property_change(gtk_widget_get_window(mShell),
+  gdk_property_change(GetToplevelGdkWindow(),
                       gdk_atom_intern("_NET_WM_BYPASS_COMPOSITOR", FALSE),
                       cardinal_atom,
                       32,  // format
@@ -9501,7 +9529,7 @@ static void relative_pointer_handle_relative_motion(
 
   WidgetMouseEvent event(true, eMouseMove, window, WidgetMouseEvent::eReal);
 
-  gint scale = window->GdkCeiledScaleFactor();
+  double scale = window->FractionalScaleFactor();
   event.mRefPoint = window->GetNativePointerLockCenter();
   event.mRefPoint.x += int(wl_fixed_to_double(dx_w) * scale);
   event.mRefPoint.y += int(wl_fixed_to_double(dy_w) * scale);
@@ -9713,17 +9741,15 @@ void nsWindow::SetEGLNativeWindowSize(
     return;
   }
 
-  gint scale = GdkCeiledScaleFactor();
-  if (moz_container_wayland_egl_window_needs_size_update(
-          mContainer, aEGLWindowSize.ToUnknownSize(), scale)) {
-    LOG("nsWindow::SetEGLNativeWindowSize() %d x %d scale %d (unscaled %d x "
-        "%d)",
-        aEGLWindowSize.width, aEGLWindowSize.height, scale,
-        aEGLWindowSize.width / scale, aEGLWindowSize.height / scale);
-    moz_container_wayland_egl_window_set_size(mContainer,
-                                              aEGLWindowSize.ToUnknownSize());
-    moz_container_wayland_set_scale_factor(mContainer);
-  }
+  // SetEGLNativeWindowSize() may be called from Renderer/Compositor thread.
+  // In such case use cached scale factor.
+  gint scale =
+      NS_IsMainThread() ? GdkCeiledScaleFactor() : GetCachedCeiledScaleFactor();
+  LOG("nsWindow::SetEGLNativeWindowSize() %d x %d scale %d (unscaled %d x %d)",
+      aEGLWindowSize.width, aEGLWindowSize.height, scale,
+      aEGLWindowSize.width / scale, aEGLWindowSize.height / scale);
+  moz_container_wayland_egl_window_set_size(
+      mContainer, aEGLWindowSize.ToUnknownSize(), scale);
 }
 #endif
 
@@ -9780,7 +9806,7 @@ bool nsWindow::ApplyEnterLeaveMutterWorkaround() {
 }
 
 void nsWindow::NotifyOcclusionState(mozilla::widget::OcclusionState aState) {
-  if (mWindowType != WindowType::TopLevel) {
+  if (!IsTopLevelWindowType()) {
     return;
   }
 

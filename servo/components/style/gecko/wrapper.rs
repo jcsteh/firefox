@@ -1915,7 +1915,6 @@ impl<'le> ::selectors::Element for GeckoElement<'le> {
             NonTSPseudoClass::Valid |
             NonTSPseudoClass::Invalid |
             NonTSPseudoClass::MozBroken |
-            NonTSPseudoClass::MozLoading |
             NonTSPseudoClass::Required |
             NonTSPseudoClass::Optional |
             NonTSPseudoClass::ReadOnly |
@@ -1944,8 +1943,9 @@ impl<'le> ::selectors::Element for GeckoElement<'le> {
             NonTSPseudoClass::Hover |
             NonTSPseudoClass::MozAutofillPreview |
             NonTSPseudoClass::MozRevealed |
-            NonTSPseudoClass::MozValueEmpty |
-            NonTSPseudoClass::Dir(..) => self.state().intersects(pseudo_class.state_flag()),
+            NonTSPseudoClass::MozValueEmpty => self.state().intersects(pseudo_class.state_flag()),
+            // TODO: This applying only to HTML elements is weird.
+            NonTSPseudoClass::Dir(ref dir) => self.is_html_element() && self.state().intersects(dir.element_state()),
             NonTSPseudoClass::AnyLink => self.is_link(),
             NonTSPseudoClass::Link => {
                 self.is_link() && context.visited_handling().matches_unvisited()

@@ -374,6 +374,7 @@ class nsWindow final : public nsBaseWidget {
 
   // HiDPI scale conversion
   gint GdkCeiledScaleFactor();
+  gint GetCachedCeiledScaleFactor() const;
   double FractionalScaleFactor();
 
   // To GDK
@@ -474,7 +475,7 @@ class nsWindow final : public nsBaseWidget {
 
   nsCOMPtr<nsIWidget> mParent;
   PopupType mPopupHint{};
-  int mWindowScaleFactor = 1;
+  mozilla::Atomic<int, mozilla::Relaxed> mWindowScaleFactor{1};
 
   void UpdateAlpha(mozilla::gfx::SourceSurface* aSourceSurface,
                    nsIntRect aBoundsRect);
@@ -861,7 +862,7 @@ class nsWindow final : public nsBaseWidget {
                                      GdkPoint* aOffset);
   bool WaylandPopupAnchorAdjustForParentPopup(GdkRectangle* aPopupAnchor,
                                               GdkPoint* aOffset);
-  nsWindow* WaylandPopupGetTopmostWindow();
+  nsWindow* GetTopmostWindow();
   bool IsPopupInLayoutPopupChain(nsTArray<nsIWidget*>* aLayoutWidgetHierarchy,
                                  bool aMustMatchParent);
   void WaylandPopupMarkAsClosed();
@@ -881,6 +882,11 @@ class nsWindow final : public nsBaseWidget {
   void LogPopupAnchorHints(int aHints);
   void LogPopupGravity(GdkGravity aGravity);
 #endif
+
+  bool IsTopLevelWindowType() const {
+    return mWindowType == WindowType::TopLevel ||
+           mWindowType == WindowType::Dialog;
+  }
 
   // mPopupPosition is the original popup position/size from layout, set by
   // nsWindow::Move() or nsWindow::Resize().
@@ -974,6 +980,8 @@ class nsWindow final : public nsBaseWidget {
 
   void SetUserTimeAndStartupTokenForActivatedWindow();
 
+  void KioskLockOnMonitor();
+
 #ifdef MOZ_X11
   typedef enum {GTK_WIDGET_COMPOSIDED_DEFAULT = 0,
                 GTK_WIDGET_COMPOSIDED_DISABLED = 1,
@@ -997,6 +1005,9 @@ class nsWindow final : public nsBaseWidget {
   LayoutDeviceIntRect mLastLoggedBoundSize;
   int mLastLoggedScale = -1;
 #endif
+  // Running in kiosk mode and requested to stay on specified monitor.
+  // If monitor is removed minimize the window.
+  mozilla::Maybe<int> mKioskMonitor;
 };
 
 #endif /* __nsWindow_h__ */

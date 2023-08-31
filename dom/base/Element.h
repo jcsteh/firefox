@@ -126,6 +126,7 @@ struct ScrollOptions;
 class Attr;
 class BooleanOrScrollIntoViewOptions;
 class Document;
+class HTMLFormElement;
 class DOMIntersectionObserver;
 class DOMMatrixReadOnly;
 class Element;
@@ -270,14 +271,14 @@ class Element : public FragmentOrElement {
   void UpdateState(bool aNotify);
 
   /**
-   * Method to update mState with link state information.  This does not notify.
-   */
-  void UpdateLinkState(ElementState aState);
-
-  /**
    * Returns the current disabled state of the element.
    */
   bool IsDisabled() const { return State().HasState(ElementState::DISABLED); }
+  bool IsReadOnly() const { return State().HasState(ElementState::READONLY); }
+  bool IsDisabledOrReadOnly() const {
+    return State().HasAtLeastOneOfStates(ElementState::DISABLED |
+                                         ElementState::READONLY);
+  }
 
   virtual int32_t TabIndexDefault() { return -1; }
 
@@ -483,38 +484,26 @@ class Element : public FragmentOrElement {
                                               int32_t aModType) const;
 
   inline Directionality GetDirectionality() const {
-    if (HasFlag(NODE_HAS_DIRECTION_RTL)) {
+    ElementState state = State();
+    if (state.HasState(ElementState::RTL)) {
       return eDir_RTL;
     }
-
-    if (HasFlag(NODE_HAS_DIRECTION_LTR)) {
+    if (state.HasState(ElementState::LTR)) {
       return eDir_LTR;
     }
-
     return eDir_NotSet;
   }
 
   inline void SetDirectionality(Directionality aDir, bool aNotify) {
-    UnsetFlags(NODE_ALL_DIRECTION_FLAGS);
-    if (!aNotify) {
-      RemoveStatesSilently(ElementState::DIR_STATES);
-    }
-
+    auto oldState = mState;
+    RemoveStatesSilently(ElementState::DIR_STATES);
     switch (aDir) {
-      case (eDir_RTL):
-        SetFlags(NODE_HAS_DIRECTION_RTL);
-        if (!aNotify) {
-          AddStatesSilently(ElementState::RTL);
-        }
+      case eDir_RTL:
+        AddStatesSilently(ElementState::RTL);
         break;
-
-      case (eDir_LTR):
-        SetFlags(NODE_HAS_DIRECTION_LTR);
-        if (!aNotify) {
-          AddStatesSilently(ElementState::LTR);
-        }
+      case eDir_LTR:
+        AddStatesSilently(ElementState::LTR);
         break;
-
       default:
         break;
     }
@@ -525,7 +514,7 @@ class Element : public FragmentOrElement {
      * for some elements.
      */
     if (aNotify) {
-      UpdateState(true);
+      NotifyStateChange(oldState ^ mState);
     }
   }
 
@@ -662,13 +651,7 @@ class Element : public FragmentOrElement {
 
   const AttrArray& GetAttrs() const { return mAttrs; }
 
-  void SetDefined(bool aSet) {
-    if (aSet) {
-      AddStates(ElementState::DEFINED);
-    } else {
-      RemoveStates(ElementState::DEFINED);
-    }
-  }
+  void SetDefined(bool aSet) { SetStates(ElementState::DEFINED, aSet); }
 
   // AccessibilityRole
   REFLECT_DOMSTRING_ATTR(Role, role)
@@ -743,6 +726,25 @@ class Element : public FragmentOrElement {
   already_AddRefed<ShadowRoot> AttachShadowInternal(ShadowRootMode,
                                                     ErrorResult& aError);
 
+  struct AutoStateChangeNotifier {
+    AutoStateChangeNotifier(Element& aElement, bool aNotify)
+        : mElement(aElement), mOldState(aElement.State()), mNotify(aNotify) {}
+    ~AutoStateChangeNotifier() {
+      if (!mNotify) {
+        return;
+      }
+      ElementState newState = mElement.State();
+      if (mOldState != newState) {
+        mElement.NotifyStateChange(mOldState ^ newState);
+      }
+    }
+
+   private:
+    Element& mElement;
+    const ElementState mOldState;
+    const bool mNotify;
+  };
+
  public:
   MOZ_CAN_RUN_SCRIPT
   nsIScrollableFrame* GetScrollFrame(nsIFrame** aStyledFrame = nullptr,
@@ -756,39 +758,50 @@ class Element : public FragmentOrElement {
   friend class ::nsGlobalWindowInner;
   friend class ::nsGlobalWindowOuter;
   friend class ::nsFocusManager;
+  friend class mozilla::dom::HTMLFormElement;
 
   // Allow CusomtElementRegistry to call AddStates.
   friend class CustomElementRegistry;
 
-  // Also need to allow Link to call UpdateLinkState.
+  // Allow Link to call AddStates etc.
   friend class Link;
-
-  void NotifyStateChange(ElementState aStates);
-
-  void NotifyStyleStateChange(ElementState aStates);
 
   // Style state computed from element's state and style locks.
   ElementState StyleStateFromLocks() const;
 
  protected:
+  void NotifyStateChange(ElementState aStates);
+  void NotifyStyleStateChange(ElementState aStates);
+
   // Methods for the ESM, nsGlobalWindow, focus manager and Document to
   // manage state bits.
   // These will handle setting up script blockers when they notify, so no need
   // to do it in the callers unless desired.  States passed here must only be
   // those in EXTERNALLY_MANAGED_STATES.
-  void AddStates(ElementState aStates) {
+  void AddStates(ElementState aStates, bool aNotify = true) {
     MOZ_ASSERT(!aStates.HasAtLeastOneOfStates(ElementState::INTRINSIC_STATES),
                "Should only be adding externally-managed states here");
     ElementState old = mState;
     AddStatesSilently(aStates);
-    NotifyStateChange(old ^ mState);
+    if (aNotify) {
+      NotifyStateChange(old ^ mState);
+    }
   }
-  void RemoveStates(ElementState aStates) {
+  void RemoveStates(ElementState aStates, bool aNotify = true) {
     MOZ_ASSERT(!aStates.HasAtLeastOneOfStates(ElementState::INTRINSIC_STATES),
                "Should only be removing externally-managed states here");
     ElementState old = mState;
     RemoveStatesSilently(aStates);
-    NotifyStateChange(old ^ mState);
+    if (aNotify) {
+      NotifyStateChange(old ^ mState);
+    }
+  }
+  void SetStates(ElementState aStates, bool aSet, bool aNotify = true) {
+    if (aSet) {
+      AddStates(aStates, aNotify);
+    } else {
+      RemoveStates(aStates, aNotify);
+    }
   }
   void ToggleStates(ElementState aStates, bool aNotify) {
     MOZ_ASSERT(!aStates.HasAtLeastOneOfStates(ElementState::INTRINSIC_STATES),
@@ -813,6 +826,11 @@ class Element : public FragmentOrElement {
   }
 
   void UpdateEditableState(bool aNotify) override;
+  // Makes sure that the READONLY/READWRITE flags are in sync.
+  void UpdateReadOnlyState(bool aNotify);
+  // Form controls and non-form controls should have different :read-only /
+  // :read-write behavior. This is what effectively controls it.
+  virtual bool IsReadOnlyInternal() const;
 
   /**
    * Normalizes an attribute name and returns it as a nodeinfo if an attribute
