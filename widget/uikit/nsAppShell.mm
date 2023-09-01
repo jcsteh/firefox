@@ -46,7 +46,7 @@ NSMutableArray* nsAppShell::gTopLevelViews = [[NSMutableArray alloc] init];
   ALOG("[ViewController loadView]");
   CGRect r = {{0, 0}, {100, 100}};
   self.view = [[UIView alloc] initWithFrame:r];
-  [self.view setBackgroundColor:[UIColor whiteColor]];
+  [self.view setBackgroundColor:UIColor.systemBackgroundColor];
   // add all of the top level views as children
   for (UIView* v in nsAppShell::gTopLevelViews) {
     ALOG("[ViewController.view addSubView:%p]", v);
