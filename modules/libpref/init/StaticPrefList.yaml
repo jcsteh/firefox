@@ -6699,7 +6699,11 @@
 # Whether to use the WebRender software backend
 - name: gfx.webrender.software
   type: bool
+#if defined(XP_IOS)
+  value: true
+#else
   value: false
+#endif
   mirror: once
 
 # Whether to use the D3D11 RenderCompositor when using WebRender software backend
