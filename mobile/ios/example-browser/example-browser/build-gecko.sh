@@ -16,10 +16,11 @@ if test "${ACTION}" != "clean"; then
           --exclude xulrunner  \
           ${GECKO_OBJDIR}/dist/bin/ $BUILT_PRODUCTS_DIR/$CONTENTS_FOLDER_PATH/Frameworks
 
-    #if test ${ARCHS} == "armv7"; then
-    #    for x in $BUILT_PRODUCTS_DIR/$CONTENTS_FOLDER_PATH/Frameworks/*.dylib $BUILT_PRODUCTS_DIR/$CONTENTS_FOLDER_PATH/Frameworks/XUL; do
-    #        echo "Signing $x"
-    #        /usr/bin/codesign --force --sign "${EXPANDED_CODE_SIGN_IDENTITY}" --preserve-metadata=identifier,entitlements,resource-rules $x
-    #    done
-    #fi
+    echo "${__IS_NOT_SIMULATOR}"
+    if test "${__IS_NOT_SIMULATOR}" = "YES"; then
+        for x in $BUILT_PRODUCTS_DIR/$CONTENTS_FOLDER_PATH/Frameworks/*.dylib $BUILT_PRODUCTS_DIR/$CONTENTS_FOLDER_PATH/Frameworks/XUL; do
+            echo "Signing $x"
+            /usr/bin/codesign --force --sign "${EXPANDED_CODE_SIGN_IDENTITY}" --preserve-metadata=identifier,entitlements,resource-rules $x
+        done
+    fi
 fi
