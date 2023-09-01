@@ -221,13 +221,19 @@ TaskController::TaskController()
       []() { TaskController::Get()->ProcessPendingMTTask(true); });
 }
 
+#if defined(XP_DARWIN) && defined(__aarch64__)
+constexpr PRUint32 sPageSize = 16384;
+#else
+constexpr PRUint32 sPageSize = 4096;
+#endif
+
 // We want our default stack size limit to be approximately 2MB, to be safe for
 // JS helper tasks that can use a lot of stack, but expect most threads to use
 // much less. On Linux, however, requesting a stack of 2MB or larger risks the
 // kernel allocating an entire 2MB huge page for it on first access, which we do
 // not want. To avoid this possibility, we subtract 2 standard VM page sizes
 // from our default.
-constexpr PRUint32 sBaseStackSize = 2048 * 1024 - 2 * 4096;
+constexpr PRUint32 sBaseStackSize = 2048 * 1024 - 2 * sPageSize;
 
 // TSan enforces a minimum stack size that's just slightly larger than our
 // default helper stack size.  It does this to store blobs of TSan-specific data

@@ -35,6 +35,12 @@ namespace dom {
 
 namespace {
 
+#if defined(XP_DARWIN) && defined(__aarch64__)
+const uint32_t kPageSize = 16384;
+#else
+const uint32_t kPageSize = 4096;
+#endif
+
 // The C stack size. We use the same stack size on all platforms for
 // consistency.
 //
@@ -42,7 +48,7 @@ namespace {
 // platforms. Since that works out to the size of a VM huge page, that can
 // sometimes lead to an OS allocating an entire huge page for the stack at once.
 // To avoid this, we subtract the size of 2 pages, to be safe.
-const uint32_t kWorkerStackSize = 256 * sizeof(size_t) * 1024 - 8192;
+const uint32_t kWorkerStackSize = 256 * sizeof(size_t) * 1024 - 2 * kPageSize;
 
 }  // namespace
 
