@@ -22,6 +22,9 @@
 #ifdef MOZ_WIDGET_GTK
 #  include "mozilla/WidgetUtilsGtk.h"
 #endif
+#ifdef MOZ_WIDGET_UIKIT
+#  include "mozilla/UIKitDirProvider.h"
+#endif
 
 #ifdef __FreeBSD__
 #  include <sys/capsicum.h>
@@ -322,6 +325,48 @@ bool SharedMemory::CreateInternal(size_t size, bool freezeable) {
       }
     }
   }
+#  endif
+
+#  ifdef MOZ_WIDGET_UIKIT
+  // On iOS we don't have access to shm_open for sandboxing reasons, so open a
+  // file in the temporary directory instead.
+
+  if (!fd) {
+    do {
+      // The names don't need to be unique, but it saves time if they
+      // usually are.
+      static mozilla::Atomic<size_t> sNameCounter;
+
+      nsAutoCString tempDir;
+      GetTemporaryDirectory(tempDir);
+
+      std::string name(tempDir.View());
+      CHECK(AppendPosixShmPrefix(&name, getpid()));
+      StringAppendF(&name, "%zu", sNameCounter++);
+      // O_EXCL means the names being predictable shouldn't be a problem.
+      fd.reset(
+          HANDLE_EINTR(open(name.c_str(), O_RDWR | O_CREAT | O_EXCL, 0600)));
+      if (fd) {
+        if (freezeable) {
+          frozen_fd.reset(HANDLE_EINTR(open(name.c_str(), O_RDONLY, 0400)));
+          if (!frozen_fd) {
+            int open_err = errno;
+            unlink(name.c_str());
+            DLOG(FATAL) << "failed to re-open freezeable shm: "
+                        << strerror(open_err);
+            return false;
+          }
+        }
+        if (unlink(name.c_str()) != 0) {
+          // This shouldn't happen, but if it does: assume the file is
+          // in fact leaked, and bail out now while it's still 0-length.
+          DLOG(FATAL) << "failed to unlink shm: " << strerror(errno);
+          return false;
+        }
+      }
+    } while (!fd && errno == EEXIST);
+  }
+
 #  endif
 
   if (!fd) {
