@@ -10,4 +10,6 @@
 
 bool GetUIKitDirectory(bool aLocal, nsACString& aUserDir);
 
+bool GetTemporaryDirectory(nsACString& aTempDir);
+
 #endif  // TOOLKIT_XRE_UIKITDIRPROVIDER_H_

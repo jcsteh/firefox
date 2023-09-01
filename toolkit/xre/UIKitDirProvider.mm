@@ -18,3 +18,8 @@ bool GetUIKitDirectory(bool aLocal, nsACString& aUserDir) {
   aUserDir = [[paths objectAtIndex:0] UTF8String];
   return true;
 }
+
+bool GetTemporaryDirectory(nsACString& aTempDir) {
+  aTempDir = [NSTemporaryDirectory() UTF8String];
+  return true;
+}

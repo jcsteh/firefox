@@ -31,6 +31,9 @@
 #    include "CFTypeRefPtr.h"
 #    include "CocoaFileUtils.h"
 #  endif
+#  if defined(MOZ_WIDGET_UIKIT)
+#    include "mozilla/UIKitDirProvider.h"
+#  endif
 #  if defined(MOZ_WIDGET_GTK)
 #    include "mozilla/WidgetUtilsGtk.h"
 #  endif
@@ -503,6 +506,12 @@ nsresult GetSpecialSystemDirectory(SystemDirectories aSystemSystemDirectory,
 #elif defined(MOZ_WIDGET_COCOA)
     {
       return GetOSXFolderType(kUserDomain, kTemporaryFolderType, aFile);
+    }
+#elif defined(MOZ_WIDGET_UIKIT)
+    {
+      nsAutoCString tempDir;
+      GetTemporaryDirectory(tempDir);
+      return NS_NewNativeLocalFile(tempDir, true, aFile);
     }
 
 #elif defined(XP_UNIX)

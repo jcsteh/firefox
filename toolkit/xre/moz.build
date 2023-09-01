@@ -91,6 +91,9 @@ elif CONFIG["MOZ_WIDGET_TOOLKIT"] == "cocoa":
         "../components/printingui",
     ]
 elif CONFIG["MOZ_WIDGET_TOOLKIT"] == "uikit":
+    EXPORTS.mozilla += [
+        "UIKitDirProvider.h",
+    ]
     UNIFIED_SOURCES += [
         "nsNativeAppSupportDefault.cpp",
         "UIKitDirProvider.mm",
