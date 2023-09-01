@@ -57,6 +57,7 @@ class nsAppShell : public nsBaseAppShell {
   // For getting notifications from the OS about memory pressure state changes.
   dispatch_source_t mMemoryPressureSource = nullptr;
 
+  bool mRunningEventLoop;
   bool mTerminated;
   bool mNotifiedWillTerminate;
 };
