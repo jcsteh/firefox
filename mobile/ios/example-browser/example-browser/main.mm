@@ -43,7 +43,7 @@ int main(int argc, char* argv[]) {
 
   mozilla::BootstrapConfig config;
   config.appData = &sAppData;
-  config.appDataPath = nullptr;
+  config.appDataPath = "browser";
 
   bootstrap.inspect()->XRE_EnableSameExecutableForContentProc();
   bootstrap.inspect()->XRE_main(argc, argv, config);
