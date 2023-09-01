@@ -746,13 +746,19 @@ static inline int GetWeightOverride(const nsAString& aPSName) {
 //
 // CSS 'normal' font-weight is defined as 400, so we map 0.0 to this.
 // The exact mapping to use for other values is not well defined; for now,
-// we arbitrarily map the smallest value (-1.0) to CSS weight 100, and the
-// largest (+1.0) to CSS weight 900, interpolating linearly between normal
-// and each of these endpoints.
+// we arbitrarily map the smallest value (-1.0) to CSS weight 100. For weights
+// greater than 0.0, we map 0.4 (seems to be what Core Text uses for standard
+// "bold" fonts) to CSS 700, and interpolate linearly either side of that.
 static inline int32_t CoreTextWeightToCSSWeight(CGFloat aCTWeight) {
-  if (aCTWeight >= 0.0) {
-    return 400 + NS_round(aCTWeight * 500);
+  if (aCTWeight >= 0.4) {
+    // map weights from 0.4 upwards to [700..1000]
+    return 700 + NS_round((aCTWeight - 0.4) * 500);
   }
+  if (aCTWeight >= 0.0) {
+    // map weights from 0.0 to 0.4 to [400..700]
+    return 400 + NS_round(aCTWeight * 750);
+  }
+  // weights less than 0.0
   return 400 + NS_round(aCTWeight * 300);
 }
 
