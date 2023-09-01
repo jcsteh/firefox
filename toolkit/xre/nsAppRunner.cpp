@@ -601,6 +601,14 @@ bool BrowserTabsRemoteAutostart() {
     }
   }
 
+#if defined(XP_IOS) && !TARGET_OS_SIMULATOR
+  // Force-disable e10s
+  if (gBrowserTabsRemoteAutostart) {
+    gBrowserTabsRemoteAutostart = false;
+    status = kE10sForceDisabled;
+  }
+#endif
+
   gBrowserTabsRemoteStatus = status;
 
   return gBrowserTabsRemoteAutostart;
