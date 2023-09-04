@@ -3625,7 +3625,7 @@ void Document::SetLoadedAsData(bool aLoadedAsData,
   if (aConsiderForMemoryReporting) {
     nsIGlobalObject* global = GetScopeObject();
     if (global) {
-      if (nsPIDOMWindowInner* window = global->AsInnerWindow()) {
+      if (nsPIDOMWindowInner* window = global->GetAsInnerWindow()) {
         nsGlobalWindowInner::Cast(window)
             ->RegisterDataDocumentForMemoryReporting(this);
       }
@@ -7579,7 +7579,7 @@ void Document::SetScopeObject(nsIGlobalObject* aGlobal) {
   if (aGlobal) {
     mHasHadScriptHandlingObject = true;
 
-    nsPIDOMWindowInner* window = aGlobal->AsInnerWindow();
+    nsPIDOMWindowInner* window = aGlobal->GetAsInnerWindow();
     if (!window) {
       return;
     }
@@ -12413,7 +12413,6 @@ void Document::PreLoadImage(nsIURI* aUri, const nsAString& aCrossOriginAttr,
                             ReferrerPolicyEnum aReferrerPolicy, bool aIsImgSet,
                             bool aLinkPreload, uint64_t aEarlyHintPreloaderId) {
   nsLoadFlags loadFlags = nsIRequest::LOAD_NORMAL |
-                          nsIRequest::LOAD_RECORD_START_REQUEST_DELAY |
                           nsContentUtils::CORSModeToLoadImageFlags(
                               Element::StringToCORSMode(aCrossOriginAttr));
 
@@ -12446,8 +12445,7 @@ void Document::PreLoadImage(nsIURI* aUri, const nsAString& aCrossOriginAttr,
 void Document::MaybePreLoadImage(nsIURI* aUri,
                                  const nsAString& aCrossOriginAttr,
                                  ReferrerPolicyEnum aReferrerPolicy,
-                                 bool aIsImgSet, bool aLinkPreload,
-                                 const TimeStamp& aInitTimestamp) {
+                                 bool aIsImgSet, bool aLinkPreload) {
   const CORSMode corsMode = dom::Element::StringToCORSMode(aCrossOriginAttr);
   if (aLinkPreload) {
     // Check if the image was already preloaded in this document to avoid
@@ -12467,13 +12465,6 @@ void Document::MaybePreLoadImage(nsIURI* aUri,
   if (nsContentUtils::IsImageAvailable(aUri, NodePrincipal(), corsMode, this)) {
     return;
   }
-
-#ifdef NIGHTLY_BUILD
-  Telemetry::Accumulate(
-      Telemetry::DOCUMENT_PRELOAD_IMAGE_ASYNCOPEN_DELAY,
-      static_cast<uint32_t>(
-          (TimeStamp::Now() - aInitTimestamp).ToMilliseconds()));
-#endif
 
   // Image not in cache - trigger preload
   PreLoadImage(aUri, aCrossOriginAttr, aReferrerPolicy, aIsImgSet, aLinkPreload,
@@ -18721,7 +18712,7 @@ void Document::UnregisterFromMemoryReportingForDataDocument() {
   mAddedToMemoryReportingAsDataDocument = false;
   nsIGlobalObject* global = GetScopeObject();
   if (global) {
-    if (nsPIDOMWindowInner* win = global->AsInnerWindow()) {
+    if (nsPIDOMWindowInner* win = global->GetAsInnerWindow()) {
       nsGlobalWindowInner::Cast(win)->UnregisterDataDocumentForMemoryReporting(
           this);
     }
