@@ -36,6 +36,7 @@ RELEASE_PROMOTION_PROJECTS = {
 TEMPORARY_PROJECTS = set(
     {
         # When using a "Disposable Project Branch" you can specify your branch here. e.g.:
+        "cedar",
         "oak",
     }
 )

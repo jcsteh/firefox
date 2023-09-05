@@ -22,7 +22,7 @@ job-defaults:
         symbol: Searchfox(idx)
         kind: build
         tier: 2
-    run-on-projects: ['mozilla-central']
+    run-on-projects: ['mozilla-central', 'cedar']
     optimization: null
     use-system-python: false
     # These builds don't use sccache because otherwise we wouldn't index
