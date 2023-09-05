@@ -38,7 +38,8 @@ static void GetStringForNSString(const NSString* aSrc, nsAString& aDist) {
   NS_OBJC_END_TRY_IGNORE_BLOCK;
 }
 
-NS_IMPL_ISUPPORTS(TextInputHandler, TextEventDispatcherListener, nsISupportsWeakReference)
+NS_IMPL_ISUPPORTS(TextInputHandler, TextEventDispatcherListener,
+                  nsISupportsWeakReference)
 
 TextInputHandler::TextInputHandler(nsWindow* aWidget)
     : mWidget(aWidget), mDispatcher(aWidget->GetTextEventDispatcher()) {}
@@ -52,18 +53,21 @@ IMENotificationRequests TextInputHandler::GetIMENotificationRequests() {
   return IMENotificationRequests();
 }
 
-void TextInputHandler::OnRemovedFrom(TextEventDispatcher* aTextEventDispatcher) {}
+void TextInputHandler::OnRemovedFrom(
+    TextEventDispatcher* aTextEventDispatcher) {}
 
-void TextInputHandler::WillDispatchKeyboardEvent(TextEventDispatcher* aTextEventDispatcher,
-                                                 WidgetKeyboardEvent& aKeyboardEvent,
-                                                 uint32_t aIndexOfKeypress, void* aData) {}
+void TextInputHandler::WillDispatchKeyboardEvent(
+    TextEventDispatcher* aTextEventDispatcher,
+    WidgetKeyboardEvent& aKeyboardEvent, uint32_t aIndexOfKeypress,
+    void* aData) {}
 
 bool TextInputHandler::InsertText(NSString* aText) {
   nsString str;
   GetStringForNSString(aText, str);
 
   MOZ_LOG(gIMELog, LogLevel::Info,
-          ("%p TextInputHandler::InsertText(aText=%s)", this, NS_ConvertUTF16toUTF8(str).get()));
+          ("%p TextInputHandler::InsertText(aText=%s)", this,
+           NS_ConvertUTF16toUTF8(str).get()));
 
   if (Destroyed()) {
     return false;
@@ -75,7 +79,8 @@ bool TextInputHandler::InsertText(NSString* aText) {
       return EmulateKeyboardEvent(NS_VK_RETURN, KEY_NAME_INDEX_Enter, charCode);
     }
     if (charCode == 0x08) {
-      return EmulateKeyboardEvent(NS_VK_BACK, KEY_NAME_INDEX_Backspace, charCode);
+      return EmulateKeyboardEvent(NS_VK_BACK, KEY_NAME_INDEX_Backspace,
+                                  charCode);
     }
     if (uint32_t keyCode = WidgetUtils::ComputeKeyCodeFromChar(charCode)) {
       return EmulateKeyboardEvent(keyCode, KEY_NAME_INDEX_USE_STRING, charCode);
@@ -84,7 +89,8 @@ bool TextInputHandler::InsertText(NSString* aText) {
 
   nsEventStatus status = nsEventStatus_eIgnore;
   RefPtr<nsWindow> widget(mWidget);
-  if (!DispatchKeyDownEvent(NS_VK_PROCESSKEY, KEY_NAME_INDEX_Process, 0, status)) {
+  if (!DispatchKeyDownEvent(NS_VK_PROCESSKEY, KEY_NAME_INDEX_Process, 0,
+                            status)) {
     return false;
   }
   if (Destroyed()) {
@@ -103,7 +109,8 @@ bool TextInputHandler::InsertText(NSString* aText) {
 
 bool TextInputHandler::HandleCommand(Command aCommand) {
   MOZ_LOG(gIMELog, LogLevel::Info,
-          ("%p   TextInputHandler::HandleCommand, aCommand=%s", this, ToChar(aCommand)));
+          ("%p   TextInputHandler::HandleCommand, aCommand=%s", this,
+           ToChar(aCommand)));
 
   if (Destroyed()) {
     return false;
@@ -144,8 +151,8 @@ static uint32_t ComputeKeyModifiers(uint32_t aCharCode) {
   return 0;
 }
 
-static void InitKeyEvent(WidgetKeyboardEvent& aEvent, uint32_t aKeyCode, KeyNameIndex aKeyNameIndex,
-                         char16_t aCharCode) {
+static void InitKeyEvent(WidgetKeyboardEvent& aEvent, uint32_t aKeyCode,
+                         KeyNameIndex aKeyNameIndex, char16_t aCharCode) {
   aEvent.mKeyCode = aKeyCode;
   aEvent.mIsRepeat = false;
   aEvent.mKeyNameIndex = aKeyNameIndex;
@@ -160,8 +167,10 @@ static void InitKeyEvent(WidgetKeyboardEvent& aEvent, uint32_t aKeyCode, KeyName
   aEvent.mTimeStamp = TimeStamp::Now();
 }
 
-bool TextInputHandler::DispatchKeyDownEvent(uint32_t aKeyCode, KeyNameIndex aKeyNameIndex,
-                                            char16_t aCharCode, nsEventStatus& aStatus) {
+bool TextInputHandler::DispatchKeyDownEvent(uint32_t aKeyCode,
+                                            KeyNameIndex aKeyNameIndex,
+                                            char16_t aCharCode,
+                                            nsEventStatus& aStatus) {
   MOZ_ASSERT(aKeyCode);
   MOZ_ASSERT(mWidget);
 
@@ -175,8 +184,10 @@ bool TextInputHandler::DispatchKeyDownEvent(uint32_t aKeyCode, KeyNameIndex aKey
   return mDispatcher->DispatchKeyboardEvent(eKeyDown, keydownEvent, aStatus);
 }
 
-bool TextInputHandler::DispatchKeyUpEvent(uint32_t aKeyCode, KeyNameIndex aKeyNameIndex,
-                                          char16_t aCharCode, nsEventStatus& aStatus) {
+bool TextInputHandler::DispatchKeyUpEvent(uint32_t aKeyCode,
+                                          KeyNameIndex aKeyNameIndex,
+                                          char16_t aCharCode,
+                                          nsEventStatus& aStatus) {
   MOZ_ASSERT(aKeyCode);
   MOZ_ASSERT(mWidget);
 
@@ -190,8 +201,10 @@ bool TextInputHandler::DispatchKeyUpEvent(uint32_t aKeyCode, KeyNameIndex aKeyNa
   return mDispatcher->DispatchKeyboardEvent(eKeyUp, keyupEvent, aStatus);
 }
 
-bool TextInputHandler::DispatchKeyPressEvent(uint32_t aKeyCode, KeyNameIndex aKeyNameIndex,
-                                             char16_t aCharCode, nsEventStatus& aStatus) {
+bool TextInputHandler::DispatchKeyPressEvent(uint32_t aKeyCode,
+                                             KeyNameIndex aKeyNameIndex,
+                                             char16_t aCharCode,
+                                             nsEventStatus& aStatus) {
   MOZ_ASSERT(aKeyCode);
   MOZ_ASSERT(mWidget);
 
@@ -205,12 +218,14 @@ bool TextInputHandler::DispatchKeyPressEvent(uint32_t aKeyCode, KeyNameIndex aKe
   return mDispatcher->MaybeDispatchKeypressEvents(keypressEvent, aStatus);
 }
 
-bool TextInputHandler::EmulateKeyboardEvent(uint32_t aKeyCode, KeyNameIndex aKeyNameIndex,
+bool TextInputHandler::EmulateKeyboardEvent(uint32_t aKeyCode,
+                                            KeyNameIndex aKeyNameIndex,
                                             char16_t aCharCode) {
   MOZ_ASSERT(aCharCode);
 
   MOZ_LOG(gIMELog, LogLevel::Info,
-          ("%p TextInputHandler::EmulateKeyboardEvent(aKeyCode=%x, aKeyNameIndex=%x, aCharCode=%x)",
+          ("%p TextInputHandler::EmulateKeyboardEvent(aKeyCode=%x, "
+           "aKeyNameIndex=%x, aCharCode=%x)",
            this, aKeyCode, aKeyNameIndex, aCharCode));
 
   nsEventStatus status = nsEventStatus_eIgnore;

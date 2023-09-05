@@ -32,23 +32,25 @@ static void GetUtf8StringFromNSString(NSString* aSrc, nsACString& aDest) {
 void IOSPlatformFontList::InitSystemFontNames() {
   nsAutoreleasePool localPool;
 
-  UIFontDescriptor* desc =
-      [UIFontDescriptor preferredFontDescriptorWithTextStyle:UIFontTextStyleBody];
+  UIFontDescriptor* desc = [UIFontDescriptor
+      preferredFontDescriptorWithTextStyle:UIFontTextStyleBody];
   desc = [desc fontDescriptorWithDesign:UIFontDescriptorSystemDesignDefault];
 
-  NSString* name = [[desc fontAttributes] objectForKey:UIFontDescriptorFamilyAttribute];
+  NSString* name =
+      [[desc fontAttributes] objectForKey:UIFontDescriptorFamilyAttribute];
 
   GetUtf8StringFromNSString(name, mSystemTextFontFamilyName);
 }
 
-FontFamily IOSPlatformFontList::GetDefaultFontForPlatform(nsPresContext* aPresContext,
-                                                          const gfxFontStyle* aStyle,
-                                                          nsAtom* aLanguage) {
+FontFamily IOSPlatformFontList::GetDefaultFontForPlatform(
+    nsPresContext* aPresContext, const gfxFontStyle* aStyle,
+    nsAtom* aLanguage) {
   nsAutoreleasePool localPool;
 
-  UIFontDescriptor* desc =
-      [UIFontDescriptor preferredFontDescriptorWithTextStyle:UIFontTextStyleBody];
-  NSString* name = [[desc fontAttributes] objectForKey:UIFontDescriptorFamilyAttribute];
+  UIFontDescriptor* desc = [UIFontDescriptor
+      preferredFontDescriptorWithTextStyle:UIFontTextStyleBody];
+  NSString* name =
+      [[desc fontAttributes] objectForKey:UIFontDescriptorFamilyAttribute];
 
   nsAutoCString familyName;
   GetUtf8StringFromNSString(name, familyName);

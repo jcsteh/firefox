@@ -36,23 +36,28 @@ static already_AddRefed<Screen> MakeScreen(UIScreen* aScreen) {
   LayoutDeviceIntRect rect;
   rect.x = NSToIntRound(bounds.origin.x * contentsScaleFactor.scale);
   rect.y = NSToIntRound(bounds.origin.y * contentsScaleFactor.scale);
-  rect.width =
-      NSToIntRound((bounds.origin.x + bounds.size.width) * contentsScaleFactor.scale) - rect.x;
-  rect.height =
-      NSToIntRound((bounds.size.height - bounds.origin.y) * contentsScaleFactor.scale) - rect.y;
+  rect.width = NSToIntRound((bounds.origin.x + bounds.size.width) *
+                            contentsScaleFactor.scale) -
+               rect.x;
+  rect.height = NSToIntRound((bounds.size.height - bounds.origin.y) *
+                             contentsScaleFactor.scale) -
+                rect.y;
 
-  // Modern iOS does support HDR, but it's not straightforward to get it given a screen.
+  // Modern iOS does support HDR, but it's not straightforward to get it given a
+  // screen.
   uint32_t pixelDepth = 24;
 
   float dpi = 96.0f;
   MOZ_LOG(sScreenLog, LogLevel::Debug,
-          ("New screen [%d %d %d %d (%d %d %d %d) %d %f %f %f]", rect.x, rect.y, rect.width,
-           rect.height, rect.x, rect.y, rect.width, rect.height, pixelDepth,
-           contentsScaleFactor.scale, defaultCssScaleFactor.scale, dpi));
+          ("New screen [%d %d %d %d (%d %d %d %d) %d %f %f %f]", rect.x, rect.y,
+           rect.width, rect.height, rect.x, rect.y, rect.width, rect.height,
+           pixelDepth, contentsScaleFactor.scale, defaultCssScaleFactor.scale,
+           dpi));
 
   NSInteger fps = [aScreen maximumFramesPerSecond];
-  RefPtr<Screen> screen = new Screen(rect, rect, pixelDepth, pixelDepth, fps, contentsScaleFactor,
-                                     defaultCssScaleFactor, dpi, Screen::IsPseudoDisplay::No);
+  RefPtr<Screen> screen =
+      new Screen(rect, rect, pixelDepth, pixelDepth, fps, contentsScaleFactor,
+                 defaultCssScaleFactor, dpi, Screen::IsPseudoDisplay::No);
   return screen.forget();
 
   NS_OBJC_END_TRY_BLOCK_RETURN(nullptr);

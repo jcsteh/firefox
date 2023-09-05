@@ -55,7 +55,9 @@ bool GLContextEAGL::MakeCurrentImpl() const {
   return true;
 }
 
-bool GLContextEAGL::IsCurrentImpl() const { return [EAGLContext currentContext] == mContext; }
+bool GLContextEAGL::IsCurrentImpl() const {
+  return [EAGLContext currentContext] == mContext;
+}
 
 static PRFuncPtr GLAPIENTRY GetLoadedProcAddress(const char* const name) {
   PRLibrary* lib = nullptr;
@@ -79,7 +81,9 @@ bool GLContextEAGL::SwapBuffers() {
   return true;
 }
 
-void GLContextEAGL::GetWSIInfo(nsCString* const out) const { out->AppendLiteral("EAGL"); }
+void GLContextEAGL::GetWSIInfo(nsCString* const out) const {
+  out->AppendLiteral("EAGL");
+}
 
 static GLContextEAGL* GetGlobalContextEAGL() {
   return static_cast<GLContextEAGL*>(GLContextProviderEAGL::GetGlobalContext());
@@ -87,14 +91,16 @@ static GLContextEAGL* GetGlobalContextEAGL() {
 
 static RefPtr<GLContext> CreateEAGLContext(const GLContextDesc& desc,
                                            GLContextEAGL* sharedContext) {
-  EAGLRenderingAPI apis[] = {kEAGLRenderingAPIOpenGLES3, kEAGLRenderingAPIOpenGLES2};
+  EAGLRenderingAPI apis[] = {kEAGLRenderingAPIOpenGLES3,
+                             kEAGLRenderingAPIOpenGLES2};
 
   // Try to create a GLES3 context if we can, otherwise fall back to GLES2
   EAGLContext* context = nullptr;
   for (EAGLRenderingAPI api : apis) {
     if (sharedContext) {
-      context = [[EAGLContext alloc] initWithAPI:api
-                                      sharegroup:sharedContext->GetEAGLContext().sharegroup];
+      context = [[EAGLContext alloc]
+          initWithAPI:api
+           sharegroup:sharedContext->GetEAGLContext().sharegroup];
     } else {
       context = [[EAGLContext alloc] initWithAPI:api];
     }
@@ -108,7 +114,8 @@ static RefPtr<GLContext> CreateEAGLContext(const GLContextDesc& desc,
     return nullptr;
   }
 
-  RefPtr<GLContextEAGL> glContext = new GLContextEAGL(desc, context, sharedContext);
+  RefPtr<GLContextEAGL> glContext =
+      new GLContextEAGL(desc, context, sharedContext);
   if (!glContext->Init()) {
     glContext = nullptr;
     return nullptr;
@@ -118,7 +125,8 @@ static RefPtr<GLContext> CreateEAGLContext(const GLContextDesc& desc,
 }
 
 already_AddRefed<GLContext> GLContextProviderEAGL::CreateForCompositorWidget(
-    CompositorWidget* aCompositorWidget, bool aHardwareWebRender, bool aForceAccelerated) {
+    CompositorWidget* aCompositorWidget, bool aHardwareWebRender,
+    bool aForceAccelerated) {
   CreateContextFlags flags = CreateContextFlags::ALLOW_OFFLINE_RENDERER;
   if (aForceAccelerated) {
     flags |= CreateContextFlags::FORBID_SOFTWARE;
@@ -143,7 +151,8 @@ GLContext* GLContextProviderEAGL::GetGlobalContext() {
   if (!triedToCreateContext) {
     triedToCreateContext = true;
 
-    MOZ_RELEASE_ASSERT(!gGlobalContext, "GFX: Global GL context already initialized.");
+    MOZ_RELEASE_ASSERT(!gGlobalContext,
+                       "GFX: Global GL context already initialized.");
     nsCString discardFailureId;
     RefPtr<GLContext> temp = CreateHeadless({}, &discardFailureId);
     gGlobalContext = temp;

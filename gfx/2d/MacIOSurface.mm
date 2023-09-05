@@ -26,9 +26,11 @@
 
 using namespace mozilla;
 
-MacIOSurface::MacIOSurface(CFTypeRefPtr<IOSurfaceRef> aIOSurfaceRef, bool aHasAlpha,
-                           gfx::YUVColorSpace aColorSpace)
-    : mIOSurfaceRef(std::move(aIOSurfaceRef)), mHasAlpha(aHasAlpha), mColorSpace(aColorSpace) {
+MacIOSurface::MacIOSurface(CFTypeRefPtr<IOSurfaceRef> aIOSurfaceRef,
+                           bool aHasAlpha, gfx::YUVColorSpace aColorSpace)
+    : mIOSurfaceRef(std::move(aIOSurfaceRef)),
+      mHasAlpha(aHasAlpha),
+      mColorSpace(aColorSpace) {
   IncrementUseCount();
 }
 
@@ -37,34 +39,38 @@ MacIOSurface::~MacIOSurface() {
   DecrementUseCount();
 }
 
-void AddDictionaryInt(const CFTypeRefPtr<CFMutableDictionaryRef>& aDict, const void* aType,
-                      uint32_t aValue) {
+void AddDictionaryInt(const CFTypeRefPtr<CFMutableDictionaryRef>& aDict,
+                      const void* aType, uint32_t aValue) {
   auto cfValue = CFTypeRefPtr<CFNumberRef>::WrapUnderCreateRule(
       ::CFNumberCreate(nullptr, kCFNumberSInt32Type, &aValue));
   ::CFDictionaryAddValue(aDict.get(), aType, cfValue.get());
 }
 
-void SetSizeProperties(const CFTypeRefPtr<CFMutableDictionaryRef>& aDict, int aWidth, int aHeight,
-                       int aBytesPerPixel) {
+void SetSizeProperties(const CFTypeRefPtr<CFMutableDictionaryRef>& aDict,
+                       int aWidth, int aHeight, int aBytesPerPixel) {
   AddDictionaryInt(aDict, kIOSurfaceWidth, aWidth);
   AddDictionaryInt(aDict, kIOSurfaceHeight, aHeight);
   ::CFDictionaryAddValue(aDict.get(), kIOSurfaceIsGlobal, kCFBooleanTrue);
   AddDictionaryInt(aDict, kIOSurfaceBytesPerElement, aBytesPerPixel);
 
-  size_t bytesPerRow = IOSurfaceAlignProperty(kIOSurfaceBytesPerRow, aWidth * aBytesPerPixel);
+  size_t bytesPerRow =
+      IOSurfaceAlignProperty(kIOSurfaceBytesPerRow, aWidth * aBytesPerPixel);
   AddDictionaryInt(aDict, kIOSurfaceBytesPerRow, bytesPerRow);
 
   // Add a SIMD register worth of extra bytes to the end of the allocation for
   // SWGL.
-  size_t totalBytes = IOSurfaceAlignProperty(kIOSurfaceAllocSize, aHeight * bytesPerRow + 16);
+  size_t totalBytes =
+      IOSurfaceAlignProperty(kIOSurfaceAllocSize, aHeight * bytesPerRow + 16);
   AddDictionaryInt(aDict, kIOSurfaceAllocSize, totalBytes);
 }
 
 /* static */
-already_AddRefed<MacIOSurface> MacIOSurface::CreateIOSurface(int aWidth, int aHeight,
+already_AddRefed<MacIOSurface> MacIOSurface::CreateIOSurface(int aWidth,
+                                                             int aHeight,
                                                              bool aHasAlpha) {
   auto props = CFTypeRefPtr<CFMutableDictionaryRef>::WrapUnderCreateRule(
-      ::CFDictionaryCreateMutable(kCFAllocatorDefault, 4, &kCFTypeDictionaryKeyCallBacks,
+      ::CFDictionaryCreateMutable(kCFAllocatorDefault, 4,
+                                  &kCFTypeDictionaryKeyCallBacks,
                                   &kCFTypeDictionaryValueCallBacks));
   if (!props) return nullptr;
 
@@ -74,34 +80,42 @@ already_AddRefed<MacIOSurface> MacIOSurface::CreateIOSurface(int aWidth, int aHe
   int32_t bytesPerElem = 4;
   SetSizeProperties(props, aWidth, aHeight, bytesPerElem);
 
-  AddDictionaryInt(props, kIOSurfacePixelFormat, (uint32_t)kCVPixelFormatType_32BGRA);
+  AddDictionaryInt(props, kIOSurfacePixelFormat,
+                   (uint32_t)kCVPixelFormatType_32BGRA);
 
   CFTypeRefPtr<IOSurfaceRef> surfaceRef =
-      CFTypeRefPtr<IOSurfaceRef>::WrapUnderCreateRule(::IOSurfaceCreate(props.get()));
+      CFTypeRefPtr<IOSurfaceRef>::WrapUnderCreateRule(
+          ::IOSurfaceCreate(props.get()));
 
   if (StaticPrefs::gfx_color_management_native_srgb()) {
-    IOSurfaceSetValue(surfaceRef.get(), CFSTR("IOSurfaceColorSpace"), kCGColorSpaceSRGB);
+    IOSurfaceSetValue(surfaceRef.get(), CFSTR("IOSurfaceColorSpace"),
+                      kCGColorSpaceSRGB);
   }
 
   if (!surfaceRef) {
     return nullptr;
   }
 
-  RefPtr<MacIOSurface> ioSurface = new MacIOSurface(std::move(surfaceRef), aHasAlpha);
+  RefPtr<MacIOSurface> ioSurface =
+      new MacIOSurface(std::move(surfaceRef), aHasAlpha);
 
   return ioSurface.forget();
 }
 
-size_t CreatePlaneDictionary(CFTypeRefPtr<CFMutableDictionaryRef>& aDict, const gfx::IntSize& aSize,
-                             size_t aOffset, size_t aBytesPerPixel) {
-  size_t bytesPerRow =
-      IOSurfaceAlignProperty(kIOSurfacePlaneBytesPerRow, aSize.width * aBytesPerPixel);
+size_t CreatePlaneDictionary(CFTypeRefPtr<CFMutableDictionaryRef>& aDict,
+                             const gfx::IntSize& aSize, size_t aOffset,
+                             size_t aBytesPerPixel) {
+  size_t bytesPerRow = IOSurfaceAlignProperty(kIOSurfacePlaneBytesPerRow,
+                                              aSize.width * aBytesPerPixel);
   // Add a SIMD register worth of extra bytes to the end of the allocation for
   // SWGL.
-  size_t totalBytes = IOSurfaceAlignProperty(kIOSurfacePlaneSize, aSize.height * bytesPerRow + 16);
+  size_t totalBytes = IOSurfaceAlignProperty(kIOSurfacePlaneSize,
+                                             aSize.height * bytesPerRow + 16);
 
-  aDict = CFTypeRefPtr<CFMutableDictionaryRef>::WrapUnderCreateRule(::CFDictionaryCreateMutable(
-      kCFAllocatorDefault, 4, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks));
+  aDict = CFTypeRefPtr<CFMutableDictionaryRef>::WrapUnderCreateRule(
+      ::CFDictionaryCreateMutable(kCFAllocatorDefault, 4,
+                                  &kCFTypeDictionaryKeyCallBacks,
+                                  &kCFTypeDictionaryValueCallBacks));
 
   AddDictionaryInt(aDict, kIOSurfacePlaneWidth, aSize.width);
   AddDictionaryInt(aDict, kIOSurfacePlaneHeight, aSize.height);
@@ -116,14 +130,19 @@ size_t CreatePlaneDictionary(CFTypeRefPtr<CFMutableDictionaryRef>& aDict, const 
 /* static */
 already_AddRefed<MacIOSurface> MacIOSurface::CreateNV12OrP010Surface(
     const IntSize& aYSize, const IntSize& aCbCrSize, YUVColorSpace aColorSpace,
-    TransferFunction aTransferFunction, ColorRange aColorRange, ColorDepth aColorDepth) {
-  MOZ_ASSERT(aColorSpace == YUVColorSpace::BT601 || aColorSpace == YUVColorSpace::BT709 ||
+    TransferFunction aTransferFunction, ColorRange aColorRange,
+    ColorDepth aColorDepth) {
+  MOZ_ASSERT(aColorSpace == YUVColorSpace::BT601 ||
+             aColorSpace == YUVColorSpace::BT709 ||
              aColorSpace == YUVColorSpace::BT2020);
-  MOZ_ASSERT(aColorRange == ColorRange::LIMITED || aColorRange == ColorRange::FULL);
-  MOZ_ASSERT(aColorDepth == ColorDepth::COLOR_8 || aColorDepth == ColorDepth::COLOR_10);
+  MOZ_ASSERT(aColorRange == ColorRange::LIMITED ||
+             aColorRange == ColorRange::FULL);
+  MOZ_ASSERT(aColorDepth == ColorDepth::COLOR_8 ||
+             aColorDepth == ColorDepth::COLOR_10);
 
   auto props = CFTypeRefPtr<CFMutableDictionaryRef>::WrapUnderCreateRule(
-      ::CFDictionaryCreateMutable(kCFAllocatorDefault, 4, &kCFTypeDictionaryKeyCallBacks,
+      ::CFDictionaryCreateMutable(kCFAllocatorDefault, 4,
+                                  &kCFTypeDictionaryKeyCallBacks,
                                   &kCFTypeDictionaryValueCallBacks));
   if (!props) return nullptr;
 
@@ -136,39 +155,48 @@ already_AddRefed<MacIOSurface> MacIOSurface::CreateNV12OrP010Surface(
 
   if (aColorRange == ColorRange::LIMITED) {
     if (aColorDepth == ColorDepth::COLOR_8) {
-      AddDictionaryInt(props, kIOSurfacePixelFormat,
-                       (uint32_t)kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange);
+      AddDictionaryInt(
+          props, kIOSurfacePixelFormat,
+          (uint32_t)kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange);
     } else {
-      AddDictionaryInt(props, kIOSurfacePixelFormat,
-                       (uint32_t)kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange);
+      AddDictionaryInt(
+          props, kIOSurfacePixelFormat,
+          (uint32_t)kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange);
     }
   } else {
     if (aColorDepth == ColorDepth::COLOR_8) {
-      AddDictionaryInt(props, kIOSurfacePixelFormat,
-                       (uint32_t)kCVPixelFormatType_420YpCbCr8BiPlanarFullRange);
+      AddDictionaryInt(
+          props, kIOSurfacePixelFormat,
+          (uint32_t)kCVPixelFormatType_420YpCbCr8BiPlanarFullRange);
     } else {
-      AddDictionaryInt(props, kIOSurfacePixelFormat,
-                       (uint32_t)kCVPixelFormatType_420YpCbCr10BiPlanarFullRange);
+      AddDictionaryInt(
+          props, kIOSurfacePixelFormat,
+          (uint32_t)kCVPixelFormatType_420YpCbCr10BiPlanarFullRange);
     }
   }
 
   size_t bytesPerPixel = (aColorDepth == ColorDepth::COLOR_8) ? 1 : 2;
 
   CFTypeRefPtr<CFMutableDictionaryRef> planeProps[2];
-  size_t yPlaneBytes = CreatePlaneDictionary(planeProps[0], aYSize, 0, bytesPerPixel);
-  size_t cbCrOffset = IOSurfaceAlignProperty(kIOSurfacePlaneOffset, yPlaneBytes);
-  size_t cbCrPlaneBytes =
-      CreatePlaneDictionary(planeProps[1], aCbCrSize, cbCrOffset, bytesPerPixel * 2);
-  size_t totalBytes = IOSurfaceAlignProperty(kIOSurfaceAllocSize, cbCrOffset + cbCrPlaneBytes);
+  size_t yPlaneBytes =
+      CreatePlaneDictionary(planeProps[0], aYSize, 0, bytesPerPixel);
+  size_t cbCrOffset =
+      IOSurfaceAlignProperty(kIOSurfacePlaneOffset, yPlaneBytes);
+  size_t cbCrPlaneBytes = CreatePlaneDictionary(planeProps[1], aCbCrSize,
+                                                cbCrOffset, bytesPerPixel * 2);
+  size_t totalBytes =
+      IOSurfaceAlignProperty(kIOSurfaceAllocSize, cbCrOffset + cbCrPlaneBytes);
 
   AddDictionaryInt(props, kIOSurfaceAllocSize, totalBytes);
 
   auto array = CFTypeRefPtr<CFArrayRef>::WrapUnderCreateRule(
-      CFArrayCreate(kCFAllocatorDefault, (const void**)planeProps, 2, &kCFTypeArrayCallBacks));
+      CFArrayCreate(kCFAllocatorDefault, (const void**)planeProps, 2,
+                    &kCFTypeArrayCallBacks));
   ::CFDictionaryAddValue(props.get(), kIOSurfacePlaneInfo, array.get());
 
   CFTypeRefPtr<IOSurfaceRef> surfaceRef =
-      CFTypeRefPtr<IOSurfaceRef>::WrapUnderCreateRule(::IOSurfaceCreate(props.get()));
+      CFTypeRefPtr<IOSurfaceRef>::WrapUnderCreateRule(
+          ::IOSurfaceCreate(props.get()));
 
   if (!surfaceRef) {
     return nullptr;
@@ -198,8 +226,9 @@ already_AddRefed<MacIOSurface> MacIOSurface::CreateNV12OrP010Surface(
   }
 
   // Transfer function is applied independently from the colorSpace.
-  IOSurfaceSetValue(surfaceRef.get(), CFSTR("IOSurfaceTransferFunction"),
-                    gfxMacUtils::CFStringForTransferFunction(aTransferFunction));
+  IOSurfaceSetValue(
+      surfaceRef.get(), CFSTR("IOSurfaceTransferFunction"),
+      gfxMacUtils::CFStringForTransferFunction(aTransferFunction));
 
 #ifdef XP_MACOSX
   // Override the color space to be the same as the main display, so that
@@ -209,25 +238,29 @@ already_AddRefed<MacIOSurface> MacIOSurface::CreateNV12OrP010Surface(
   // our gfx code.
   auto colorSpace = CFTypeRefPtr<CGColorSpaceRef>::WrapUnderCreateRule(
       CGDisplayCopyColorSpace(CGMainDisplayID()));
-  auto colorData =
-      CFTypeRefPtr<CFDataRef>::WrapUnderCreateRule(CGColorSpaceCopyICCProfile(colorSpace.get()));
-  IOSurfaceSetValue(surfaceRef.get(), CFSTR("IOSurfaceColorSpace"), colorData.get());
+  auto colorData = CFTypeRefPtr<CFDataRef>::WrapUnderCreateRule(
+      CGColorSpaceCopyICCProfile(colorSpace.get()));
+  IOSurfaceSetValue(surfaceRef.get(), CFSTR("IOSurfaceColorSpace"),
+                    colorData.get());
 #endif
 
-  RefPtr<MacIOSurface> ioSurface = new MacIOSurface(std::move(surfaceRef), false, aColorSpace);
+  RefPtr<MacIOSurface> ioSurface =
+      new MacIOSurface(std::move(surfaceRef), false, aColorSpace);
 
   return ioSurface.forget();
 }
 
 /* static */
-already_AddRefed<MacIOSurface> MacIOSurface::CreateYUV422Surface(const IntSize& aSize,
-                                                                 YUVColorSpace aColorSpace,
-                                                                 ColorRange aColorRange) {
-  MOZ_ASSERT(aColorSpace == YUVColorSpace::BT601 || aColorSpace == YUVColorSpace::BT709);
-  MOZ_ASSERT(aColorRange == ColorRange::LIMITED || aColorRange == ColorRange::FULL);
+already_AddRefed<MacIOSurface> MacIOSurface::CreateYUV422Surface(
+    const IntSize& aSize, YUVColorSpace aColorSpace, ColorRange aColorRange) {
+  MOZ_ASSERT(aColorSpace == YUVColorSpace::BT601 ||
+             aColorSpace == YUVColorSpace::BT709);
+  MOZ_ASSERT(aColorRange == ColorRange::LIMITED ||
+             aColorRange == ColorRange::FULL);
 
   auto props = CFTypeRefPtr<CFMutableDictionaryRef>::WrapUnderCreateRule(
-      ::CFDictionaryCreateMutable(kCFAllocatorDefault, 4, &kCFTypeDictionaryKeyCallBacks,
+      ::CFDictionaryCreateMutable(kCFAllocatorDefault, 4,
+                                  &kCFTypeDictionaryKeyCallBacks,
                                   &kCFTypeDictionaryValueCallBacks));
   if (!props) return nullptr;
 
@@ -237,14 +270,16 @@ already_AddRefed<MacIOSurface> MacIOSurface::CreateYUV422Surface(const IntSize& 
   SetSizeProperties(props, aSize.width, aSize.height, 2);
 
   if (aColorRange == ColorRange::LIMITED) {
-    AddDictionaryInt(props, kIOSurfacePixelFormat, (uint32_t)kCVPixelFormatType_422YpCbCr8_yuvs);
+    AddDictionaryInt(props, kIOSurfacePixelFormat,
+                     (uint32_t)kCVPixelFormatType_422YpCbCr8_yuvs);
   } else {
     AddDictionaryInt(props, kIOSurfacePixelFormat,
                      (uint32_t)kCVPixelFormatType_422YpCbCr8FullRange);
   }
 
   CFTypeRefPtr<IOSurfaceRef> surfaceRef =
-      CFTypeRefPtr<IOSurfaceRef>::WrapUnderCreateRule(::IOSurfaceCreate(props.get()));
+      CFTypeRefPtr<IOSurfaceRef>::WrapUnderCreateRule(
+          ::IOSurfaceCreate(props.get()));
 
   if (!surfaceRef) {
     return nullptr;
@@ -253,9 +288,11 @@ already_AddRefed<MacIOSurface> MacIOSurface::CreateYUV422Surface(const IntSize& 
   // Setup the correct YCbCr conversion matrix on the IOSurface, in case we pass
   // this directly to CoreAnimation.
   if (aColorSpace == YUVColorSpace::BT601) {
-    IOSurfaceSetValue(surfaceRef.get(), CFSTR("IOSurfaceYCbCrMatrix"), CFSTR("ITU_R_601_4"));
+    IOSurfaceSetValue(surfaceRef.get(), CFSTR("IOSurfaceYCbCrMatrix"),
+                      CFSTR("ITU_R_601_4"));
   } else {
-    IOSurfaceSetValue(surfaceRef.get(), CFSTR("IOSurfaceYCbCrMatrix"), CFSTR("ITU_R_709_2"));
+    IOSurfaceSetValue(surfaceRef.get(), CFSTR("IOSurfaceYCbCrMatrix"),
+                      CFSTR("ITU_R_709_2"));
   }
 
 #ifdef XP_MACOSX
@@ -266,29 +303,35 @@ already_AddRefed<MacIOSurface> MacIOSurface::CreateYUV422Surface(const IntSize& 
   // our gfx code.
   auto colorSpace = CFTypeRefPtr<CGColorSpaceRef>::WrapUnderCreateRule(
       CGDisplayCopyColorSpace(CGMainDisplayID()));
-  auto colorData =
-      CFTypeRefPtr<CFDataRef>::WrapUnderCreateRule(CGColorSpaceCopyICCProfile(colorSpace.get()));
-  IOSurfaceSetValue(surfaceRef.get(), CFSTR("IOSurfaceColorSpace"), colorData.get());
+  auto colorData = CFTypeRefPtr<CFDataRef>::WrapUnderCreateRule(
+      CGColorSpaceCopyICCProfile(colorSpace.get()));
+  IOSurfaceSetValue(surfaceRef.get(), CFSTR("IOSurfaceColorSpace"),
+                    colorData.get());
 #endif
 
-  RefPtr<MacIOSurface> ioSurface = new MacIOSurface(std::move(surfaceRef), false, aColorSpace);
+  RefPtr<MacIOSurface> ioSurface =
+      new MacIOSurface(std::move(surfaceRef), false, aColorSpace);
 
   return ioSurface.forget();
 }
 
 /* static */
-already_AddRefed<MacIOSurface> MacIOSurface::LookupSurface(IOSurfaceID aIOSurfaceID, bool aHasAlpha,
-                                                           gfx::YUVColorSpace aColorSpace) {
+already_AddRefed<MacIOSurface> MacIOSurface::LookupSurface(
+    IOSurfaceID aIOSurfaceID, bool aHasAlpha, gfx::YUVColorSpace aColorSpace) {
   CFTypeRefPtr<IOSurfaceRef> surfaceRef =
-      CFTypeRefPtr<IOSurfaceRef>::WrapUnderCreateRule(::IOSurfaceLookup(aIOSurfaceID));
+      CFTypeRefPtr<IOSurfaceRef>::WrapUnderCreateRule(
+          ::IOSurfaceLookup(aIOSurfaceID));
   if (!surfaceRef) return nullptr;
 
-  RefPtr<MacIOSurface> ioSurface = new MacIOSurface(std::move(surfaceRef), aHasAlpha, aColorSpace);
+  RefPtr<MacIOSurface> ioSurface =
+      new MacIOSurface(std::move(surfaceRef), aHasAlpha, aColorSpace);
 
   return ioSurface.forget();
 }
 
-IOSurfaceID MacIOSurface::GetIOSurfaceID() const { return ::IOSurfaceGetID(mIOSurfaceRef.get()); }
+IOSurfaceID MacIOSurface::GetIOSurfaceID() const {
+  return ::IOSurfaceGetID(mIOSurfaceRef.get());
+}
 
 void* MacIOSurface::GetBaseAddress() const {
   return ::IOSurfaceGetBaseAddress(mIOSurfaceRef.get());
@@ -298,17 +341,27 @@ void* MacIOSurface::GetBaseAddressOfPlane(size_t aPlaneIndex) const {
   return ::IOSurfaceGetBaseAddressOfPlane(mIOSurfaceRef.get(), aPlaneIndex);
 }
 
-size_t MacIOSurface::GetWidth(size_t plane) const { return GetDevicePixelWidth(plane); }
+size_t MacIOSurface::GetWidth(size_t plane) const {
+  return GetDevicePixelWidth(plane);
+}
 
-size_t MacIOSurface::GetHeight(size_t plane) const { return GetDevicePixelHeight(plane); }
+size_t MacIOSurface::GetHeight(size_t plane) const {
+  return GetDevicePixelHeight(plane);
+}
 
-size_t MacIOSurface::GetPlaneCount() const { return ::IOSurfaceGetPlaneCount(mIOSurfaceRef.get()); }
+size_t MacIOSurface::GetPlaneCount() const {
+  return ::IOSurfaceGetPlaneCount(mIOSurfaceRef.get());
+}
 
 /*static*/
-size_t MacIOSurface::GetMaxWidth() { return ::IOSurfaceGetPropertyMaximum(kIOSurfaceWidth); }
+size_t MacIOSurface::GetMaxWidth() {
+  return ::IOSurfaceGetPropertyMaximum(kIOSurfaceWidth);
+}
 
 /*static*/
-size_t MacIOSurface::GetMaxHeight() { return ::IOSurfaceGetPropertyMaximum(kIOSurfaceHeight); }
+size_t MacIOSurface::GetMaxHeight() {
+  return ::IOSurfaceGetPropertyMaximum(kIOSurfaceHeight);
+}
 
 size_t MacIOSurface::GetDevicePixelWidth(size_t plane) const {
   return ::IOSurfaceGetWidthOfPlane(mIOSurfaceRef.get(), plane);
@@ -322,25 +375,33 @@ size_t MacIOSurface::GetBytesPerRow(size_t plane) const {
   return ::IOSurfaceGetBytesPerRowOfPlane(mIOSurfaceRef.get(), plane);
 }
 
-size_t MacIOSurface::GetAllocSize() const { return ::IOSurfaceGetAllocSize(mIOSurfaceRef.get()); }
+size_t MacIOSurface::GetAllocSize() const {
+  return ::IOSurfaceGetAllocSize(mIOSurfaceRef.get());
+}
 
 OSType MacIOSurface::GetPixelFormat() const {
   return ::IOSurfaceGetPixelFormat(mIOSurfaceRef.get());
 }
 
-void MacIOSurface::IncrementUseCount() { ::IOSurfaceIncrementUseCount(mIOSurfaceRef.get()); }
+void MacIOSurface::IncrementUseCount() {
+  ::IOSurfaceIncrementUseCount(mIOSurfaceRef.get());
+}
 
-void MacIOSurface::DecrementUseCount() { ::IOSurfaceDecrementUseCount(mIOSurfaceRef.get()); }
+void MacIOSurface::DecrementUseCount() {
+  ::IOSurfaceDecrementUseCount(mIOSurfaceRef.get());
+}
 
 void MacIOSurface::Lock(bool aReadOnly) {
   MOZ_RELEASE_ASSERT(!mIsLocked, "double MacIOSurface lock");
-  ::IOSurfaceLock(mIOSurfaceRef.get(), aReadOnly ? kIOSurfaceLockReadOnly : 0, nullptr);
+  ::IOSurfaceLock(mIOSurfaceRef.get(), aReadOnly ? kIOSurfaceLockReadOnly : 0,
+                  nullptr);
   mIsLocked = true;
 }
 
 void MacIOSurface::Unlock(bool aReadOnly) {
   MOZ_RELEASE_ASSERT(mIsLocked, "MacIOSurface unlock without being locked");
-  ::IOSurfaceUnlock(mIOSurfaceRef.get(), aReadOnly ? kIOSurfaceLockReadOnly : 0, nullptr);
+  ::IOSurfaceUnlock(mIOSurfaceRef.get(), aReadOnly ? kIOSurfaceLockReadOnly : 0,
+                    nullptr);
   mIsLocked = false;
 }
 
@@ -362,27 +423,30 @@ already_AddRefed<SourceSurface> MacIOSurface::GetAsSurface() {
   size_t ioHeight = GetDevicePixelHeight();
 
   unsigned char* ioData = (unsigned char*)GetBaseAddress();
-  auto* dataCpy = new unsigned char[bytesPerRow * ioHeight / sizeof(unsigned char)];
+  auto* dataCpy =
+      new unsigned char[bytesPerRow * ioHeight / sizeof(unsigned char)];
   for (size_t i = 0; i < ioHeight; i++) {
     memcpy(dataCpy + i * bytesPerRow, ioData + i * bytesPerRow, ioWidth * 4);
   }
 
   Unlock();
 
-  SurfaceFormat format =
-      HasAlpha() ? mozilla::gfx::SurfaceFormat::B8G8R8A8 : mozilla::gfx::SurfaceFormat::B8G8R8X8;
+  SurfaceFormat format = HasAlpha() ? mozilla::gfx::SurfaceFormat::B8G8R8A8
+                                    : mozilla::gfx::SurfaceFormat::B8G8R8X8;
 
   RefPtr<mozilla::gfx::DataSourceSurface> surf =
       mozilla::gfx::Factory::CreateWrappingDataSourceSurface(
-          dataCpy, bytesPerRow, IntSize(ioWidth, ioHeight), format, &MacIOSurfaceBufferDeallocator,
-          static_cast<void*>(dataCpy));
+          dataCpy, bytesPerRow, IntSize(ioWidth, ioHeight), format,
+          &MacIOSurfaceBufferDeallocator, static_cast<void*>(dataCpy));
 
   return surf.forget();
 }
 
 already_AddRefed<mozilla::gfx::DrawTarget> MacIOSurface::GetAsDrawTargetLocked(
     mozilla::gfx::BackendType aBackendType) {
-  MOZ_RELEASE_ASSERT(IsLocked(), "Only call GetAsDrawTargetLocked while the surface is locked.");
+  MOZ_RELEASE_ASSERT(
+      IsLocked(),
+      "Only call GetAsDrawTargetLocked while the surface is locked.");
 
   size_t bytesPerRow = GetBytesPerRow();
   size_t ioWidth = GetDevicePixelWidth();
@@ -448,7 +512,8 @@ bool MacIOSurface::BindTexImage(mozilla::gl::GLContext* aGL, size_t aPlane,
     // format. So, use LOCAL_GL_RED and LOCAL_GL_RB if we use core profile.
     // https://www.khronos.org/opengl/wiki/Image_Format#Legacy_Image_Formats
     if (aPlane == 0) {
-      internalFormat = format = (isCompatibilityProfile) ? (LOCAL_GL_LUMINANCE) : (LOCAL_GL_RED);
+      internalFormat = format =
+          (isCompatibilityProfile) ? (LOCAL_GL_LUMINANCE) : (LOCAL_GL_RED);
     } else {
       internalFormat = format =
           (isCompatibilityProfile) ? (LOCAL_GL_LUMINANCE_ALPHA) : (LOCAL_GL_RG);
@@ -466,7 +531,8 @@ bool MacIOSurface::BindTexImage(mozilla::gl::GLContext* aGL, size_t aPlane,
     // format. So, use LOCAL_GL_RED and LOCAL_GL_RB if we use core profile.
     // https://www.khronos.org/opengl/wiki/Image_Format#Legacy_Image_Formats
     if (aPlane == 0) {
-      internalFormat = format = (isCompatibilityProfile) ? (LOCAL_GL_LUMINANCE) : (LOCAL_GL_RED);
+      internalFormat = format =
+          (isCompatibilityProfile) ? (LOCAL_GL_LUMINANCE) : (LOCAL_GL_RED);
     } else {
       internalFormat = format =
           (isCompatibilityProfile) ? (LOCAL_GL_LUMINANCE_ALPHA) : (LOCAL_GL_RG);
@@ -516,17 +582,21 @@ bool MacIOSurface::BindTexImage(mozilla::gl::GLContext* aGL, size_t aPlane,
   size_t height = GetDevicePixelHeight(aPlane);
 
 #ifdef MOZ_WIDGET_COCOA
-  auto err = ::CGLTexImageIOSurface2D(gl::GLContextCGL::Cast(aGL)->GetCGLContext(),
-                                      LOCAL_GL_TEXTURE_RECTANGLE_ARB, internalFormat, width, height,
-                                      format, type, mIOSurfaceRef.get(), aPlane);
+  auto err = ::CGLTexImageIOSurface2D(
+      gl::GLContextCGL::Cast(aGL)->GetCGLContext(),
+      LOCAL_GL_TEXTURE_RECTANGLE_ARB, internalFormat, width, height, format,
+      type, mIOSurfaceRef.get(), aPlane);
   if (err) {
     const auto formatChars = (const char*)&pixelFormat;
-    const char formatStr[] = {formatChars[3], formatChars[2], formatChars[1], formatChars[0], 0};
-    const nsPrintfCString errStr("CGLTexImageIOSurface2D(context, target, 0x%04x,"
-                                 " %u, %u, 0x%04x, 0x%04x, iosurfPtr, %u) -> %i",
-                                 internalFormat, uint32_t(width), uint32_t(height), format, type,
-                                 (unsigned int)aPlane, err);
-    gfxCriticalError() << errStr.get() << " (iosurf format: " << formatStr << ")";
+    const char formatStr[] = {formatChars[3], formatChars[2], formatChars[1],
+                              formatChars[0], 0};
+    const nsPrintfCString errStr(
+        "CGLTexImageIOSurface2D(context, target, 0x%04x,"
+        " %u, %u, 0x%04x, 0x%04x, iosurfPtr, %u) -> %i",
+        internalFormat, uint32_t(width), uint32_t(height), format, type,
+        (unsigned int)aPlane, err);
+    gfxCriticalError() << errStr.get() << " (iosurf format: " << formatStr
+                       << ")";
   }
   return !err;
 #else
@@ -539,8 +609,8 @@ bool MacIOSurface::BindTexImage(mozilla::gl::GLContext* aGL, size_t aPlane,
   IOSurfaceLock(mIOSurfaceRef.get(), kIOSurfaceLockReadOnly, nullptr);
 
   void* textureData = IOSurfaceGetBaseAddress(mIOSurfaceRef.get());
-  aGL->fTexImage2D(LOCAL_GL_TEXTURE_RECTANGLE_ARB, 0, internalFormat, width, height, 0, format,
-                   type, textureData);
+  aGL->fTexImage2D(LOCAL_GL_TEXTURE_RECTANGLE_ARB, 0, internalFormat, width,
+                   height, 0, format, type, textureData);
 
   IOSurfaceUnlock(mIOSurfaceRef.get(), kIOSurfaceLockReadOnly, nullptr);
   return true;
