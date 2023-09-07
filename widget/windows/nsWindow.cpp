@@ -2359,8 +2359,7 @@ void nsWindow::SetFocus(Raise aRaise, mozilla::dom::CallerType aCallerType) {
  * SECTION: Bounds
  *
  * GetBounds, GetClientBounds, GetScreenBounds,
- * GetRestoredBounds, GetClientOffset
- * SetDrawsInTitlebar, SetNonClientMargins
+ * GetRestoredBounds, GetClientOffset, SetNonClientMargins
  *
  * Bound calculations.
  *
@@ -2510,17 +2509,6 @@ LayoutDeviceIntPoint nsWindow::GetClientOffset() {
   LayoutDeviceIntPoint pt = WidgetToScreenOffset();
   return LayoutDeviceIntPoint(pt.x - LayoutDeviceIntCoord(r1.left),
                               pt.y - LayoutDeviceIntCoord(r1.top));
-}
-
-void nsWindow::SetDrawsInTitlebar(bool aState) {
-  nsWindow* window = GetTopLevelWindow(true);
-  if (window && window != this) {
-    return window->SetDrawsInTitlebar(aState);
-  }
-
-  // top, right, bottom, left
-  SetNonClientMargins(aState ? LayoutDeviceIntMargin(0, -1, -1, -1)
-                             : LayoutDeviceIntMargin(-1, -1, -1, -1));
 }
 
 void nsWindow::ResetLayout() {
@@ -5235,12 +5223,8 @@ bool nsWindow::ProcessMessageInternal(UINT msg, WPARAM& wParam, LPARAM& lParam,
       break;
 
     case WM_PAINT:
-      *aRetValue = (int)OnPaint(nullptr, 0);
+      *aRetValue = (int)OnPaint(0);
       result = true;
-      break;
-
-    case WM_PRINTCLIENT:
-      result = OnPaint((HDC)wParam, 0);
       break;
 
     case WM_HOTKEY:

@@ -123,6 +123,7 @@ MessagePumpCFRunLoopBase::MessagePumpCFRunLoopBase()
                               0,     // priority
                               EnterExitObserver, &observer_context);
   CFRunLoopAddObserver(run_loop_, enter_exit_observer_, kCFRunLoopCommonModes);
+
 #if !defined(XP_IOS)
   root_power_domain_ = IORegisterForSystemPower(this, &power_notification_port_,
                                                 PowerStateNotification,

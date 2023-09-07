@@ -126,8 +126,9 @@ class BrowsingContextModule extends Module {
     this.#contextListener = new lazy.BrowsingContextListener();
     this.#contextListener.on("attached", this.#onContextAttached);
 
-    // Create the prompt listener and listen to "opened" events.
+    // Create the prompt listener and listen to "closed" and "opened" events.
     this.#promptListener = new lazy.PromptListener();
+    this.#promptListener.on("closed", this.#onPromptClosed);
     this.#promptListener.on("opened", this.#onPromptOpened);
 
     // Set of event names which have active subscriptions.
@@ -137,6 +138,10 @@ class BrowsingContextModule extends Module {
   destroy() {
     this.#contextListener.off("attached", this.#onContextAttached);
     this.#contextListener.destroy();
+
+    this.#promptListener.off("closed", this.#onPromptClosed);
+    this.#promptListener.off("opened", this.#onPromptOpened);
+    this.#promptListener.destroy();
 
     this.#subscribedEvents = null;
   }
@@ -721,9 +726,20 @@ class BrowsingContextModule extends Module {
       );
     }
 
-    return this.#awaitNavigation(webProgress, targetURI, {
-      wait,
-    });
+    return this.#awaitNavigation(
+      webProgress,
+      () => {
+        context.loadURI(targetURI, {
+          loadFlags: Ci.nsIWebNavigation.LOAD_FLAGS_IS_LINK,
+          triggeringPrincipal:
+            Services.scriptSecurityManager.getSystemPrincipal(),
+          hasValidUserGestureActivation: true,
+        });
+      },
+      {
+        wait,
+      }
+    );
   }
 
   /**
@@ -873,6 +889,58 @@ class BrowsingContextModule extends Module {
   }
 
   /**
+   * Reload the given context's document, with the provided wait condition.
+   *
+   * @param {object=} options
+   * @param {string} options.context
+   *     Id of the browsing context to navigate.
+   * @param {bool=} options.ignoreCache
+   *     If true ignore the browser cache. [Not yet supported]
+   * @param {WaitCondition=} options.wait
+   *     Wait condition for the navigation, one of "none", "interactive", "complete".
+   *
+   * @throws {InvalidArgumentError}
+   *     Raised if an argument is of an invalid type or value.
+   * @throws {NoSuchFrameError}
+   *     If the browsing context for contextId cannot be found.
+   */
+  async reload(options = {}) {
+    const {
+      context: contextId,
+      ignoreCache,
+      wait = WaitCondition.None,
+    } = options;
+
+    lazy.assert.string(
+      contextId,
+      `Expected "context" to be a string, got ${contextId}`
+    );
+
+    if (typeof ignoreCache != "undefined") {
+      throw new lazy.error.UnsupportedOperationError(
+        `Argument "ignoreCache" is not supported yet.`
+      );
+    }
+
+    const waitConditions = Object.values(WaitCondition);
+    if (!waitConditions.includes(wait)) {
+      throw new lazy.error.InvalidArgumentError(
+        `Expected "wait" to be one of ${waitConditions}, got ${wait}`
+      );
+    }
+
+    const context = this.#getBrowsingContext(contextId);
+
+    // webProgress will be stable even if the context navigates, retrieve it
+    // immediately before doing any asynchronous call.
+    const webProgress = context.webProgress;
+
+    // TODO: Return the navigation result once the BiDi specification has been
+    // fixed. See https://github.com/w3c/webdriver-bidi/issues/527
+    await this.#awaitNavigation(webProgress, () => context.reload(0), { wait });
+  }
+
+  /**
    * Set the top-level browsing context's viewport to a given dimension.
    *
    * @param {object=} options
@@ -968,13 +1036,13 @@ class BrowsingContextModule extends Module {
    *
    * @param {WebProgress} webProgress
    *     The WebProgress instance to observe for this navigation.
-   * @param {nsIURI} targetURI
-   *     The URI to navigate to.
+   * @param {Function} callback
+   *     A callback that starts a navigation.
    * @param {object} options
    * @param {WaitCondition} options.wait
    *     The WaitCondition to use to wait for the navigation.
    */
-  async #awaitNavigation(webProgress, targetURI, options) {
+  async #awaitNavigation(webProgress, callback, options) {
     const { wait } = options;
 
     const context = webProgress.browsingContext;
@@ -1030,11 +1098,7 @@ class BrowsingContextModule extends Module {
       }
     });
 
-    context.loadURI(targetURI, {
-      loadFlags: Ci.nsIWebNavigation.LOAD_FLAGS_IS_LINK,
-      triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal(),
-      hasValidUserGestureActivation: true,
-    });
+    await callback();
     await navigated;
 
     let url;
@@ -1181,26 +1245,54 @@ class BrowsingContextModule extends Module {
     }
   };
 
-  #onPromptOpened = async (eventName, data) => {
-    const { contentBrowser, prompt } = data;
-    const contextId = lazy.TabManager.getIdForBrowser(contentBrowser);
-    // This event is emitted from the parent process but for a given browsing
-    // context. Set the event's contextInfo to the message handler corresponding
-    // to this browsing context.
-    const contextInfo = {
-      contextId,
-      type: lazy.WindowGlobalMessageHandler.type,
-    };
+  #onPromptClosed = async (eventName, data) => {
+    if (this.#subscribedEvents.has("browsingContext.userPromptClosed")) {
+      const { contentBrowser, detail } = data;
+      const contextId = lazy.TabManager.getIdForBrowser(contentBrowser);
 
-    this.emitEvent(
-      "browsingContext.userPromptOpened",
-      {
+      if (contextId === null) {
+        return;
+      }
+
+      // This event is emitted from the parent process but for a given browsing
+      // context. Set the event's contextInfo to the message handler corresponding
+      // to this browsing context.
+      const contextInfo = {
+        contextId,
+        type: lazy.WindowGlobalMessageHandler.type,
+      };
+
+      const params = {
         context: contextId,
-        type: prompt.promptType,
-        message: await prompt.getText(),
-      },
-      contextInfo
-    );
+        ...detail,
+      };
+
+      this.emitEvent("browsingContext.userPromptClosed", params, contextInfo);
+    }
+  };
+
+  #onPromptOpened = async (eventName, data) => {
+    if (this.#subscribedEvents.has("browsingContext.userPromptOpened")) {
+      const { contentBrowser, prompt } = data;
+      const contextId = lazy.TabManager.getIdForBrowser(contentBrowser);
+      // This event is emitted from the parent process but for a given browsing
+      // context. Set the event's contextInfo to the message handler corresponding
+      // to this browsing context.
+      const contextInfo = {
+        contextId,
+        type: lazy.WindowGlobalMessageHandler.type,
+      };
+
+      this.emitEvent(
+        "browsingContext.userPromptOpened",
+        {
+          context: contextId,
+          type: prompt.promptType,
+          message: await prompt.getText(),
+        },
+        contextInfo
+      );
+    }
   };
 
   #startListeningLocationChanged() {
@@ -1221,6 +1313,18 @@ class BrowsingContextModule extends Module {
     }
   }
 
+  #stopListeningToPromptEvent(event) {
+    this.#subscribedEvents.delete(event);
+
+    const hasPromptEvent =
+      this.#subscribedEvents.has("browsingContext.userPromptClosed") ||
+      this.#subscribedEvents.has("browsingContext.userPromptOpened");
+
+    if (!hasPromptEvent) {
+      this.#promptListener.stopListening();
+    }
+  }
+
   #subscribeEvent(event) {
     switch (event) {
       case "browsingContext.contextCreated": {
@@ -1230,6 +1334,11 @@ class BrowsingContextModule extends Module {
       }
       case "browsingContext.fragmentNavigated": {
         this.#startListeningLocationChanged();
+        this.#subscribedEvents.add(event);
+        break;
+      }
+      case "browsingContext.userPromptClosed": {
+        this.#promptListener.startListening();
         this.#subscribedEvents.add(event);
         break;
       }
@@ -1253,9 +1362,9 @@ class BrowsingContextModule extends Module {
         this.#subscribedEvents.delete(event);
         break;
       }
+      case "browsingContext.userPromptClosed":
       case "browsingContext.userPromptOpened": {
-        this.#promptListener.stopListening();
-        this.#subscribedEvents.delete(event);
+        this.#stopListeningToPromptEvent(event);
         break;
       }
     }
@@ -1296,6 +1405,7 @@ class BrowsingContextModule extends Module {
       "browsingContext.domContentLoaded",
       "browsingContext.fragmentNavigated",
       "browsingContext.load",
+      "browsingContext.userPromptClosed",
       "browsingContext.userPromptOpened",
     ];
   }
