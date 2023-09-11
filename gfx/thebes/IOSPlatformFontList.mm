@@ -39,7 +39,7 @@ void IOSPlatformFontList::InitSystemFontNames() {
   NSString* name =
       [[desc fontAttributes] objectForKey:UIFontDescriptorFamilyAttribute];
 
-  GetUtf8StringFromNSString(name, mSystemTextFontFamilyName);
+  GetUtf8StringFromNSString(name, mSystemFontFamilyName);
 }
 
 FontFamily IOSPlatformFontList::GetDefaultFontForPlatform(

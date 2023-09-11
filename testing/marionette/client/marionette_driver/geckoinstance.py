@@ -48,7 +48,8 @@ class GeckoInstance(object):
         # Don't pull Top Sites content from the network
         "browser.topsites.contile.enabled": False,
         # Disable UI tour
-        "browser.uitour.enabled": False,
+        "browser.uitour.pinnedTabUrl": "http://%(server)s/uitour-dummy/pinnedTab",
+        "browser.uitour.url": "http://%(server)s/uitour-dummy/tour",
         # Disable captive portal
         "captivedetect.canonicalURL": "",
         # Defensively disable data reporting systems
@@ -261,9 +262,7 @@ class GeckoInstance(object):
             if isinstance(profile_path, six.string_types):
                 profile_args["path_from"] = profile_path
                 profile_args["path_to"] = tempfile.mkdtemp(
-                    suffix=u".{}".format(
-                        profile_name or os.path.basename(profile_path)
-                    ),
+                    suffix=".{}".format(profile_name or os.path.basename(profile_path)),
                     dir=self.workspace,
                 )
                 # The target must not exist yet
@@ -274,7 +273,7 @@ class GeckoInstance(object):
             # Otherwise create a new profile
             else:
                 profile_args["profile"] = tempfile.mkdtemp(
-                    suffix=u".{}".format(profile_name or "mozrunner"),
+                    suffix=".{}".format(profile_name or "mozrunner"),
                     dir=self.workspace,
                 )
                 profile = Profile(**profile_args)

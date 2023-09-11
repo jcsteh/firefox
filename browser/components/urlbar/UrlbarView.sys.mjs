@@ -2549,11 +2549,10 @@ export class UrlbarView {
   }
 
   #enableOrDisableRowWrap() {
-    if (getBoundsWithoutFlushing(this.input.textbox).width < 650) {
-      this.#rows.setAttribute("wrap", "true");
-    } else {
-      this.#rows.removeAttribute("wrap");
-    }
+    this.#rows.toggleAttribute(
+      "wrap",
+      getBoundsWithoutFlushing(this.input.textbox).width < 650
+    );
   }
 
   /**
@@ -2669,6 +2668,12 @@ export class UrlbarView {
           lazy.UrlbarPrefs.get("suggest.weather"))
       ) {
         idArgs.push({ id: "urlbar-group-best-match" });
+      }
+      if (
+        lazy.UrlbarPrefs.get("quickSuggestEnabled") &&
+        lazy.UrlbarPrefs.get("addonsFeatureGate")
+      ) {
+        idArgs.push({ id: "urlbar-group-addon" });
       }
     }
 

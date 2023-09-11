@@ -37,9 +37,6 @@
 #include "mozilla/Telemetry.h"
 #include "mozilla/webrender/RenderMacIOSurfaceTextureHost.h"
 #include "ScopedGLHelpers.h"
-#ifdef MOZ_WIDGET_COCOA
-#  include "SDKDeclarations.h"
-#endif
 
 @interface CALayer (PrivateSetContentsOpaque)
 - (void)setContentsOpaque:(BOOL)opaque;

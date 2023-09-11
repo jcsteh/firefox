@@ -113,6 +113,19 @@ export class ShoppingContainer extends MozLitElement {
         break;
       case "ReportedProductAvailable":
         this.userReportedAvailable = true;
+        window.dispatchEvent(
+          new CustomEvent("ReportProductAvailable", {
+            bubbles: true,
+            composed: true,
+          })
+        );
+        window.dispatchEvent(
+          new CustomEvent("ShoppingTelemetryEvent", {
+            bubbles: true,
+            composed: true,
+            detail: "surfaceReactivatedButtonClicked",
+          })
+        );
         break;
       case "adsEnabledByUserChanged":
         this.adsEnabledByUser = event.detail?.adsEnabledByUser;
@@ -127,7 +140,9 @@ export class ShoppingContainer extends MozLitElement {
       <review-highlights
         .highlights=${this.data.highlights}
       ></review-highlights>
-      <analysis-explainer></analysis-explainer>
+      <analysis-explainer
+        productUrl=${ifDefined(this.productUrl)}
+      </analysis-explainer>
       ${this.recommendationTemplate()}
     `;
   }
@@ -151,6 +166,12 @@ export class ShoppingContainer extends MozLitElement {
     if (this.data?.error) {
       return html`<shopping-message-bar
         type="generic-error"
+      ></shopping-message-bar>`;
+    }
+
+    if (this.data.page_not_supported) {
+      return html`<shopping-message-bar
+        type="page-not-supported"
       ></shopping-message-bar>`;
     }
 
@@ -237,7 +258,6 @@ export class ShoppingContainer extends MozLitElement {
       <div id="shopping-container">
         <div id="header-wrapper">
           <div id="shopping-header">
-            <span id="shopping-icon"></span>
             <h1 id="header" data-l10n-id="shopping-main-container-title"></h1>
           </div>
           <button
@@ -248,6 +268,7 @@ export class ShoppingContainer extends MozLitElement {
           ></button>
         </div>
         <div id="content" aria-busy=${!this.data}>
+          <slot name="multi-stage-message-slot"></slot>
           ${sidebarContent}
           ${!hideSettings
             ? html`<shopping-settings
@@ -262,7 +283,7 @@ export class ShoppingContainer extends MozLitElement {
     let content;
     let hideSettings;
     if (this.showOnboarding) {
-      content = html`<slot name="multi-stage-message-slot"></slot>`;
+      content = html``;
       hideSettings = true;
     } else if (this.isOffline) {
       content = html`<shopping-message-bar
