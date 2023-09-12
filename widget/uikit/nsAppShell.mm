@@ -24,13 +24,14 @@
 #include "ScreenHelperUIKit.h"
 #include "mozilla/Hal.h"
 #include "HeadlessScreenHelper.h"
+#include "nsWindow.h"
 
 using namespace mozilla;
 using namespace mozilla::widget;
 
 nsAppShell* nsAppShell::gAppShell = NULL;
 UIViewController* nsAppShell::gRootViewController = nil;
-NSMutableArray* nsAppShell::gTopLevelViews = [[NSMutableArray alloc] init];
+StaticRefPtr<nsWindow> nsAppShell::gRootWindow;
 
 #define ALOG(args...)    \
   fprintf(stderr, args); \
@@ -48,13 +49,24 @@ NSMutableArray* nsAppShell::gTopLevelViews = [[NSMutableArray alloc] init];
   CGRect r = {{0, 0}, {100, 100}};
   self.view = [[UIView alloc] initWithFrame:r];
   [self.view setBackgroundColor:UIColor.systemBackgroundColor];
-  // add all of the top level views as children
-  for (UIView* v in nsAppShell::gTopLevelViews) {
-    ALOG("[ViewController.view addSubView:%p]", v);
-    [self.view addSubview:v];
+
+  // If the root window was already created, add it to our view.
+  if (nsAppShell::gRootWindow) {
+    [self.view addSubview:(UIView*)nsAppShell::gRootWindow->GetNativeData(NS_NATIVE_WIDGET)];
   }
-  [nsAppShell::gTopLevelViews release];
-  nsAppShell::gTopLevelViews = nil;
+}
+
+- (void)viewWillLayoutSubviews {
+  // FIXME: This will forcibly resize `gRootWindow` to fill `applicationFrame`,
+  // and is temporary. We should remove this and use UIKit layout or similar
+  // once we get a proper embedding story.
+  auto appFrame = self.view.window.screen.applicationFrame;
+  if (nsAppShell::gRootWindow) {
+    auto scaleFactor = nsAppShell::gRootWindow->BackingScaleFactor();
+    nsAppShell::gRootWindow->Resize(
+        appFrame.origin.x * scaleFactor, appFrame.origin.y * scaleFactor,
+        appFrame.size.width * scaleFactor, appFrame.size.height * scaleFactor, false);
+  }
 }
 @end
 

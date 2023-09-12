@@ -660,10 +660,12 @@ nsresult nsWindow::Create(nsIWidget* aParent, nsNativeWidget aNativeParent,
 
   if (nativeParent) {
     [nativeParent addSubview:mNativeView];
-  } else if (nsAppShell::gRootViewController) {
-    [nsAppShell::gRootViewController.view addSubview:mNativeView];
-  } else {
-    [nsAppShell::gTopLevelViews addObject:mNativeView];
+  } else if (aInitData->mWindowType != widget::WindowType::Invisible) {
+    MOZ_DIAGNOSTIC_ASSERT(!nsAppShell::gRootWindow, "multiple visible root windows?");
+    nsAppShell::gRootWindow = this;
+    if (nsAppShell::gRootViewController) {
+      [nsAppShell::gRootViewController.view addSubview:mNativeView];
+    }
   }
 
   CGFloat scaleFactor = [UIScreen mainScreen].scale;
@@ -678,6 +680,10 @@ nsresult nsWindow::Create(nsIWidget* aParent, nsNativeWidget aNativeParent,
 }
 
 void nsWindow::Destroy() {
+  if (nsAppShell::gRootWindow == this) {
+    nsAppShell::gRootWindow = nullptr;
+  }
+
   for (uint32_t i = 0; i < mChildren.Length(); ++i) {
     // why do we still have children?
     mChildren[i]->SetParent(nullptr);

@@ -21,6 +21,8 @@
 
 @class AppShellDelegate;
 
+class nsWindow;
+
 class nsAppShell : public nsBaseAppShell {
  public:
   NS_IMETHOD ResumeNative(void) override;
@@ -38,7 +40,7 @@ class nsAppShell : public nsBaseAppShell {
 
   static nsAppShell* gAppShell;
   static UIViewController* gRootViewController;
-  static NSMutableArray* gTopLevelViews;
+  static mozilla::StaticRefPtr<nsWindow> gRootWindow;
 
  protected:
   virtual ~nsAppShell();
