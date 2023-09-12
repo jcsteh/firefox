@@ -9,7 +9,7 @@ original approach which was removed in
 https://phabricator.services.mozilla.com/D25800, and the code is heavily
 inspired by that old project.
 
-## Building
+## Building (minimal UI)
 
 1. Update the .mozconfig to be as it is described below. Some things like the
    OBJDIR are hard-coded in the xcode project file currently, so need to be
@@ -40,6 +40,9 @@ ac_add_options --disable-tests
 # The `DEBUG` status of XUL needs to match the debug status of the xcode
 # project. Given that you're probably running in the emulator in debug mode -
 # you'll need `--enable-debug`.
+# NOTE: You can add `#undef DEBUG` to `main.mm` (or `#define DEBUG`) to avoid
+# the JS header assertion, and the browser will generally work with mismatched
+# DEBUG statuses right now, but it's not ideal.
 ac_add_options --enable-debug
 
 # In order to target the iOS simulator, you need to explicitly specify an iOS
@@ -50,4 +53,44 @@ ac_add_options --target=aarch64-apple-ios-sim
 # Unfortunately the OBJDIR is hard-coded in the xcode project file right now, so
 # you'll need to build with specifically this objdir path.
 mk_add_options MOZ_OBJDIR=@TOPSRCDIR@/obj-firefox
+```
+
+### Real Device Building
+
+If you want to build for a real iOS device, you'll need to specify some additional options:
+
+```
+# The target for a real iOS device is different than the simulator. This should
+# replace `--target=aarch64-apple-ios-sim`.
+ac_add_options --target=aarch64-apple-ios
+
+# Due to the iOS sandboxing restrictions it is not possible to run the JS JIT
+# on iOS, meaning it has to be disabled.
+ac_add_options --disable-jit
+
+# There are also failures attempting to initialize out RLBox WASM sandbox
+# currently, so that feature also needs to be disabled to run on-device.
+ac_add_options --without-wasm-sandboxed-libraries
+```
+
+In addition, e10s will be forcibly disabled when running on a real device, as
+child process launching is blocked by the iOS sandbox. Any logic which tries to
+launch a child process on device will fail.
+
+You are likely to run into a signing issue when trying to build, as the "team"
+on the project is my apple developer account. You'll need to modify the signing
+team in xcode to your own apple developer account to get the signing to work,
+and then approve that developer through the phone's settings interface.
+
+### Building (desktop browser UI)
+
+It is also currently possible to run the desktop browser UI (in a somewhat
+broken state) on iOS, which can be helpful for testing things which require
+browser features such as a URL bar.
+
+This will be built & run in a similar manner to the minimal UI, as above.
+You'll need to change the options to:
+
+```
+ac_add_options --enable-application=browser
 ```
