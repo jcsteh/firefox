@@ -67,6 +67,10 @@ static NSString* ToNSString(const nsACString& aCString) {
 }
 
 - (NSString*)accessibilityLabel {
+#ifndef A11Y_LOG
+  return @"";
+#endif
+
   if (!mGeckoAccessible) {
     return @"";
   }
