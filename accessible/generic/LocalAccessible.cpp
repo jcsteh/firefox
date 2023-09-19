@@ -579,30 +579,11 @@ LocalAccessible* LocalAccessible::LocalChildAtPoint(
 
 nsIFrame* LocalAccessible::FindNearestAccessibleAncestorFrame() {
   nsIFrame* frame = GetFrame();
-  if (frame->StyleDisplay()->mPosition == StylePositionProperty::Fixed &&
-      nsLayoutUtils::IsReallyFixedPos(frame)) {
-    return mDoc->PresShellPtr()->GetRootFrame();
+  nsIScrollableFrame* sf = nsLayoutUtils::GetNearestScrollableFrame(frame, nsLayoutUtils::SCROLLABLE_SAME_DOC | nsLayoutUtils::SCROLLABLE_ALWAYS_MATCH_ROOT | nsLayoutUtils::SCROLLABLE_FIXEDPOS_FINDS_ROOT);
+  if (sf) {
+    return sf->GetScrolledFrame();
   }
-
-  if (IsDoc()) {
-    // We bound documents by their own frame, which is their PresShell's root
-    // frame. We cache the document offset elsewhere in BundleFieldsForCache
-    // using the nsGkAtoms::crossorigin attribute.
-    MOZ_ASSERT(frame, "DocAccessibles should always have a frame");
-    return frame;
-  }
-
-  // Iterate through accessible's ancestors to find one with a frame.
-  LocalAccessible* ancestor = mParent;
-  while (ancestor) {
-    if (nsIFrame* boundingFrame = ancestor->GetFrame()) {
-      return boundingFrame;
-    }
-    ancestor = ancestor->LocalParent();
-  }
-
-  MOZ_ASSERT_UNREACHABLE("No ancestor with frame?");
-  return nsLayoutUtils::GetContainingBlockForClientRect(frame);
+  return mDoc->GetFrame();
 }
 
 nsRect LocalAccessible::ParentRelativeBounds() {
@@ -656,9 +637,7 @@ nsRect LocalAccessible::ParentRelativeBounds() {
     }
 
     if (nsIScrollableFrame* sf =
-            mParent == mDoc
-                ? mDoc->PresShellPtr()->GetRootScrollFrameAsScrollable()
-                : boundingFrame->GetScrollTargetFrame()) {
+                boundingFrame->GetScrollTargetFrame()) {
       // If boundingFrame has a scroll position, result is currently relative
       // to that. Instead, we want result to remain the same regardless of
       // scrolling. We then subtract the scroll position later when
@@ -3996,7 +3975,7 @@ void LocalAccessible::MaybeQueueCacheUpdateForStyleChanges() {
       RefPtr<nsAtom> oldAtom = NS_Atomize(oldPosition);
       RefPtr<nsAtom> newAtom = NS_Atomize(newPosition);
       if (oldAtom == nsGkAtoms::fixed || newAtom == nsGkAtoms::fixed) {
-        mDoc->QueueCacheUpdate(this, CacheDomain::Style);
+        mDoc->QueueCacheUpdate(this, CacheDomain::Style | CacheDomain::Bounds);
       }
     }
 

@@ -810,13 +810,14 @@ LayoutDeviceIntRect RemoteAccessible::BoundsWithOffset(
         // LocalAccessible::BundleFieldsForCache where we set the
         // nsGkAtoms::crossorigin attribute.
         remoteAcc->ApplyCrossDocOffset(remoteBounds);
+        bool hasScrollArea = false;
         if (!encounteredFixedContainer) {
           // Apply scroll offset, if applicable. Only the contents of an
           // element are affected by its scroll offset, which is why this call
           // happens in this loop instead of both inside and outside of
           // the loop (like ApplyTransform).
           // Never apply scroll offsets past a fixed container.
-          const bool hasScrollArea = remoteAcc->ApplyScrollOffset(bounds);
+          hasScrollArea = remoteAcc->ApplyScrollOffset(bounds);
 
           // If we are hit testing and the Accessible has a scroll area, ensure
           // that the bounds we've calculated so far are constrained to the
@@ -846,7 +847,9 @@ LayoutDeviceIntRect RemoteAccessible::BoundsWithOffset(
           // Regardless of whether this is a doc, we should offset `bounds`
           // by the bounds retrieved here. This is how we build screen
           // coordinates from relative coordinates.
-          bounds.MoveBy(remoteBounds.X(), remoteBounds.Y());
+          if (hasScrollArea || remoteAcc->IsOuterDoc()) {
+            bounds.MoveBy(remoteBounds.X(), remoteBounds.Y());
+          }
         }
 
         if (remoteAcc->IsFixedPos()) {
