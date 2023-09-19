@@ -67,19 +67,19 @@ static NSString* ToNSString(const nsACString& aCString) {
 }
 
 - (NSString*)accessibilityLabel {
-#ifndef A11Y_LOG
-  return @"";
-#endif
-
   if (!mGeckoAccessible) {
     return @"";
   }
 
+#ifdef A11Y_LOG
   // Just put in a debug description as the label so we get a clue about which
   // accessible ends up where.
   nsAutoCString desc;
   mGeckoAccessible->DebugDescription(desc);
   return ToNSString(desc);
+#else
+  return @"";
+#endif
 }
 
 - (CGRect)accessibilityFrame {
