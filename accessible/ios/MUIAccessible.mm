@@ -13,6 +13,7 @@
 using namespace mozilla;
 using namespace mozilla::a11y;
 
+#ifdef A11Y_LOG
 static NSString* ToNSString(const nsACString& aCString) {
   if (aCString.IsEmpty()) {
     return [NSString string];
@@ -21,6 +22,7 @@ static NSString* ToNSString(const nsACString& aCString) {
                                    length:aCString.Length()
                                  encoding:NSUTF8StringEncoding] autorelease];
 }
+#endif
 
 #pragma mark -
 
