@@ -73,6 +73,8 @@ ChromeUtils.defineESModuleGetters(lazy, {
   Sanitizer: "resource:///modules/Sanitizer.sys.mjs",
   SaveToPocket: "chrome://pocket/content/SaveToPocket.sys.mjs",
   ScreenshotsUtils: "resource:///modules/ScreenshotsUtils.sys.mjs",
+  SearchSERPDomainToCategoriesMap:
+    "resource:///modules/SearchSERPTelemetry.sys.mjs",
   SearchSERPTelemetry: "resource:///modules/SearchSERPTelemetry.sys.mjs",
   SessionStartup: "resource:///modules/sessionstore/SessionStartup.sys.mjs",
   SessionStore: "resource:///modules/sessionstore/SessionStore.sys.mjs",
@@ -712,8 +714,9 @@ let JSWINDOWACTORS = {
         "Screenshots:Copy": { wantUntrusted: true },
         "Screenshots:Download": { wantUntrusted: true },
         "Screenshots:HidePanel": { wantUntrusted: true },
-        "Screenshots:ShowPanel": { wantUntrusted: true },
+        "Screenshots:OverlaySelection": { wantUntrusted: true },
         "Screenshots:RecordEvent": { wantUntrusted: true },
+        "Screenshots:ShowPanel": { wantUntrusted: true },
       },
     },
     enablePreference: "screenshots.browser.component.enabled",
@@ -2999,6 +3002,13 @@ BrowserGlue.prototype = {
       },
 
       {
+        name: "SearchSERPDomainToCategoriesMap.init",
+        task: () => {
+          lazy.SearchSERPDomainToCategoriesMap.init().catch(console.error);
+        },
+      },
+
+      {
         name: "browser-startup-idle-tasks-finished",
         task: () => {
           // Use idleDispatch a second time to run this after the per-window
@@ -3479,7 +3489,19 @@ BrowserGlue.prototype = {
         if (bookmarksUrl) {
           // Import from bookmarks.html file.
           try {
-            if (Services.policies.isAllowed("defaultBookmarks")) {
+            if (
+              Services.policies.isAllowed("defaultBookmarks") &&
+              // Default bookmarks are imported after startup, and they may
+              // influence the outcome of tests, thus it's possible to use
+              // this test-only pref to skip the import.
+              !(
+                Cu.isInAutomation &&
+                Services.prefs.getBoolPref(
+                  "browser.bookmarks.testing.skipDefaultBookmarksImport",
+                  false
+                )
+              )
+            ) {
               await lazy.BookmarkHTMLUtils.importFromURL(bookmarksUrl, {
                 replace: true,
                 source: lazy.PlacesUtils.bookmarks.SOURCES.RESTORE_ON_STARTUP,

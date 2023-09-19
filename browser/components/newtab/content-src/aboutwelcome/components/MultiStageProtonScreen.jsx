@@ -64,6 +64,7 @@ export const MultiStageProtonScreen = props => {
       langPackInstallPhase={props.langPackInstallPhase}
       forceHideStepsIndicator={props.forceHideStepsIndicator}
       ariaRole={props.ariaRole}
+      aboveButtonStepsIndicator={props.aboveButtonStepsIndicator}
     />
   );
 };
@@ -201,6 +202,9 @@ export class ProtonScreen extends React.PureComponent {
     darkModeReducedMotionImageURL,
     alt = "",
     height,
+    width,
+    marginInline,
+    marginBlock,
     className = "logo-container",
   }) {
     function getLoadingStrategy() {
@@ -218,7 +222,7 @@ export class ProtonScreen extends React.PureComponent {
     }
 
     return (
-      <picture className={className}>
+      <picture className={className} style={{ marginInline, marginBlock }}>
         {darkModeReducedMotionImageURL ? (
           <source
             srcSet={darkModeReducedMotionImageURL}
@@ -242,7 +246,7 @@ export class ProtonScreen extends React.PureComponent {
         </Localized>
         <img
           className="brand-logo"
-          style={{ height }}
+          style={{ height, width }}
           src={imageURL}
           alt=""
           loading={getLoadingStrategy()}
@@ -432,7 +436,9 @@ export class ProtonScreen extends React.PureComponent {
               imageURL: item.url,
               darkModeImageURL: item.darkModeImageURL,
               height: item.height,
+              width: item.width,
               alt: item.alt_text,
+              marginInline: item.marginInline,
               className: "inline-image",
             })
           );
@@ -452,6 +458,7 @@ export class ProtonScreen extends React.PureComponent {
       isSingleScreen,
       forceHideStepsIndicator,
       ariaRole,
+      aboveButtonStepsIndicator,
     } = this.props;
     const includeNoodles = content.has_noodles;
     // The default screen position is "center"
@@ -571,6 +578,9 @@ export class ProtonScreen extends React.PureComponent {
                 : null}
               {this.renderContentTiles()}
               {this.renderLanguageSwitcher()}
+              {!hideStepsIndicator && aboveButtonStepsIndicator
+                ? this.renderStepsIndicator()
+                : null}
               <ProtonScreenActionButtons
                 content={content}
                 addonName={this.props.addonName}
@@ -578,7 +588,9 @@ export class ProtonScreen extends React.PureComponent {
                 activeMultiSelect={this.props.activeMultiSelect}
               />
             </div>
-            {!hideStepsIndicator ? this.renderStepsIndicator() : null}
+            {!hideStepsIndicator && !aboveButtonStepsIndicator
+              ? this.renderStepsIndicator()
+              : null}
           </div>
           {content.dismiss_button ? this.renderDismissButton() : null}
         </div>

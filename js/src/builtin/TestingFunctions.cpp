@@ -53,6 +53,7 @@
 #include "builtin/MapObject.h"
 #include "builtin/Promise.h"
 #include "builtin/TestingUtility.h"  // js::ParseCompileOptions, js::ParseDebugMetadata
+#include "ds/IdValuePair.h"          // js::IdValuePair
 #include "frontend/BytecodeCompiler.h"  // frontend::{CompileGlobalScriptToExtensibleStencil,ParseModuleToExtensibleStencil}
 #include "frontend/CompilationStencil.h"  // frontend::CompilationStencil
 #include "frontend/FrontendContext.h"     // AutoReportFrontendContext
@@ -187,400 +188,476 @@ static bool EnvVarAsInt(const char* name, int* valueOut) {
 
 static bool GetRealmConfiguration(JSContext* cx, unsigned argc, Value* vp) {
   CallArgs args = CallArgsFromVp(argc, vp);
-  RootedObject info(cx, JS_NewPlainObject(cx));
-  if (!info) {
+  RootedObject callee(cx, &args.callee());
+  if (args.length() != 1) {
+    ReportUsageErrorASCII(cx, callee, "Must have one argument");
+    return false;
+  }
+  if (!args[0].isString()) {
+    ReportUsageErrorASCII(cx, callee, "Argument must be a string");
     return false;
   }
 
-  bool importAssertions = cx->options().importAssertions();
-  if (!JS_SetProperty(cx, info, "importAssertions",
-                      importAssertions ? TrueHandleValue : FalseHandleValue)) {
+  RootedString argStr(cx, ToString(cx, args[0]));
+  if (!argStr) {
+    return false;
+  }
+  Rooted<JSLinearString*> str(cx, argStr->ensureLinear(cx));
+  if (!str) {
     return false;
   }
 
+  if (StringEqualsLiteral(str, "importAssertions")) {
+    args.rval().setBoolean(cx->options().importAssertions());
+    return true;
+  }
+
+  if (StringEqualsLiteral(str, "enableArrayGrouping")) {
+    args.rval().setBoolean(
 #ifdef NIGHTLY_BUILD
-  bool arrayGrouping = cx->realm()->creationOptions().getArrayGroupingEnabled();
-  if (!JS_SetProperty(cx, info, "enableArrayGrouping",
-                      arrayGrouping ? TrueHandleValue : FalseHandleValue)) {
-    return false;
-  }
+        cx->realm()->creationOptions().getArrayGroupingEnabled()
+#else
+        false
 #endif
+    );
+    return true;
+  }
 
+  if (StringEqualsLiteral(str, "enableNewSetMethods")) {
+    args.rval().setBoolean(
 #ifdef NIGHTLY_BUILD
-  bool newSetMethods = cx->realm()->creationOptions().getNewSetMethodsEnabled();
-  if (!JS_SetProperty(cx, info, "enableNewSetMethods",
-                      newSetMethods ? TrueHandleValue : FalseHandleValue)) {
-    return false;
-  }
+        cx->realm()->creationOptions().getNewSetMethodsEnabled()
+#else
+        false
 #endif
+    );
+    return true;
+  }
 
-  args.rval().setObject(*info);
-  return true;
+  ReportUsageErrorASCII(cx, callee, "Invalid option name");
+  return false;
 }
 
 static bool GetBuildConfiguration(JSContext* cx, unsigned argc, Value* vp) {
   CallArgs args = CallArgsFromVp(argc, vp);
-  RootedObject info(cx, JS_NewPlainObject(cx));
-  if (!info) {
+  RootedObject callee(cx, &args.callee());
+  if (args.length() != 1) {
+    ReportUsageErrorASCII(cx, callee, "Must have one argument");
+    return false;
+  }
+  if (!args[0].isString()) {
+    ReportUsageErrorASCII(cx, callee, "Argument must be a string");
     return false;
   }
 
-  if (!JS_SetProperty(cx, info, "rooting-analysis", FalseHandleValue)) {
+  RootedString argStr(cx, ToString(cx, args[0]));
+  if (!argStr) {
+    return false;
+  }
+  Rooted<JSLinearString*> str(cx, argStr->ensureLinear(cx));
+  if (!str) {
     return false;
   }
 
-  if (!JS_SetProperty(cx, info, "exact-rooting", TrueHandleValue)) {
-    return false;
+  if (StringEqualsLiteral(str, "rooting-analysis")) {
+    args.rval().setBoolean(false);
+    return true;
   }
 
-  if (!JS_SetProperty(cx, info, "trace-jscalls-api", FalseHandleValue)) {
-    return false;
+  if (StringEqualsLiteral(str, "exact-rooting")) {
+    args.rval().setBoolean(true);
+    return true;
   }
 
-  if (!JS_SetProperty(cx, info, "incremental-gc", TrueHandleValue)) {
-    return false;
+  if (StringEqualsLiteral(str, "trace-jscalls-api")) {
+    args.rval().setBoolean(false);
+    return true;
   }
 
-  if (!JS_SetProperty(cx, info, "generational-gc", TrueHandleValue)) {
-    return false;
+  if (StringEqualsLiteral(str, "incremental-gc")) {
+    args.rval().setBoolean(true);
+    return true;
   }
 
-  if (!JS_SetProperty(cx, info, "oom-backtraces", FalseHandleValue)) {
-    return false;
+  if (StringEqualsLiteral(str, "generational-gc")) {
+    args.rval().setBoolean(true);
+    return true;
   }
 
-  RootedValue value(cx);
+  if (StringEqualsLiteral(str, "oom-backtraces")) {
+    args.rval().setBoolean(false);
+    return true;
+  }
+
+  bool value;
+
+  if (StringEqualsLiteral(str, "debug")) {
 #ifdef DEBUG
-  value = BooleanValue(true);
+    value = true;
 #else
-  value = BooleanValue(false);
+    value = false;
 #endif
-  if (!JS_SetProperty(cx, info, "debug", value)) {
-    return false;
+    args.rval().setBoolean(value);
+    return true;
   }
 
+  if (StringEqualsLiteral(str, "release_or_beta")) {
 #ifdef RELEASE_OR_BETA
-  value = BooleanValue(true);
+    value = true;
 #else
-  value = BooleanValue(false);
+    value = false;
 #endif
-  if (!JS_SetProperty(cx, info, "release_or_beta", value)) {
-    return false;
+    args.rval().setBoolean(value);
+    return true;
   }
 
+  if (StringEqualsLiteral(str, "early_beta_or_earlier")) {
 #ifdef EARLY_BETA_OR_EARLIER
-  value = BooleanValue(true);
+    value = true;
 #else
-  value = BooleanValue(false);
+    value = false;
 #endif
-  if (!JS_SetProperty(cx, info, "early_beta_or_earlier", value)) {
-    return false;
+    args.rval().setBoolean(value);
+    return true;
   }
 
+  if (StringEqualsLiteral(str, "coverage")) {
 #ifdef MOZ_CODE_COVERAGE
-  value = BooleanValue(true);
+    value = true;
 #else
-  value = BooleanValue(false);
+    value = false;
 #endif
-  if (!JS_SetProperty(cx, info, "coverage", value)) {
-    return false;
+    args.rval().setBoolean(value);
+    return true;
   }
 
+  if (StringEqualsLiteral(str, "has-ctypes")) {
 #ifdef JS_HAS_CTYPES
-  value = BooleanValue(true);
+    value = true;
 #else
-  value = BooleanValue(false);
+    value = false;
 #endif
-  if (!JS_SetProperty(cx, info, "has-ctypes", value)) {
-    return false;
+    args.rval().setBoolean(value);
+    return true;
   }
 
+  if (StringEqualsLiteral(str, "x86")) {
 #if defined(_M_IX86) || defined(__i386__)
-  value = BooleanValue(true);
+    value = true;
 #else
-  value = BooleanValue(false);
+    value = false;
 #endif
-  if (!JS_SetProperty(cx, info, "x86", value)) {
-    return false;
+    args.rval().setBoolean(value);
+    return true;
   }
 
+  if (StringEqualsLiteral(str, "x64")) {
 #if defined(_M_X64) || defined(__x86_64__)
-  value = BooleanValue(true);
+    value = true;
 #else
-  value = BooleanValue(false);
+    value = false;
 #endif
-  if (!JS_SetProperty(cx, info, "x64", value)) {
-    return false;
+    args.rval().setBoolean(value);
+    return true;
   }
 
+  if (StringEqualsLiteral(str, "arm")) {
 #ifdef JS_CODEGEN_ARM
-  value = BooleanValue(true);
+    value = true;
 #else
-  value = BooleanValue(false);
+    value = false;
 #endif
-  if (!JS_SetProperty(cx, info, "arm", value)) {
-    return false;
+    args.rval().setBoolean(value);
+    return true;
   }
 
+  if (StringEqualsLiteral(str, "arm-simulator")) {
 #ifdef JS_SIMULATOR_ARM
-  value = BooleanValue(true);
+    value = true;
 #else
-  value = BooleanValue(false);
+    value = false;
 #endif
-  if (!JS_SetProperty(cx, info, "arm-simulator", value)) {
-    return false;
+    args.rval().setBoolean(value);
+    return true;
   }
 
+  if (StringEqualsLiteral(str, "android")) {
 #ifdef ANDROID
-  value = BooleanValue(true);
+    value = true;
 #else
-  value = BooleanValue(false);
+    value = false;
 #endif
-  if (!JS_SetProperty(cx, info, "android", value)) {
-    return false;
+    args.rval().setBoolean(value);
+    return true;
   }
 
+  if (StringEqualsLiteral(str, "windows")) {
 #ifdef XP_WIN
-  value = BooleanValue(true);
+    value = true;
 #else
-  value = BooleanValue(false);
+    value = false;
 #endif
-  if (!JS_SetProperty(cx, info, "windows", value)) {
-    return false;
+    args.rval().setBoolean(value);
+    return true;
   }
 
+  if (StringEqualsLiteral(str, "osx")) {
 #ifdef XP_MACOSX
-  value = BooleanValue(true);
+    value = true;
 #else
-  value = BooleanValue(false);
+    value = false;
 #endif
-  if (!JS_SetProperty(cx, info, "osx", value)) {
-    return false;
+    args.rval().setBoolean(value);
+    return true;
   }
 
+  if (StringEqualsLiteral(str, "arm64")) {
 #ifdef JS_CODEGEN_ARM64
-  value = BooleanValue(true);
+    value = true;
 #else
-  value = BooleanValue(false);
+    value = false;
 #endif
-  if (!JS_SetProperty(cx, info, "arm64", value)) {
-    return false;
+    args.rval().setBoolean(value);
+    return true;
   }
 
+  if (StringEqualsLiteral(str, "arm64-simulator")) {
 #ifdef JS_SIMULATOR_ARM64
-  value = BooleanValue(true);
+    value = true;
 #else
-  value = BooleanValue(false);
+    value = false;
 #endif
-  if (!JS_SetProperty(cx, info, "arm64-simulator", value)) {
-    return false;
+    args.rval().setBoolean(value);
+    return true;
   }
 
+  if (StringEqualsLiteral(str, "mips32")) {
 #ifdef JS_CODEGEN_MIPS32
-  value = BooleanValue(true);
+    value = true;
 #else
-  value = BooleanValue(false);
+    value = false;
 #endif
-  if (!JS_SetProperty(cx, info, "mips32", value)) {
-    return false;
+    args.rval().setBoolean(value);
+    return true;
   }
 
+  if (StringEqualsLiteral(str, "mips64")) {
 #ifdef JS_CODEGEN_MIPS64
-  value = BooleanValue(true);
+    value = true;
 #else
-  value = BooleanValue(false);
+    value = false;
 #endif
-  if (!JS_SetProperty(cx, info, "mips64", value)) {
-    return false;
+    args.rval().setBoolean(value);
+    return true;
   }
 
+  if (StringEqualsLiteral(str, "mips32-simulator")) {
 #ifdef JS_SIMULATOR_MIPS32
-  value = BooleanValue(true);
+    value = true;
 #else
-  value = BooleanValue(false);
+    value = false;
 #endif
-  if (!JS_SetProperty(cx, info, "mips32-simulator", value)) {
-    return false;
+    args.rval().setBoolean(value);
+    return true;
   }
 
+  if (StringEqualsLiteral(str, "mips64-simulator")) {
 #ifdef JS_SIMULATOR_MIPS64
-  value = BooleanValue(true);
+    value = true;
 #else
-  value = BooleanValue(false);
+    value = false;
 #endif
-  if (!JS_SetProperty(cx, info, "mips64-simulator", value)) {
-    return false;
+    args.rval().setBoolean(value);
+    return true;
   }
 
+  if (StringEqualsLiteral(str, "simulator")) {
 #ifdef JS_SIMULATOR
-  value = BooleanValue(true);
+    value = true;
 #else
-  value = BooleanValue(false);
+    value = false;
 #endif
-  if (!JS_SetProperty(cx, info, "simulator", value)) {
-    return false;
+    args.rval().setBoolean(value);
+    return true;
   }
 
+  if (StringEqualsLiteral(str, "wasi")) {
 #ifdef __wasi__
-  value = BooleanValue(true);
+    value = true;
 #else
-  value = BooleanValue(false);
+    value = false;
 #endif
-  if (!JS_SetProperty(cx, info, "wasi", value)) {
-    return false;
+    args.rval().setBoolean(value);
+    return true;
   }
 
+  if (StringEqualsLiteral(str, "loong64")) {
 #ifdef JS_CODEGEN_LOONG64
-  value = BooleanValue(true);
+    value = true;
 #else
-  value = BooleanValue(false);
+    value = false;
 #endif
-  if (!JS_SetProperty(cx, info, "loong64", value)) {
-    return false;
+    args.rval().setBoolean(value);
+    return true;
   }
 
+  if (StringEqualsLiteral(str, "loong64-simulator")) {
 #ifdef JS_SIMULATOR_LOONG64
-  value = BooleanValue(true);
+    value = true;
 #else
-  value = BooleanValue(false);
+    value = false;
 #endif
-  if (!JS_SetProperty(cx, info, "loong64-simulator", value)) {
-    return false;
+    args.rval().setBoolean(value);
+    return true;
   }
 
+  if (StringEqualsLiteral(str, "riscv64")) {
 #ifdef JS_CODEGEN_RISCV64
-  value = BooleanValue(true);
+    value = true;
 #else
-  value = BooleanValue(false);
+    value = false;
 #endif
-  if (!JS_SetProperty(cx, info, "riscv64", value)) {
-    return false;
+    args.rval().setBoolean(value);
+    return true;
   }
 
+  if (StringEqualsLiteral(str, "riscv64-simulator")) {
 #ifdef JS_SIMULATOR_RISCV64
-  value = BooleanValue(true);
+    value = true;
 #else
-  value = BooleanValue(false);
+    value = false;
 #endif
-  if (!JS_SetProperty(cx, info, "riscv64-simulator", value)) {
-    return false;
+    args.rval().setBoolean(value);
+    return true;
   }
 
+  if (StringEqualsLiteral(str, "asan")) {
 #ifdef MOZ_ASAN
-  value = BooleanValue(true);
+    value = true;
 #else
-  value = BooleanValue(false);
+    value = false;
 #endif
-  if (!JS_SetProperty(cx, info, "asan", value)) {
-    return false;
+    args.rval().setBoolean(value);
+    return true;
   }
 
+  if (StringEqualsLiteral(str, "tsan")) {
 #ifdef MOZ_TSAN
-  value = BooleanValue(true);
+    value = true;
 #else
-  value = BooleanValue(false);
+    value = false;
 #endif
-  if (!JS_SetProperty(cx, info, "tsan", value)) {
-    return false;
+    args.rval().setBoolean(value);
+    return true;
   }
 
+  if (StringEqualsLiteral(str, "ubsan")) {
 #ifdef MOZ_UBSAN
-  value = BooleanValue(true);
+    value = true;
 #else
-  value = BooleanValue(false);
+    value = false;
 #endif
-  if (!JS_SetProperty(cx, info, "ubsan", value)) {
-    return false;
+    args.rval().setBoolean(value);
+    return true;
   }
 
+  if (StringEqualsLiteral(str, "has-gczeal")) {
 #ifdef JS_GC_ZEAL
-  value = BooleanValue(true);
+    value = true;
 #else
-  value = BooleanValue(false);
+    value = false;
 #endif
-  if (!JS_SetProperty(cx, info, "has-gczeal", value)) {
-    return false;
+    args.rval().setBoolean(value);
+    return true;
   }
 
+  if (StringEqualsLiteral(str, "profiling")) {
 #ifdef MOZ_PROFILING
-  value = BooleanValue(true);
+    value = true;
 #else
-  value = BooleanValue(false);
+    value = false;
 #endif
-  if (!JS_SetProperty(cx, info, "profiling", value)) {
-    return false;
+    args.rval().setBoolean(value);
+    return true;
   }
 
+  if (StringEqualsLiteral(str, "dtrace")) {
 #ifdef INCLUDE_MOZILLA_DTRACE
-  value = BooleanValue(true);
+    value = true;
 #else
-  value = BooleanValue(false);
+    value = false;
 #endif
-  if (!JS_SetProperty(cx, info, "dtrace", value)) {
-    return false;
+    args.rval().setBoolean(value);
+    return true;
   }
 
+  if (StringEqualsLiteral(str, "valgrind")) {
 #ifdef MOZ_VALGRIND
-  value = BooleanValue(true);
+    value = true;
 #else
-  value = BooleanValue(false);
+    value = false;
 #endif
-  if (!JS_SetProperty(cx, info, "valgrind", value)) {
-    return false;
+    args.rval().setBoolean(value);
+    return true;
   }
 
+  if (StringEqualsLiteral(str, "intl-api")) {
 #ifdef JS_HAS_INTL_API
-  value = BooleanValue(true);
+    value = true;
 #else
-  value = BooleanValue(false);
+    value = false;
 #endif
-  if (!JS_SetProperty(cx, info, "intl-api", value)) {
-    return false;
+    args.rval().setBoolean(value);
+    return true;
   }
 
+  if (StringEqualsLiteral(str, "mapped-array-buffer")) {
 #if defined(SOLARIS)
-  value = BooleanValue(false);
+    value = false;
 #else
-  value = BooleanValue(true);
+    value = true;
 #endif
-  if (!JS_SetProperty(cx, info, "mapped-array-buffer", value)) {
-    return false;
+    args.rval().setBoolean(value);
+    return true;
   }
 
+  if (StringEqualsLiteral(str, "moz-memory")) {
 #ifdef MOZ_MEMORY
-  value = BooleanValue(true);
+    value = true;
 #else
-  value = BooleanValue(false);
+    value = false;
 #endif
-  if (!JS_SetProperty(cx, info, "moz-memory", value)) {
-    return false;
+    args.rval().setBoolean(value);
+    return true;
   }
 
-  value.setInt32(sizeof(void*));
-  if (!JS_SetProperty(cx, info, "pointer-byte-size", value)) {
-    return false;
+  if (StringEqualsLiteral(str, "pointer-byte-size")) {
+    args.rval().setInt32(sizeof(void*));
+    return true;
   }
 
+  if (StringEqualsLiteral(str, "decorators")) {
 #ifdef ENABLE_DECORATORS
-  value = BooleanValue(true);
+    value = true;
 #else
-  value = BooleanValue(false);
+    value = false;
 #endif
-  if (!JS_SetProperty(cx, info, "decorators", value)) {
-    return false;
+    args.rval().setBoolean(value);
+    return true;
   }
 
+  if (StringEqualsLiteral(str, "fuzzing-defined")) {
 #ifdef FUZZING
-  value = BooleanValue(true);
+    value = true;
 #else
-  value = BooleanValue(false);
+    value = false;
 #endif
-  if (!JS_SetProperty(cx, info, "fuzzing-defined", value)) {
-    return false;
+    args.rval().setBoolean(value);
+    return true;
   }
 
-  args.rval().setObject(*info);
-  return true;
+  ReportUsageErrorASCII(cx, callee, "Invalid option name");
+  return false;
 }
 
 static bool IsLCovEnabled(JSContext* cx, unsigned argc, Value* vp) {
@@ -1960,6 +2037,62 @@ static bool WasmReturnFlag(JSContext* cx, unsigned argc, Value* vp, Flag flag) {
   args.rval().set(BooleanValue(b));
   return true;
 }
+
+#if defined(DEBUG)
+static bool wasmMetadataAnalysis(JSContext* cx, unsigned argc, Value* vp) {
+  CallArgs args = CallArgsFromVp(argc, vp);
+
+  if (!args.get(0).isObject()) {
+    JS_ReportErrorASCII(cx, "argument is not an object");
+    return false;
+  }
+
+  if (!cx->options().wasmTestMetadata()) {
+    return false;
+  }
+
+  if (args[0].toObject().is<WasmModuleObject>()) {
+    HashMap<const char*, uint32_t, mozilla::CStringHasher, SystemAllocPolicy>
+        hashmap = args[0]
+                      .toObject()
+                      .as<WasmModuleObject>()
+                      .module()
+                      .code()
+                      .metadataAnalysis(cx);
+    if (hashmap.empty()) {
+      JS_ReportErrorASCII(cx, "Metadata analysis has failed");
+    }
+
+    // metadataAnalysis returned a map of {key, value} with various statistics
+    // convert it into a dictionary to be used by JS
+    Rooted<IdValueVector> props(cx, IdValueVector(cx));
+
+    for (auto iter = hashmap.iter(); !iter.done(); iter.next()) {
+      const auto* key = iter.get().key();
+      auto value = iter.get().value();
+
+      JSString* string = JS_NewStringCopyZ(cx, key);
+      if (!props.append(
+              IdValuePair(NameToId(string->asLinear().toPropertyName(cx)),
+                          NumberValue(value)))) {
+        ReportOutOfMemory(cx);
+        return false;
+      }
+    }
+
+    JSObject* results =
+        NewPlainObjectWithUniqueNames(cx, props.begin(), props.length());
+    args.rval().setObject(*results);
+
+    return true;
+  }
+
+  JS_ReportErrorASCII(
+      cx, "argument is not an exported wasm function or a wasm module");
+
+  return false;
+}
+#endif
 
 static bool WasmHasTier2CompilationCompleted(JSContext* cx, unsigned argc,
                                              Value* vp) {
@@ -8697,10 +8830,9 @@ static const JSFunctionSpecWithHelp TestingFunctions[] = {
 "  Return an object describing some of the configuration options SpiderMonkey\n"
 "  was built with."),
 
-    JS_FN_HELP("getRealmConfiguration", GetRealmConfiguration, 0, 0,
-"getRealmConfiguration()",
-"  Return an object describing some of the runtime options SpiderMonkey\n"
-"  is running with."),
+    JS_FN_HELP("getRealmConfiguration", GetRealmConfiguration, 1, 0,
+"getRealmConfiguration(option)",
+"  Query the runtime options SpiderMonkey is running with."),
 
     JS_FN_HELP("isLcovEnabled", ::IsLCovEnabled, 0, 0,
 "isLcovEnabled()",
@@ -9419,6 +9551,12 @@ JS_FOR_WASM_FEATURES(WASM_FEATURE)
 "  (like a shape or a scope chain element). The destination of the i'th array\n"
 "  element's edge is the node of the i+1'th array element; the destination of\n"
 "  the last array element is implicitly |target|.\n"),
+
+#if defined(DEBUG)
+    JS_FN_HELP("wasmMetadataAnalysis", wasmMetadataAnalysis, 1, 0,
+"wasmMetadataAnalysis(wasmObject)",
+"  Prints an analysis of the size of metadata on this wasm object.\n"),
+#endif
 
 #if defined(DEBUG) || defined(JS_JITSPEW)
     JS_FN_HELP("dumpObject", DumpObject, 1, 0,

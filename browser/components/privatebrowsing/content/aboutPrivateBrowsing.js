@@ -45,8 +45,20 @@ function renderInfo({
   const bodyEl = document.getElementById("info-body");
   const linkEl = document.getElementById("private-browsing-myths");
 
-  if (infoIcon) {
+  let feltPrivacyEnabled = RPMGetBoolPref(
+    "browser.privatebrowsing.felt-privacy-v1",
+    false
+  );
+
+  if (infoIcon && !feltPrivacyEnabled) {
     container.style.backgroundImage = `url(${infoIcon})`;
+  }
+
+  if (feltPrivacyEnabled) {
+    infoTitleEnabled = true;
+    infoTitle = "fluent:about-private-browsing-felt-privacy-v1-info-header";
+    infoBody = "fluent:about-private-browsing-felt-privacy-v1-info-body";
+    infoLinkText = "fluent:about-private-browsing-felt-privacy-v1-info-link";
   }
 
   titleEl.hidden = !infoTitleEnabled;

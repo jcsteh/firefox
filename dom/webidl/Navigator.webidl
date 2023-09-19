@@ -334,14 +334,13 @@ dictionary ShareData {
 // https://w3c.github.io/mediasession/#idl-index
 [Exposed=Window]
 partial interface Navigator {
-  [Pref="dom.media.mediasession.enabled", SameObject]
+  [SameObject]
   readonly attribute MediaSession mediaSession;
 };
 
 // https://w3c.github.io/web-locks/#navigator-mixins
 [SecureContext]
 interface mixin NavigatorLocks {
-  [Pref="dom.weblocks.enabled"]
   readonly attribute LockManager locks;
 };
 Navigator includes NavigatorLocks;

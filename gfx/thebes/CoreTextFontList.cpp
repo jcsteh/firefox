@@ -873,8 +873,18 @@ void CTFontFamily::FindStyleVariationsLocked(FontInfoData* aFontInfoData) {
   AUTO_PROFILER_LABEL_DYNAMIC_NSCSTRING("CTFontFamily::FindStyleVariations",
                                         LAYOUT, mName);
 
+  struct Context {
+    CTFontFamily* family;
+    const void* prevValue = nullptr;
+  };
+
   auto addFaceFunc = [](const void* aValue, void* aContext) -> void {
-    CTFontFamily* family = (CTFontFamily*)aContext;
+    Context* context = (Context*)aContext;
+    if (aValue == context->prevValue) {
+      return;
+    }
+    context->prevValue = aValue;
+    CTFontFamily* family = context->family;
     // Calling family->AddFace requires that family->mLock is held. We know
     // this will be true because FindStyleVariationsLocked already requires it,
     // but the thread-safety analysis can't track that through into the lambda
@@ -890,8 +900,9 @@ void CTFontFamily::FindStyleVariationsLocked(FontInfoData* aFontInfoData) {
       CTFontDescriptorCreateMatchingFontDescriptors(descriptor, nullptr);
 
   if (faces) {
+    Context context{this};
     CFArrayApplyFunction(faces, CFRangeMake(0, CFArrayGetCount(faces)),
-                         addFaceFunc, this);
+                         addFaceFunc, &context);
   }
 
   SortAvailableFonts();
@@ -1493,6 +1504,7 @@ void CTFontInfo::LoadFontFamilyData(const nsACString& aFamilyName) {
 
   // iterate over faces in the family
   int f, numFaces = (int)CFArrayGetCount(matchingFonts);
+  CTFontDescriptorRef prevFace = nullptr;
   for (f = 0; f < numFaces; f++) {
     mLoadStats.fonts++;
 
@@ -1501,6 +1513,12 @@ void CTFontInfo::LoadFontFamilyData(const nsACString& aFamilyName) {
     if (!faceDesc) {
       continue;
     }
+
+    if (faceDesc == prevFace) {
+      continue;
+    }
+    prevFace = faceDesc;
+
     AutoCFRelease<CTFontRef> fontRef =
         CTFontCreateWithFontDescriptor(faceDesc, 0.0, nullptr);
     if (!fontRef) {
@@ -1686,10 +1704,15 @@ void CoreTextFontList::GetFacesInitDataForFamily(
   struct Context {
     nsTArray<fontlist::Face::InitData>& mFaces;
     bool mLoadCmaps;
+    const void* prevValue = nullptr;
   };
   auto addFaceFunc = [](const void* aValue, void* aContext) -> void {
-    CTFontDescriptorRef fontDesc = (CTFontDescriptorRef)aValue;
     Context* context = (Context*)aContext;
+    if (aValue == context->prevValue) {
+      return;
+    }
+    context->prevValue = aValue;
+    CTFontDescriptorRef fontDesc = (CTFontDescriptorRef)aValue;
     CoreTextFontList::AddFaceInitData(fontDesc, context->mFaces,
                                       context->mLoadCmaps);
   };

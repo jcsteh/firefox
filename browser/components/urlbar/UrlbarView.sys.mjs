@@ -448,7 +448,7 @@ export class UrlbarView {
    * @param {object} titleL10n
    *   The localization object shown as dismissed feedback.
    */
-  acknowledgeDismissal(result, titleL10n) {
+  #acknowledgeDismissal(result, titleL10n) {
     let row = this.#rows.children[result.rowIndex];
     if (!row || row.result != result) {
       return;
@@ -852,8 +852,15 @@ export class UrlbarView {
    */
   onQueryResultRemoved(index) {
     let rowToRemove = this.#rows.children[index];
-    rowToRemove.remove();
 
+    let { result } = rowToRemove;
+    if (result.acknowledgeDismissalL10n) {
+      // Replace the result's row with a dismissal acknowledgment tip.
+      this.#acknowledgeDismissal(result, result.acknowledgeDismissalL10n);
+      return;
+    }
+
+    rowToRemove.remove();
     this.#updateIndices();
 
     if (rowToRemove != this.#getSelectedRow()) {
@@ -2122,6 +2129,12 @@ export class UrlbarView {
           return { id: "urlbar-group-mdn" };
         case "pocket":
           return { id: "urlbar-group-pocket" };
+        case "adm_sponsored": {
+          if (lazy.UrlbarPrefs.get("quickSuggestSponsoredPriority")) {
+            return { id: "urlbar-group-sponsored" };
+          }
+          break;
+        }
       }
     }
 

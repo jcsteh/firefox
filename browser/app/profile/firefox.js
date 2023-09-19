@@ -750,6 +750,10 @@ pref("browser.shopping.experience2023.ads.enabled", false);
 // Unlike `browser.shopping.experience2023.ads.enabled`, this pref is controlled by users
 // using the visible toggle.
 pref("browser.shopping.experience2023.ads.userEnabled", false);
+
+// Saves if shopping survey is enabled.
+pref("browser.shopping.experience2023.survey.enabled", true);
+
 // Saves if shopping survey is seen.
 pref("browser.shopping.experience2023.survey.hasSeen", false);
 
@@ -1178,13 +1182,8 @@ pref("browser.sessionstore.resuming_after_os_restart", false);
 
 // Toggle for the behavior to include closed tabs from all windows in
 // recently-closed tab lists & counts, and re-open tabs into the current window
-#ifdef NIGHTLY_BUILD
-  pref("browser.sessionstore.closedTabsFromAllWindows", true);
-  pref("browser.sessionstore.closedTabsFromClosedWindows", true);
-#else
-  pref("browser.sessionstore.closedTabsFromAllWindows", false);
-  pref("browser.sessionstore.closedTabsFromClosedWindows", false);
-#endif
+pref("browser.sessionstore.closedTabsFromAllWindows", true);
+pref("browser.sessionstore.closedTabsFromClosedWindows", true);
 
 // Minimal interval between two save operations in milliseconds (while the user is idle).
 pref("browser.sessionstore.interval.idle", 3600000); // 1h
@@ -1232,11 +1231,7 @@ pref("browser.sessionstore.cleanup.forget_closed_after", 1209600000);
 pref("browser.sessionstore.collect_session_storage", true);
 
 // temporary pref that will be removed in a future release, see bug 1836952
-#ifdef NIGHTLY_BUILD
-  pref("browser.sessionstore.persist_closed_tabs_between_sessions", true);
-#else
-  pref("browser.sessionstore.persist_closed_tabs_between_sessions", false);
-#endif
+pref("browser.sessionstore.persist_closed_tabs_between_sessions", true);
 
 // Don't quit the browser when Ctrl + Q is pressed.
 pref("browser.quitShortcut.disabled", false);
@@ -1684,6 +1679,7 @@ pref("browser.newtabpage.activity-stream.discoverystream.spocAdTypes", "");
 pref("browser.newtabpage.activity-stream.discoverystream.spocZoneIds", "");
 pref("browser.newtabpage.activity-stream.discoverystream.spocTopsitesAdTypes", "");
 pref("browser.newtabpage.activity-stream.discoverystream.spocTopsitesZoneIds", "");
+pref("browser.newtabpage.activity-stream.discoverystream.spocTopsitesPlacement.enabled", true);
 pref("browser.newtabpage.activity-stream.discoverystream.spocSiteId", "");
 
 pref("browser.newtabpage.activity-stream.discoverystream.sendToPocket.enabled", true);
@@ -2478,8 +2474,6 @@ pref("devtools.inspector.imagePreviewTooltipSize", 300);
 pref("devtools.inspector.showUserAgentStyles", false);
 // Show native anonymous content and user agent shadow roots
 pref("devtools.inspector.showAllAnonymousContent", false);
-// Enable the inline CSS compatiblity warning in inspector rule view
-pref("devtools.inspector.ruleview.inline-compatibility-warning.enabled", true);
 // Enable the compatibility tool in the inspector.
 pref("devtools.inspector.compatibility.enabled", true);
 // Enable overflow debugging in the inspector.
@@ -2840,6 +2834,7 @@ pref("browser.pdfjs.feature-tour", "{\"screen\":\"\",\"complete\":false}");
 // StaticPrefList.yaml for a description of the prefs.
 #ifdef NIGHTLY_BUILD
   pref("cookiebanners.service.mode.privateBrowsing", 1);
+  pref("cookiebanners.service.enableGlobalRules", true);
 #endif
 
 #if defined(EARLY_BETA_OR_EARLIER)

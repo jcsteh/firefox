@@ -137,9 +137,6 @@ wasi = { path = "build/rust/wasi" }
 bindgen_0_63 = { package = "bindgen", path = "build/rust/bindgen-0.63" }
 bindgen = { path = "build/rust/bindgen" }
 
-# Patch ntapi 0.3 to 0.4
-ntapi = { path = "build/rust/ntapi" }
-
 # Patch nix 0.24 to 0.26
 nix = { path = "build/rust/nix" }
 
@@ -189,12 +186,11 @@ cose = { git = "https://github.com/franziskuskiefer/cose-rust", rev = "43c22248d
 firefox-on-glean = { path = "toolkit/components/glean/api" }
 icu_testdata = { path = "intl/icu_testdata" }
 libudev-sys = { path = "dom/webauthn/libudev-sys" }
-packed_simd = { git = "https://github.com/hsivonen/packed_simd", rev = "e588ceb568878e1a3156ea9ce551d5b63ef0cdc4" }
 midir = { git = "https://github.com/mozilla/midir.git", rev = "519e651241e867af3391db08f9ae6400bc023e18" }
 # Avoid the dependency on chrono
 minidump-writer = { git = "https://github.com/rust-minidump/minidump-writer.git", rev = "a15bd5cab6a3de251c0c23264be14b977c0af09c" }
 # Bump some dependencies
-minidump-common = { git = "https://github.com/rust-minidump/rust-minidump", rev = "87a29fba5e19cfae5ebf73a57ba31504a3872545" }
+minidump-common = { git = "https://github.com/rust-minidump/rust-minidump", rev = "6ae42a7f992e8a88ebee661bc77bcedb95cd671f" }
 # warp 0.3.3 + https://github.com/seanmonstar/warp/pull/1007
 warp = { git = "https://github.com/glandium/warp", rev = "4af45fae95bc98b0eba1ef0db17e1dac471bb23d" }
 # Allow webrender to have a versioned dependency on the older crate on crates.io

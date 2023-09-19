@@ -133,10 +133,6 @@ function verifyAnalysisDetailsVisible(shoppingContainer) {
   );
   ok(shoppingContainer.adjustedRatingEl, "adjusted-rating should be visible");
   ok(shoppingContainer.highlightsEl, "review-highlights should be visible");
-  ok(
-    shoppingContainer.analysisExplainerEl,
-    "analysis-explainer should be visible"
-  );
 }
 
 function verifyAnalysisDetailsHidden(shoppingContainer) {
@@ -152,9 +148,21 @@ function verifyAnalysisDetailsHidden(shoppingContainer) {
     !shoppingContainer.highlightsEl,
     "review-highlights should not be visible"
   );
+}
+
+function verifyFooterVisible(shoppingContainer) {
+  ok(shoppingContainer.settingsEl, "Got the shopping-settings element");
+  ok(
+    shoppingContainer.analysisExplainerEl,
+    "Got the analysis-explainer element"
+  );
+}
+
+function verifyFooterHidden(shoppingContainer) {
+  ok(!shoppingContainer.settingsEl, "Do not render shopping-settings element");
   ok(
     !shoppingContainer.analysisExplainerEl,
-    "analysis-explainer should not be visible"
+    "Do not render the analysis-explainer element"
   );
 }
 
@@ -173,6 +181,7 @@ function getAnalysisDetails(browser, data) {
       "highlightsEl",
       "settingsEl",
       "shoppingMessageBarEl",
+      "loadingEl",
     ]) {
       returnState[el] =
         !!shoppingContainer[el] &&

@@ -69,14 +69,44 @@ export class ShoppingSidebarChild extends RemotePageChild {
         if (!this.#productURI && !uri) {
           return;
         }
-        // Otherwise, check if we now have a product:
-        if (uri && this.#productURI?.equalsExceptRef(uri) && !isReload) {
+
+        // If we haven't reloaded, check if the URIs represent the same product
+        // as sites might change the URI after they have loaded (Bug 1852099).
+        if (!isReload && this.isSameProduct(uri, this.#productURI)) {
           return;
         }
+
         this.#productURI = uri;
-        this.updateContent({ haveUpdatedURI: true, isReload });
+        this.updateContent({ haveUpdatedURI: true });
         break;
     }
+  }
+
+  isSameProduct(newURI, currentURI) {
+    if (!newURI || !currentURI) {
+      return false;
+    }
+
+    // Check if the URIs are equal:
+    if (currentURI.equalsExceptRef(newURI)) {
+      return true;
+    }
+
+    if (!this.#product) {
+      return false;
+    }
+
+    // If the current ShoppingProduct has product info set,
+    // check if the product ids are the same:
+    let currentProduct = this.#product.product;
+    if (currentProduct) {
+      let newProduct = ShoppingProduct.fromURL(URL.fromURI(newURI));
+      if (newProduct.id === currentProduct.id) {
+        return true;
+      }
+    }
+
+    return false;
   }
 
   handleEvent(event) {
@@ -139,13 +169,11 @@ export class ShoppingSidebarChild extends RemotePageChild {
    *        fetching the URI from the parent, and assume `this.#productURI`
    *        is current. Defaults to false.
    * @param {bool} options.isPolledRequest = false
-   * @param {bool} options.isReload = false
    *
    */
   async updateContent({
     haveUpdatedURI = false,
     isPolledRequest = false,
-    isReload = false,
   } = {}) {
     // updateContent is an async function, and when we're off making requests or doing
     // other things asynchronously, the actor can be destroyed, the user
@@ -196,19 +224,38 @@ export class ShoppingSidebarChild extends RemotePageChild {
       let uri = this.#productURI;
       this.#product = new ShoppingProduct(uri);
       let data;
-      let isPolledRequestDone;
-      // If a reload took place during polling we want to clear
-      // the in-progress message with the next update.
-      if (isReload) {
-        isPolledRequestDone = true;
-      }
+      let isAnalysisInProgress;
+
       try {
-        if (!isPolledRequest) {
-          data = await this.#product.requestAnalysis();
+        let analysisStatusResponse;
+        if (isPolledRequest) {
+          // Request a new analysis.
+          analysisStatusResponse = await this.#product.requestCreateAnalysis();
         } else {
-          data = await this.#product.pollForAnalysisCompleted();
-          isPolledRequestDone = true;
+          // Check if there is an analysis in progress.
+          analysisStatusResponse =
+            await this.#product.requestAnalysisCreationStatus();
         }
+        let analysisStatus = analysisStatusResponse?.status;
+
+        isAnalysisInProgress =
+          analysisStatus &&
+          (analysisStatus == "pending" || analysisStatus == "in_progress");
+        if (isAnalysisInProgress) {
+          // Only clear the existing data if the update wasn't
+          // triggered by a Polled Request event as re-analysis should
+          // keep any stale data visible while processing.
+          if (!isPolledRequest) {
+            this.sendToContent("Update", {
+              isAnalysisInProgress,
+            });
+          }
+          await this.#product.pollForAnalysisCompleted({
+            pollInitialWait: analysisStatus == "in_progress" ? 0 : undefined,
+          });
+          isAnalysisInProgress = false;
+        }
+        data = await this.#product.requestAnalysis();
       } catch (err) {
         console.error("Failed to fetch product analysis data", err);
         data = { error: err };
@@ -217,14 +264,15 @@ export class ShoppingSidebarChild extends RemotePageChild {
       if (!canContinue(uri)) {
         return;
       }
+
       this.sendToContent("Update", {
         showOnboarding: false,
         data,
         productUrl: this.#productURI.spec,
-        isPolledRequestDone,
+        isAnalysisInProgress,
       });
 
-      if (data.error) {
+      if (!data || data.error) {
         return;
       }
 
@@ -238,9 +286,18 @@ export class ShoppingSidebarChild extends RemotePageChild {
         );
       }
 
+      if (!this.canFetchAndShowAd || !this.userHasAdsEnabled) {
+        return;
+      }
+
       this.#product.requestRecommendations().then(recommendationData => {
         // Check if the product URI or opt in changed while we waited.
-        if (uri != this.#productURI || !this.canFetchAndShowData) {
+        if (
+          uri != this.#productURI ||
+          !this.canFetchAndShowData ||
+          !this.canFetchAndShowAd ||
+          !this.userHasAdsEnabled
+        ) {
           return;
         }
 
@@ -251,7 +308,7 @@ export class ShoppingSidebarChild extends RemotePageChild {
           data,
           productUrl: this.#productURI.spec,
           recommendationData,
-          isPolledRequestDone,
+          isAnalysisInProgress,
         });
       });
     } else {
@@ -334,6 +391,12 @@ export class ShoppingSidebarChild extends RemotePageChild {
         break;
       case "surfaceReactivatedButtonClicked":
         Glean.shopping.surfaceReactivatedButtonClicked.record();
+        break;
+      case "surfaceReviewQualityExplainerURLClicked":
+        Glean.shopping.surfaceShowQualityExplainerUrlClicked.record();
+        break;
+      case "noReviewReliabilityAvailable":
+        Glean.shopping.surfaceNoReviewReliabilityAvailable.record();
         break;
     }
   }

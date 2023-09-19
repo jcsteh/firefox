@@ -44,11 +44,6 @@ ChromeUtils.defineESModuleGetters(lazy, {
 });
 
 const HTML_NS = "http://www.w3.org/1999/xhtml";
-// @backward-compat { version 117 } The pref is enabled by default since 117.
-//                                  Let's completely remove it once 117 hits release.
-const inlineCompatibilityWarningEnabled = Services.prefs.getBoolPref(
-  "devtools.inspector.ruleview.inline-compatibility-warning.enabled"
-);
 
 const SHARED_SWATCH_CLASS = "ruleview-swatch";
 const COLOR_SWATCH_CLASS = "ruleview-colorswatch";
@@ -268,12 +263,10 @@ TextPropertyEditor.prototype = {
       hidden: "",
     });
 
-    if (inlineCompatibilityWarningEnabled) {
-      this.compatibilityState = createChild(this.container, "div", {
-        class: "ruleview-compatibility-warning",
-        hidden: "",
-      });
-    }
+    this.compatibilityState = createChild(this.container, "div", {
+      class: "ruleview-compatibility-warning",
+      hidden: "",
+    });
 
     // Filter button that filters for the current property name and is
     // displayed when the property is overridden by another rule.
@@ -562,7 +555,8 @@ TextPropertyEditor.prototype = {
       shapeSwatchClass: SHAPE_SWATCH_CLASS,
       // Only ask the parser to convert colors to the default color type specified by the
       // user if the property hasn't been changed yet.
-      defaultColorType: !propDirty,
+      useDefaultColorUnit: !propDirty,
+      defaultColorUnit: this.ruleView.inspector.defaultColorUnit,
       urlClass: "theme-link",
       fontFamilyClass: FONT_FAMILY_CLASS,
       baseURI: this.sheetHref,
@@ -872,10 +866,7 @@ TextPropertyEditor.prototype = {
     }
 
     this.updatePropertyUsedIndicator();
-
-    if (inlineCompatibilityWarningEnabled) {
-      this.updatePropertyCompatibilityIndicator();
-    }
+    this.updatePropertyCompatibilityIndicator();
   },
 
   updatePropertyUsedIndicator() {

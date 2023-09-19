@@ -1690,7 +1690,11 @@
 # Cross-Origin-Embedder-Policy header
 - name: browser.tabs.remote.coep.credentialless
   type: RelaxedAtomicBool
+#if defined(ANDROID)
   value: @IS_NIGHTLY_BUILD@
+#else
+  value: true
+#endif
   mirror: always
   do_not_use_directly: true
 
@@ -1808,11 +1812,6 @@
   value: false
   mirror: always
 
-- name: browser.underline_anchors
-  type: bool
-  value: true
-  mirror: always
-
 - name: browser.viewport.desktopWidth
   type: RelaxedAtomicInt32
   value: 980
@@ -1842,16 +1841,6 @@
 - name: browser.zoom.siteSpecific
   type: bool
   value: @IS_NOT_ANDROID@
-  mirror: always
-
-#---------------------------------------------------------------------------
-# Prefs starting with "canvas."
-#---------------------------------------------------------------------------
-
-# Is support for CanvasRenderingContext2D's createConicGradient API enabled?
-- name: canvas.createConicGradient.enabled
-  type: RelaxedAtomicBool
-  value: true
   mirror: always
 
 #---------------------------------------------------------------------------
@@ -2982,22 +2971,10 @@
   mirror: always
 #endif
 
-# Is support for HTMLElement.autocapitalize enabled?
-- name: dom.forms.autocapitalize
-  type: bool
-  value: true
-  mirror: always
-
 # Support for input type=month, type=week. By default, disabled.
 - name: dom.forms.datetime.others
   type: bool
   value: @IS_ANDROID@
-  mirror: always
-
-# Is support for HTMLElement.inputMode enabled?
-- name: dom.forms.inputmode
-  type: bool
-  value: true
   mirror: always
 
 - name: dom.forms.always_allow_pointer_events.enabled
@@ -3098,12 +3075,6 @@
 # Autoplay Policy Detection https://w3c.github.io/autoplay/
 - name: dom.media.autoplay-policy-detection.enabled
   type: RelaxedAtomicBool
-  value: true
-  mirror: always
-
-# Media Session API
-- name: dom.media.mediasession.enabled
-  type: bool
   value: true
   mirror: always
 
@@ -3300,13 +3271,6 @@
 - name: dom.permissions.revoke.enable
   type: bool
   value: false
-  mirror: always
-
-# This enables width and height attributes and map these attributes to img
-# element's style.
-- name: dom.picture_source_dimension_attributes.enabled
-  type: bool
-  value: true
   mirror: always
 
 # Is support for Element.requestPointerLock enabled?
@@ -3952,11 +3916,6 @@
   value: true
   mirror: always
 
-- name: dom.workers.requestAnimationFrame
-  type: RelaxedAtomicBool
-  value: true
-  mirror: always
-
 - name: dom.workers.serialized-sab-access
   type: RelaxedAtomicBool
   value: false
@@ -4293,12 +4252,6 @@
   value: 128
   mirror: always
 
-# Is support for Window.visualViewport enabled?
-- name: dom.visualviewport.enabled
-  type: bool
-  value: true
-  mirror: always
-
 # Is support for WebVR APIs enabled?
 # Disabled everywhere, but not removed.
 - name: dom.vr.enabled
@@ -4626,16 +4579,16 @@
   mirror: always
   rust: true
 
+- name: dom.webgpu.swap-chain.external-texture-dx12
+  type: RelaxedAtomicBool
+  value: false
+  mirror: always
+  rust: true
+
 # Is support for HTMLInputElement.webkitEntries enabled?
 - name: dom.webkitBlink.filesystem.enabled
   type: bool
   value: @IS_NOT_MOBILE@
-  mirror: always
-
-# Whether the Web Locks API is enabled
-- name: dom.weblocks.enabled
-  type: RelaxedAtomicBool
-  value: true
   mirror: always
 
 # Whether the WebMIDI API is enabled
@@ -4697,11 +4650,6 @@
 - name: dom.window.clientinformation.enabled
   type: bool
   value: true
-  mirror: always
-
-- name: dom.window.sidebar.enabled
-  type: bool
-  value: false
   mirror: always
 
 # Whether Window.sizeToContent() is enabled.
@@ -5995,12 +5943,6 @@
   value: false
   mirror: always
 
-# Whether font sanitization is performed on the main thread or not.
-- name: gfx.downloadable_fonts.sanitize_omt
-  type: RelaxedAtomicBool
-  value: true
-  mirror: always
-
 # Whether to validate OpenType variation tables in fonts.
 - name: gfx.downloadable_fonts.validate_variation_tables
   type: RelaxedAtomicBool
@@ -7027,12 +6969,6 @@
   value: false
   mirror: always
 
-# Whether we attempt to decode WebP images or not.
-- name: image.webp.enabled
-  type: RelaxedAtomicBool
-  value: true
-  mirror: always
-
 # Whether we attempt to decode AVIF images or not.
 - name: image.avif.enabled
   type: RelaxedAtomicBool
@@ -7482,15 +7418,15 @@
   value: true
   mirror: always
 
+# Support for Object.groupBy/Map.groupBy in JavaScript.
+-  name: javascript.options.array_grouping
+   type: bool
+   value: true
+   mirror: always
+
 #ifdef NIGHTLY_BUILD
   # Experimental support for Iterator Helpers in JavaScript.
 -   name: javascript.options.experimental.iterator_helpers
-    type: bool
-    value: false
-    mirror: always
-
-  # Experimental support for Array Grouping in JavaScript.
--   name: javascript.options.experimental.array_grouping
     type: bool
     value: false
     mirror: always
@@ -7731,7 +7667,7 @@
 # isolated web content processes, where we don't need these mitigations.
 - name: javascript.options.spectre.disable_for_isolated_content
   type: bool
-  value: @IS_NIGHTLY_BUILD@
+  value: true
   mirror: always
 
 # Whether the W^X policy is enforced to mark JIT code pages as either writable
@@ -8538,19 +8474,6 @@
   value: false
   mirror: always
 
-# Pref to control whether line-height: -moz-block-height is exposed to content.
-- name: layout.css.line-height-moz-block-height.content.enabled
-  type: RelaxedAtomicBool
-  value: false
-  mirror: always
-  rust: true
-
-# Is support for motion-path enabled?
-- name: layout.css.motion-path.enabled
-  type: bool
-  value: true
-  mirror: always
-
 # Is support for motion-path <basic-shape> other than path() enabled?
 # https://drafts.fxtf.org/motion-1/#valdef-offset-path-basic-shape
 - name: layout.css.motion-path-basic-shapes.enabled
@@ -8609,13 +8532,6 @@
 - name: layout.css.math-depth.enabled
   type: RelaxedAtomicBool
   value: true
-  mirror: always
-  rust: true
-
-# Pref to control whether @-moz-document rules are enabled in content pages.
-- name: layout.css.moz-document.content.enabled
-  type: RelaxedAtomicBool
-  value: false
   mirror: always
   rust: true
 
@@ -11031,6 +10947,19 @@
 #endif
 
 #---------------------------------------------------------------------------
+# Prefs starting with "memory."
+#---------------------------------------------------------------------------
+
+- name: memory.phc.enabled
+  type: bool
+#if defined(MOZ_PHC)
+  value: true
+#else
+  value: false
+#endif
+  mirror: always
+
+#---------------------------------------------------------------------------
 # Prefs starting with "midi."
 #---------------------------------------------------------------------------
 
@@ -11230,12 +11159,6 @@
 - name: network.cookie.cookieBehavior
   type: RelaxedAtomicInt32
   value: 0 # accept all cookies
-  mirror: always
-
-# See the full list of values in nsICookieService.idl.
-- name: network.cookie.rejectForeignWithExceptions.enabled
-  type: bool
-  value: false
   mirror: always
 
 # The cookieBehavior to be used in Private Browsing mode.
@@ -11755,12 +11678,6 @@
 - name: network.dns.disabled
   type: RelaxedAtomicBool
   value: false
-  mirror: always
-
-# Whether DNS resolution is limited to literals and cached entries.
-- name: network.dns.skipTRR-when-parental-control-enabled
-  type: RelaxedAtomicBool
-  value: true
   mirror: always
 
 - name: network.dns.disablePrefetchFromHTTPS
@@ -13561,10 +13478,28 @@
   value: false
   mirror: always
 
-# Pref for mixed display content upgrading (images, audio, video).
+# Prerequisite pref for mixed display content upgrading (images, audio, video).
 - name: security.mixed_content.upgrade_display_content
   type: bool
   value: @IS_NIGHTLY_BUILD@
+  mirror: always
+
+# Upgrade images when the upgrading is enabled.
+- name: security.mixed_content.upgrade_display_content.image
+  type: bool
+  value: @IS_NIGHTLY_BUILD@
+  mirror: always
+
+# Upgrade audio when the upgrading is enabled.
+- name: security.mixed_content.upgrade_display_content.audio
+  type: bool
+  value: true
+  mirror: always
+
+# Upgrade videos when the upgrading is enabled.
+- name: security.mixed_content.upgrade_display_content.video
+  type: bool
+  value: true
   mirror: always
 
 # Whether strict file origin policy is in effect. "False" is traditional.
@@ -15317,6 +15252,12 @@
   value: true
   mirror: always
 
+# Whether we hide the pointer while typing on Linux
+- name: widget.gtk.hide-pointer-while-typing.enabled
+  type: RelaxedAtomicBool
+  value: true
+  mirror: always
+
 # Whether we honor the scrollbar colors from the gtk theme.
 - name: widget.gtk.theme-scrollbar-colors.enabled
   type: bool
@@ -15329,7 +15270,7 @@
 # pref for emergency purposes.
 - name: widget.gtk.rounded-bottom-corners.enabled
   type: bool
-  value: true
+  value: false
   mirror: always
   rust: true
 

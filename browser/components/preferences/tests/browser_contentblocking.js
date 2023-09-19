@@ -1460,7 +1460,10 @@ add_task(async function testContentBlockingReloadWarning() {
 // if it is the only tab.
 add_task(async function testContentBlockingReloadWarningSingleTab() {
   Services.prefs.setStringPref(CAT_PREF, "standard");
-  BrowserTestUtils.loadURIString(gBrowser.selectedBrowser, PRIVACY_PAGE);
+  BrowserTestUtils.startLoadingURIString(
+    gBrowser.selectedBrowser,
+    PRIVACY_PAGE
+  );
   await BrowserTestUtils.browserLoaded(
     gBrowser.selectedBrowser,
     false,
@@ -1487,7 +1490,10 @@ add_task(async function testContentBlockingReloadWarningSingleTab() {
     "all of the warnings to reload tabs are still hidden"
   );
   Services.prefs.setStringPref(CAT_PREF, "standard");
-  BrowserTestUtils.loadURIString(gBrowser.selectedBrowser, "about:newtab");
+  BrowserTestUtils.startLoadingURIString(
+    gBrowser.selectedBrowser,
+    "about:newtab"
+  );
   await BrowserTestUtils.browserLoaded(gBrowser.selectedBrowser);
 });
 
@@ -1540,5 +1546,67 @@ add_task(async function testReloadTabsMessage() {
   Services.prefs.setStringPref(CAT_PREF, "standard");
   gBrowser.removeTab(exampleTab);
   gBrowser.removeTab(examplePinnedTab);
+  gBrowser.removeCurrentTab();
+});
+
+// Checks that the RFP warning banner is properly shown when rfp prefs are enabled.
+add_task(async function testRFPWarningBanner() {
+  // Set the prefs to false before testing.
+  await SpecialPowers.pushPrefEnv({
+    set: [
+      ["privacy.resistFingerprinting", false],
+      ["privacy.resistFingerprinting.pbmode", false],
+    ],
+  });
+
+  await openPreferencesViaOpenPreferencesAPI("privacy", { leaveOpen: true });
+  let doc = gBrowser.contentDocument;
+  let rfpWarningBanner = doc.getElementById("rfpIncompatibilityWarning");
+
+  // Verify if the banner is hidden at the beginning.
+  ok(
+    !BrowserTestUtils.is_visible(rfpWarningBanner),
+    "The RFP warning banner is hidden at the beginning."
+  );
+
+  // Enable the RFP pref
+  await SpecialPowers.pushPrefEnv({
+    set: [["privacy.resistFingerprinting", true]],
+  });
+
+  // Verify if the banner is shown.
+  ok(
+    BrowserTestUtils.is_visible(rfpWarningBanner),
+    "The RFP warning banner is shown."
+  );
+
+  // Enable the RFP pref for private windows
+  await SpecialPowers.pushPrefEnv({
+    set: [
+      ["privacy.resistFingerprinting", false],
+      ["privacy.resistFingerprinting.pbmode", true],
+    ],
+  });
+
+  // Verify if the banner is shown.
+  ok(
+    BrowserTestUtils.is_visible(rfpWarningBanner),
+    "The RFP warning banner is shown."
+  );
+
+  // Enable both RFP prefs.
+  await SpecialPowers.pushPrefEnv({
+    set: [
+      ["privacy.resistFingerprinting", true],
+      ["privacy.resistFingerprinting.pbmode", true],
+    ],
+  });
+
+  // Verify if the banner is shown.
+  ok(
+    BrowserTestUtils.is_visible(rfpWarningBanner),
+    "The RFP warning banner is shown."
+  );
+
   gBrowser.removeCurrentTab();
 });

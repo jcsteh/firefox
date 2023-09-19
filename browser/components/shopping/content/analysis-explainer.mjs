@@ -121,7 +121,7 @@ class AnalysisExplainer extends MozLitElement {
       >
         <div slot="content">
           <div id="analysis-explainer-wrapper">
-            <p data-l10n-id="shopping-analysis-explainer-intro"></p>
+            <p data-l10n-id="shopping-analysis-explainer-intro2"></p>
             ${this.getGradesDescriptionTemplate()}
             ${this.getGradingScaleListTemplate()}
             <p
@@ -139,7 +139,7 @@ class AnalysisExplainer extends MozLitElement {
             >
               <a
                 is="moz-support-link"
-                support-page="todo"
+                support-page="review-checker-review-quality"
                 data-l10n-name="review-quality-url"
               ></a>
             </p>

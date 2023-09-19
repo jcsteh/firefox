@@ -10,8 +10,6 @@ import { MozLitElement } from "chrome://global/content/lit-utils.mjs";
 // eslint-disable-next-line import/no-unassigned-import
 import "chrome://browser/content/shopping/shopping-card.mjs";
 
-import { FAKESPOT_ANALYSIS_URL } from "chrome://global/content/shopping/ProductConfig.mjs";
-
 class UnanalyzedProductCard extends MozLitElement {
   static properties = {
     productURL: { type: String, reflect: true },
@@ -19,11 +17,11 @@ class UnanalyzedProductCard extends MozLitElement {
 
   static get queries() {
     return {
-      analysisLinkEl: "#unanalyzed-product-analysis-link",
+      analysisButtonEl: "#unanalyzed-product-analysis-button",
     };
   }
 
-  onClickAnalysisLink() {
+  onClickAnalysisButton() {
     this.dispatchEvent(
       new CustomEvent("NewAnalysisRequested", {
         bubbles: true,
@@ -47,20 +45,19 @@ class UnanalyzedProductCard extends MozLitElement {
       />
       <shopping-card>
         <div id="unanalyzed-product-wrapper" slot="content">
-          <span id="unanalyzed-product-icon"></span>
+          <img id="unanalyzed-product-icon" role="presentation" alt=""></img>
           <div id="unanalyzed-product-message-content">
-            <strong data-l10n-id="shopping-unanalyzed-product-header"></strong>
-            <p data-l10n-id="shopping-unanalyzed-product-message"></p>
+            <strong
+              data-l10n-id="shopping-unanalyzed-product-header-2"
+            ></strong>
+            <p data-l10n-id="shopping-unanalyzed-product-message-2"></p>
           </div>
-          <a
-            id="unanalyzed-product-analysis-link"
-            data-l10n-id="shopping-unanalyzed-product-analyze-link"
-            target="_blank"
-            href="${FAKESPOT_ANALYSIS_URL}${encodeURIComponent(
-              this.productURL
-            )}"
-            @click=${this.onClickAnalysisLink}
-          ></a>
+          <button
+            id="unanalyzed-product-analysis-button"
+            class="primary"
+            data-l10n-id="shopping-unanalyzed-product-analyze-button"
+            @click=${this.onClickAnalysisButton}
+          ></button>
         </div>
       </shopping-card>
     `;

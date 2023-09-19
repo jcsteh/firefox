@@ -346,6 +346,7 @@ const OPTIN_DEFAULT = {
   template: "multistage",
   backdrop: "transparent",
   aria_role: "alert",
+  UTMTerm: "opt-in",
   screens: [
     {
       id: "FS_OPT_IN",
@@ -361,7 +362,7 @@ const OPTIN_DEFAULT = {
           action: {
             type: "OPEN_URL",
             data: {
-              args: "https://www.support.mozilla.org",
+              args: "https://support.mozilla.org/1/firefox/%VERSION%/%OS%/%LOCALE%/review-checker-review-quality?utm_source=review-checker&utm_campaign=learn-more&utm_medium=in-product",
               where: "tab",
             },
           },
@@ -369,8 +370,11 @@ const OPTIN_DEFAULT = {
         above_button_content: [
           {
             type: "image",
-            url: "chrome://browser/content/shopping/assets/temp-fakespot-rating.svg",
-            height: "auto",
+            url: "chrome://browser/content/shopping/assets/optInLight.avif",
+            darkModeImageURL:
+              "chrome://browser/content/shopping/assets/optInDark.avif",
+            height: "172px",
+            marginInline: "24px",
           },
           {
             type: "text",
@@ -385,7 +389,7 @@ const OPTIN_DEFAULT = {
           action: {
             type: "OPEN_URL",
             data: {
-              args: "https://www.fakespot.com/privacy-policy",
+              args: "https://www.fakespot.com/privacy-policy?utm_source=review-checker&utm_campaign=privacy-policy&utm_medium=in-product",
               where: "tab",
             },
           },
@@ -394,7 +398,7 @@ const OPTIN_DEFAULT = {
           action: {
             type: "OPEN_URL",
             data: {
-              args: "https://www.fakespot.com/terms",
+              args: "https://www.fakespot.com/terms?utm_source=review-checker&utm_campaign=terms-of-use&utm_medium=in-product",
               where: "tab",
             },
           },
@@ -415,9 +419,9 @@ const OPTIN_DEFAULT = {
         additional_button: {
           label: {
             string_id: "shopping-onboarding-not-now-button",
-            marginInline: "100px",
           },
           style: "link",
+          flow: "column",
           action: {
             type: "SET_PREF",
             data: {
@@ -441,15 +445,19 @@ const SHOPPING_MICROSURVEY = {
   screens: [
     {
       id: "SHOPPING_MICROSURVEY_SCREEN_1",
+      above_button_steps_indicator: true,
       content: {
         position: "split",
         layout: "survey",
-        title: "Help improve Firefox",
-        subtitle:
-          "How satisfied are you with the review checker experience in Firefox?",
+        title: {
+          string_id: "shopping-survey-headline",
+        },
+        subtitle: {
+          string_id: "shopping-survey-question-one",
+        },
         primary_button: {
           label: {
-            raw: "Next",
+            string_id: "shopping-survey-next-button-label",
             paddingBlock: "5px",
             marginBlock: "0px 10px",
           },
@@ -480,35 +488,35 @@ const SHOPPING_MICROSURVEY = {
               type: "radio",
               group: "radios",
               defaultValue: false,
-              label: { raw: "Very satisfied" },
+              label: { string_id: "shopping-survey-q1-radio-1-label" },
             },
             {
               id: "radio-2",
               type: "radio",
               group: "radios",
               defaultValue: false,
-              label: { raw: "Satisfied" },
+              label: { string_id: "shopping-survey-q1-radio-2-label" },
             },
             {
               id: "radio-3",
               type: "radio",
               group: "radios",
               defaultValue: false,
-              label: { raw: "Neutral" },
+              label: { string_id: "shopping-survey-q1-radio-3-label" },
             },
             {
               id: "radio-4",
               type: "radio",
               group: "radios",
               defaultValue: false,
-              label: { raw: "Unsatisfied" },
+              label: { string_id: "shopping-survey-q1-radio-4-label" },
             },
             {
               id: "radio-5",
               type: "radio",
               group: "radios",
               defaultValue: false,
-              label: { raw: "Very unsatisfied" },
+              label: { string_id: "shopping-survey-q1-radio-5-label" },
             },
           ],
         },
@@ -516,15 +524,19 @@ const SHOPPING_MICROSURVEY = {
     },
     {
       id: "SHOPPING_MICROSURVEY_SCREEN_2",
+      above_button_steps_indicator: true,
       content: {
         position: "split",
         layout: "survey",
-        title: "Help improve Firefox",
-        subtitle:
-          "Does the review checker make it easier for you to make purchase decisions?",
+        title: {
+          string_id: "shopping-survey-headline",
+        },
+        subtitle: {
+          string_id: "shopping-survey-question-two",
+        },
         primary_button: {
           label: {
-            raw: "Submit",
+            string_id: "shopping-survey-submit-button-label",
             paddingBlock: "5px",
             marginBlock: "0px 10px",
           },
@@ -555,21 +567,21 @@ const SHOPPING_MICROSURVEY = {
               type: "radio",
               group: "radios",
               defaultValue: false,
-              label: { raw: "Yes" },
+              label: { string_id: "shopping-survey-q2-radio-1-label" },
             },
             {
               id: "radio-2",
               type: "radio",
               group: "radios",
               defaultValue: false,
-              label: { raw: "No" },
+              label: { string_id: "shopping-survey-q2-radio-2-label" },
             },
             {
               id: "radio-3",
               type: "radio",
               group: "radios",
               defaultValue: false,
-              label: { raw: "I don’t know" },
+              label: { string_id: "shopping-survey-q2-radio-3-label" },
             },
           ],
         },
@@ -592,33 +604,32 @@ XPCOMUtils.defineLazyPreferenceGetter(
   0
 );
 
-XPCOMUtils.defineLazyPreferenceGetter(
-  lazy,
-  "optedIn",
-  "browser.shopping.experience2023.optedIn",
-  0
-);
-
 let optInDynamicContent;
+// Limit pref increase to 5 as we don't need to count any higher than that
 const MIN_VISITS_TO_SHOW_SURVEY = 5;
 
 class AboutWelcomeShoppingChild extends AboutWelcomeChild {
   // Static state used to track session in which user opted-in
   static optedInSession = false;
 
-  actorCreated() {
-    super.actorCreated();
-    this.init();
+  // Static used to track PDP visits per session for showing survey
+  static eligiblePDPvisits = [];
+
+  constructor() {
+    super();
+    this.surveyEnabled =
+      lazy.NimbusFeatures.shopping2023.getVariable("surveyEnabled");
+
+    // Used by tests
+    this.resetChildStates = () => {
+      AboutWelcomeShoppingChild.eligiblePDPvisits.length = 0;
+      AboutWelcomeShoppingChild.optedInSession = false;
+    };
   }
 
-  init() {
-    // init called on Update Event when child actor created on PDP page open
-    if (!lazy.optedIn) {
-      return;
-    }
-
-    // Limit pref increase to 5 as we don't need to count any higher than that
-    if (lazy.pdpVisits < 5) {
+  computeEligiblePDPCount(data) {
+    // Increment our pref if this isn't a page we've already seen this session
+    if (lazy.pdpVisits < MIN_VISITS_TO_SHOW_SURVEY) {
       this.AWSendToParent("SPECIAL_ACTION", {
         type: "SET_PREF",
         data: {
@@ -630,53 +641,78 @@ class AboutWelcomeShoppingChild extends AboutWelcomeChild {
       });
     }
 
-    // Show micro survey to opted-in users at least 24 hours after they’ve opted in,
-    // on the next session, and after 5 PDP visits
-    // Set `this.showMicroSurvey` when above states are met
+    // Add this product to our list of unique eligible PDPs visited
+    // to prevent errors caused by multiple events being fired simultaneously
+    AboutWelcomeShoppingChild.eligiblePDPvisits.push(data?.product_id);
+  }
 
-    // TBD: Wait 24 hrs after opt-in , check if existing shopping logic has when opted-in
-    // else use optInTime pref set when user click opt-in message primary CTA
-
+  evaluateAndShowSurvey() {
+    // Re-evaluate if we should show the survey
+    // Render survey if user is opted-in and has met survey seen conditions
     this.showMicroSurvey =
+      this.surveyEnabled &&
       !lazy.isSurveySeen &&
       !AboutWelcomeShoppingChild.optedInSession &&
       lazy.pdpVisits >= MIN_VISITS_TO_SHOW_SURVEY;
+
+    if (this.showMicroSurvey) {
+      this.renderMessage();
+    }
   }
 
   handleEvent(event) {
     // Decide when to show/hide onboarding and survey message
-    const { productUrl, showOnboarding } = event.detail;
+    const { productUrl, showOnboarding, data } = event.detail;
 
     // Display onboarding if a user hasn't opted-in
     const optInReady = showOnboarding && productUrl;
-
-    // hide the message root if we shouldn't show the opt in card
-    // and if we shouldn't show a microsurvey
-    this.document.getElementById("multi-stage-message-root").hidden =
-      !optInReady && !this.showMicroSurvey;
-
-    // Render survey if user is opted-in and has met survey seen conditions
-    if (!showOnboarding && productUrl && this.showMicroSurvey) {
+    if (optInReady) {
+      // Render opt-in message
+      AboutWelcomeShoppingChild.optedInSession = true;
+      this.AWSetProductURL(new URL(productUrl).hostname);
       this.renderMessage();
       return;
     }
 
-    if (!optInReady) {
+    // Hide the container until the user is eligible to see the survey
+    if (!lazy.isSurveySeen) {
+      this.document.getElementById("multi-stage-message-root").hidden = true;
+    }
+
+    // Early exit if user has seen survey, if we have no data,
+    // or if pdp is ineligible or not unique
+    if (
+      lazy.isSurveySeen ||
+      !data ||
+      !productUrl ||
+      (data?.needs_analysis &&
+        (!data?.product_id || !data?.grade || !data?.adjusted_rating)) ||
+      AboutWelcomeShoppingChild.eligiblePDPvisits.includes(data?.product_id)
+    ) {
       return;
     }
 
-    // Render opt-in message
-    AboutWelcomeShoppingChild.optedInSession = true;
-    this.AWSetProductURL(new URL(productUrl).hostname);
-    this.renderMessage();
+    this.computeEligiblePDPCount(data, productUrl);
+    this.evaluateAndShowSurvey();
   }
 
   renderMessage() {
+    this.document.getElementById("multi-stage-message-root").hidden = false;
     this.document.dispatchEvent(
       new this.contentWindow.CustomEvent("RenderWelcome", {
         bubbles: true,
       })
     );
+  }
+
+  // TODO - Move messages into an ASRouter message provider. See bug 1848251.
+  AWGetFeatureConfig() {
+    let messageContent = optInDynamicContent;
+    if (this.showMicroSurvey) {
+      messageContent = SHOPPING_MICROSURVEY;
+      this.setShoppingSurveySeen();
+    }
+    return Cu.cloneInto(messageContent, this.contentWindow);
   }
 
   setShoppingSurveySeen() {
@@ -748,16 +784,6 @@ class AboutWelcomeShoppingChild extends AboutWelcomeChild {
     }
 
     optInDynamicContent = content;
-  }
-
-  // TODO - Move messages into an ASRouter message provider. See bug 1848251.
-  AWGetFeatureConfig() {
-    let messageContent = optInDynamicContent;
-    if (this.showMicroSurvey) {
-      messageContent = SHOPPING_MICROSURVEY;
-      this.setShoppingSurveySeen();
-    }
-    return Cu.cloneInto(messageContent, this.contentWindow);
   }
 
   AWEnsureLangPackInstalled() {}

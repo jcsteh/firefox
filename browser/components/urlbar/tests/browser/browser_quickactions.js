@@ -189,7 +189,10 @@ add_task(async function test_screenshot_enabled_or_disabled() {
     false,
     "about:blank"
   );
-  BrowserTestUtils.loadURIString(gBrowser.selectedBrowser, "about:blank");
+  BrowserTestUtils.startLoadingURIString(
+    gBrowser.selectedBrowser,
+    "about:blank"
+  );
   await onLoaded;
 
   await UrlbarTestUtils.promiseAutocompleteResultPopup({
@@ -202,7 +205,7 @@ add_task(async function test_screenshot_enabled_or_disabled() {
     "The action is displayed"
   );
   let screenshotButton = window.document.querySelector(
-    ".urlbarView-row[dynamicType=quickactions] .urlbarView-quickaction-row"
+    ".urlbarView-row[dynamicType=quickactions] .urlbarView-quickaction-button"
   );
   Assert.ok(
     !screenshotButton.hasAttribute("disabled"),
@@ -296,7 +299,7 @@ add_task(async function test_no_quickactions_suggestions() {
   });
   Assert.ok(
     !window.document.querySelector(
-      ".urlbarView-row[dynamicType=quickactions] .urlbarView-quickaction-row"
+      ".urlbarView-row[dynamicType=quickactions] .urlbarView-quickaction-button"
     ),
     "Screenshot button is not suggested"
   );
@@ -307,7 +310,7 @@ add_task(async function test_no_quickactions_suggestions() {
   });
   Assert.ok(
     window.document.querySelector(
-      ".urlbarView-row[dynamicType=quickactions] .urlbarView-quickaction-row"
+      ".urlbarView-row[dynamicType=quickactions] .urlbarView-quickaction-button"
     ),
     "Screenshot button is suggested"
   );
@@ -332,7 +335,7 @@ add_task(async function test_quickactions_disabled() {
 
   Assert.ok(
     !window.document.querySelector(
-      ".urlbarView-row[dynamicType=quickactions] .urlbarView-quickaction-row"
+      ".urlbarView-row[dynamicType=quickactions] .urlbarView-quickaction-button"
     ),
     "Screenshot button is not suggested"
   );
@@ -343,7 +346,7 @@ add_task(async function test_quickactions_disabled() {
   });
   Assert.ok(
     !window.document.querySelector(
-      ".urlbarView-row[dynamicType=quickactions] .urlbarView-quickaction-row"
+      ".urlbarView-row[dynamicType=quickactions] .urlbarView-quickaction-button"
     ),
     "Screenshot button is not suggested"
   );
@@ -383,7 +386,7 @@ let COMMANDS_TESTS = [
         false,
         "http://example.com/"
       );
-      BrowserTestUtils.loadURIString(
+      BrowserTestUtils.startLoadingURIString(
         gBrowser.selectedBrowser,
         "http://example.com/"
       );
@@ -401,7 +404,7 @@ let COMMANDS_TESTS = [
         false,
         "http://example.com/"
       );
-      BrowserTestUtils.loadURIString(
+      BrowserTestUtils.startLoadingURIString(
         gBrowser.selectedBrowser,
         "http://example.com/"
       );
@@ -419,7 +422,7 @@ let COMMANDS_TESTS = [
         false,
         "http://example.com/"
       );
-      BrowserTestUtils.loadURIString(
+      BrowserTestUtils.startLoadingURIString(
         gBrowser.selectedBrowser,
         "http://example.com/"
       );
@@ -437,7 +440,7 @@ let COMMANDS_TESTS = [
         false,
         "http://example.com/"
       );
-      BrowserTestUtils.loadURIString(
+      BrowserTestUtils.startLoadingURIString(
         gBrowser.selectedBrowser,
         "http://example.com/"
       );
@@ -517,7 +520,7 @@ add_task(async function test_viewsource() {
   );
 
   info("Check the button status of when the page is web content");
-  BrowserTestUtils.loadURIString(
+  BrowserTestUtils.startLoadingURIString(
     gBrowser.selectedBrowser,
     "http://example.com"
   );
@@ -697,14 +700,14 @@ add_task(async function test_whitespace() {
     value: "",
   });
   const countForEmpty = window.document.querySelectorAll(
-    ".urlbarView-quickaction-row"
+    ".urlbarView-quickaction-button"
   ).length;
   await UrlbarTestUtils.promiseAutocompleteResultPopup({
     window,
     value: " ",
   });
   const countForWhitespace = window.document.querySelectorAll(
-    ".urlbarView-quickaction-row"
+    ".urlbarView-quickaction-button"
   ).length;
   Assert.equal(
     countForEmpty,

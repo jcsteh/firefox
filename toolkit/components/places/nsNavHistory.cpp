@@ -395,14 +395,6 @@ nsresult nsNavHistory::GetOrCreateIdForPage(nsIURI* aURI, int64_t* _pageId,
     *_pageId = sLastInsertedPlaceId;
   }
 
-  {
-    // Trigger the updates to the moz_origins tables
-    nsCOMPtr<mozIStorageStatement> stmt =
-        mDB->GetStatement("DELETE FROM moz_updateoriginsinsert_temp");
-    NS_ENSURE_STATE(stmt);
-    mozStorageStatementScoper scoper(stmt);
-  }
-
   return NS_OK;
 }
 
@@ -450,33 +442,6 @@ void nsNavHistory::UpdateDaysOfHistory(PRTime visitTime) {
   if (visitTime > mLastCachedEndOfDay || visitTime < mLastCachedStartOfDay) {
     InvalidateDaysOfHistory();
   }
-}
-
-NS_IMETHODIMP
-nsNavHistory::RecalculateOriginFrecencyStats(nsIObserver* aCallback) {
-  RefPtr<nsNavHistory> self(this);
-  nsMainThreadPtrHandle<nsIObserver> callback(
-      !aCallback ? nullptr
-                 : new nsMainThreadPtrHolder<nsIObserver>(
-                       "nsNavHistory::RecalculateOriginFrecencyStats callback",
-                       aCallback));
-
-  nsCOMPtr<nsIEventTarget> target(do_GetInterface(mDB->MainConn()));
-  NS_ENSURE_STATE(target);
-  nsresult rv = target->Dispatch(NS_NewRunnableFunction(
-      "nsNavHistory::RecalculateOriginFrecencyStats", [self, callback] {
-        Unused << self->mDB->RecalculateOriginFrecencyStatsInternal();
-        Unused << NS_DispatchToMainThread(NS_NewRunnableFunction(
-            "nsNavHistory::RecalculateOriginFrecencyStats callback",
-            [callback] {
-              if (callback) {
-                Unused << callback->Observe(nullptr, "", nullptr);
-              }
-            }));
-      }));
-  NS_ENSURE_SUCCESS(rv, rv);
-
-  return NS_OK;
 }
 
 Atomic<int64_t> nsNavHistory::sLastInsertedPlaceId(0);
@@ -790,12 +755,7 @@ static bool IsOptimizableHistoryQuery(
 
   if (!aQuery->SearchTerms().IsEmpty()) return false;
 
-  if (aQuery->OnlyBookmarked()) return false;
-
   if (aQuery->DomainIsHost() || !aQuery->Domain().IsEmpty()) return false;
-
-  if (aQuery->AnnotationIsNot() || !aQuery->Annotation().IsEmpty())
-    return false;
 
   if (aQuery->Parents().Length() > 0) return false;
 
@@ -2073,14 +2033,6 @@ nsresult nsNavHistory::QueryToSelectClause(
   if (aQuery->MaxVisits() >= 0)
     clause.Condition("h.visit_count <=").Param(":max_visits");
 
-  // only bookmarked, has no affect on bookmarks-only queries
-  if (aOptions->QueryType() !=
-          nsINavHistoryQueryOptions::QUERY_TYPE_BOOKMARKS &&
-      aQuery->OnlyBookmarked())
-    clause.Condition("EXISTS (SELECT b.fk FROM moz_bookmarks b WHERE b.type = ")
-        .Str(nsPrintfCString("%d", nsNavBookmarks::TYPE_BOOKMARK).get())
-        .Str("AND b.fk = h.id)");
-
   // domain
   if (!aQuery->Domain().IsVoid()) {
     bool domainIsHost = false;
@@ -2102,25 +2054,6 @@ nsresult nsNavHistory::QueryToSelectClause(
         .Str(")")
         .Condition("h.url =")
         .Param(":uri");
-  }
-
-  // annotation
-  if (!aQuery->Annotation().IsEmpty()) {
-    clause.Condition("");
-    if (aQuery->AnnotationIsNot()) clause.Str("NOT");
-    clause
-        .Str(
-            "EXISTS "
-            "(SELECT h.id "
-            "FROM moz_annos anno "
-            "JOIN moz_anno_attributes annoname "
-            "ON anno.anno_attribute_id = annoname.id "
-            "WHERE anno.place_id = h.id "
-            "AND annoname.name = ")
-        .Param(":anno")
-        .Str(")");
-    // annotation-based queries don't get the common conditions, so you get
-    // all URLs with that annotation
   }
 
   // tags
@@ -2271,12 +2204,6 @@ nsresult nsNavHistory::BindQueryClauseParameters(
   // URI
   if (aQuery->Uri()) {
     rv = URIBinder::Bind(statement, "uri"_ns, aQuery->Uri());
-    NS_ENSURE_SUCCESS(rv, rv);
-  }
-
-  // annotation
-  if (!aQuery->Annotation().IsEmpty()) {
-    rv = statement->BindUTF8StringByName("anno"_ns, aQuery->Annotation());
     NS_ENSURE_SUCCESS(rv, rv);
   }
 
@@ -2782,9 +2709,6 @@ static nsCString GetSimpleBookmarksQueryParent(
   if (!aQuery->SearchTerms().IsEmpty()) return ""_ns;
   if (aQuery->Tags().Length() > 0) return ""_ns;
   if (aOptions->MaxResults() > 0) return ""_ns;
-
-  // Don't care about onlyBookmarked flag, since specifying a bookmark
-  // folder is inferring onlyBookmarked.
 
   return aQuery->Parents()[0];
 }

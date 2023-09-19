@@ -872,7 +872,7 @@ async function check_results({
   // updates.
   // This is not a problem in real life, but autocomplete tests should
   // return reliable resultsets, thus we have to wait.
-  await PlacesTestUtils.promiseAsyncUpdates();
+  await PlacesFrecencyRecalculator.recalculateAnyOutdatedFrecencies();
 
   const controller = UrlbarTestUtils.newMockController({
     input: {
@@ -897,7 +897,6 @@ async function check_results({
     controller: {
       removeResult() {},
     },
-    acknowledgeDismissal() {},
   });
 
   if (incompleteSearch) {
