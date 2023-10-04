@@ -17,6 +17,10 @@ class IOSPlatformFontList final : public CoreTextFontList {
         gfxPlatformFontList::PlatformFontList());
   }
 
+  static void LookupSystemFont(mozilla::LookAndFeel::FontID aSystemFontID,
+                               nsACString& aSystemFontName,
+                               gfxFontStyle& aFontStyle);
+
  protected:
   FontFamily GetDefaultFontForPlatform(nsPresContext* aPresContext,
                                        const gfxFontStyle* aStyle,

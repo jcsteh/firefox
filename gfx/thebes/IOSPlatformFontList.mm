@@ -57,3 +57,9 @@ FontFamily IOSPlatformFontList::GetDefaultFontForPlatform(
 
   return FindFamily(aPresContext, familyName);
 }
+
+void IOSPlatformFontList::LookupSystemFont(mozilla::LookAndFeel::FontID aSystemFontID,
+                                           nsACString& aSystemFontName,
+                                           gfxFontStyle& aFontStyle) {
+  MOZ_CRASH("UNIMPLEMENTED");
+}
