@@ -405,13 +405,18 @@ bool nsMixedContentBlocker::IsUpgradableContentType(nsContentPolicyType aType,
  */
 static already_AddRefed<nsIURI> GetPrincipalURIOrPrecursorPrincipalURI(
     nsIPrincipal* aPrincipal) {
-  nsCOMPtr<nsIURI> precursorURI = nullptr;
-  if (aPrincipal->GetIsNullPrincipal()) {
-    nsCOMPtr<nsIPrincipal> precursorPrin = aPrincipal->GetPrecursorPrincipal();
-    precursorURI = precursorPrin ? precursorPrin->GetURI() : nullptr;
-  }
+  nsCOMPtr<nsIPrincipal> precursorPrincipal =
+      aPrincipal->GetPrecursorPrincipal();
 
-  return precursorURI ? precursorURI.forget() : aPrincipal->GetURI();
+#ifdef DEBUG
+  if (precursorPrincipal) {
+    MOZ_ASSERT(aPrincipal->GetIsNullPrincipal(),
+               "Only Null Principals should have a Precursor Principal");
+  }
+#endif
+
+  return precursorPrincipal ? precursorPrincipal->GetURI()
+                            : aPrincipal->GetURI();
 }
 
 /* Static version of ShouldLoad() that contains all the Mixed Content Blocker
@@ -673,18 +678,11 @@ nsresult nsMixedContentBlocker::ShouldLoad(bool aHadInsecureImageRedirect,
   // 2) If aLoadingPrincipal does not provide a requestingLocation, then
   // we fall back to to querying the requestingLocation from
   // aTriggeringPrincipal.
-  nsCOMPtr<nsIURI> requestingLocation;
-  auto* baseLoadingPrincipal = BasePrincipal::Cast(loadingPrincipal);
-  if (baseLoadingPrincipal) {
-    requestingLocation =
-        GetPrincipalURIOrPrecursorPrincipalURI(baseLoadingPrincipal);
-  }
+  nsCOMPtr<nsIURI> requestingLocation =
+      GetPrincipalURIOrPrecursorPrincipalURI(loadingPrincipal);
   if (!requestingLocation) {
-    auto* baseTriggeringPrincipal = BasePrincipal::Cast(triggeringPrincipal);
-    if (baseTriggeringPrincipal) {
-      requestingLocation =
-          GetPrincipalURIOrPrecursorPrincipalURI(baseTriggeringPrincipal);
-    }
+    requestingLocation =
+        GetPrincipalURIOrPrecursorPrincipalURI(triggeringPrincipal);
   }
 
   // 3) Giving up. We still don't have a requesting location, therefore we can't
@@ -831,11 +829,11 @@ nsresult nsMixedContentBlocker::ShouldLoad(bool aHadInsecureImageRedirect,
   bool rootHasSecureConnection = topWC->GetIsSecure();
   bool allowMixedContent = topWC->GetAllowMixedContent();
 
-  // When navigating an iframe, the iframe may be https
-  // but its parents may not be.  Check the parents to see if any of them are
-  // https. If none of the parents are https, allow the load.
+  // When navigating an iframe, the iframe may be https but its parents may not
+  // be. Check the parents to see if any of them are https. If none of the
+  // parents are https, allow the load.
   if (contentType == ExtContentPolicyType::TYPE_SUBDOCUMENT &&
-      !rootHasSecureConnection) {
+      !rootHasSecureConnection && !parentIsHttps) {
     bool httpsParentExists = false;
 
     RefPtr<WindowContext> curWindow = requestingWindow;

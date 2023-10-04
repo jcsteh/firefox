@@ -21,7 +21,7 @@ import { OnboardingVideo } from "./OnboardingVideo";
 import { AdditionalCTA } from "./AdditionalCTA";
 import { EmbeddedMigrationWizard } from "./EmbeddedMigrationWizard";
 import { AddonsPicker } from "./AddonsPicker";
-import { LegalParagraph } from "./LegalParagraph";
+import { LinkParagraph } from "./LinkParagraph";
 
 export const MultiStageProtonScreen = props => {
   const { autoAdvance, handleAction, order } = props;
@@ -181,14 +181,21 @@ export class ProtonScreen extends React.PureComponent {
   }
 
   renderTitle({ title, title_logo }) {
-    return title_logo ? (
-      <div className="inline-icon-container">
-        {this.renderPicture(title_logo)}
-        <Localized text={title}>
-          <h1 id="mainContentHeader" />
-        </Localized>
-      </div>
-    ) : (
+    if (title_logo) {
+      const { alignment, ...rest } = title_logo;
+      return (
+        <div
+          className="inline-icon-container"
+          alignment={alignment ?? "center"}
+        >
+          {this.renderPicture({ ...rest })}
+          <Localized text={title}>
+            <h1 id="mainContentHeader" />
+          </Localized>
+        </div>
+      );
+    }
+    return (
       <Localized text={title}>
         <h1 id="mainContentHeader" />
       </Localized>
@@ -201,10 +208,10 @@ export class ProtonScreen extends React.PureComponent {
     reducedMotionImageURL,
     darkModeReducedMotionImageURL,
     alt = "",
-    height,
     width,
-    marginInline,
+    height,
     marginBlock,
+    marginInline,
     className = "logo-container",
   }) {
     function getLoadingStrategy() {
@@ -337,12 +344,16 @@ export class ProtonScreen extends React.PureComponent {
   }
 
   renderDismissButton() {
+    const { size, marginBlock, marginInline, label } =
+      this.props.content.dismiss_button;
     return (
       <button
         className="dismiss-button"
         onClick={this.props.handleAction}
         value="dismiss_button"
-        data-l10n-id={"spotlight-dialog-close-button"}
+        data-l10n-id={label?.string_id || "spotlight-dialog-close-button"}
+        button-size={size}
+        style={{ marginBlock, marginInline }}
       ></button>
     );
   }
@@ -355,7 +366,10 @@ export class ProtonScreen extends React.PureComponent {
       <div
         id="steps"
         className={`steps${content.progress_bar ? " progress-bar" : ""}`}
-        data-l10n-id={"onboarding-welcome-steps-indicator-label"}
+        data-l10n-id={
+          content.steps_indicator?.string_id ||
+          "onboarding-welcome-steps-indicator-label"
+        }
         data-l10n-args={JSON.stringify({
           current: currentStep,
           total: total ?? 0,
@@ -424,7 +438,7 @@ export class ProtonScreen extends React.PureComponent {
       switch (item.type) {
         case "text":
           elements.push(
-            <LegalParagraph
+            <LinkParagraph
               text_content={item}
               handleAction={this.props.handleAction}
             />
@@ -519,11 +533,16 @@ export class ProtonScreen extends React.PureComponent {
           {includeNoodles ? this.renderNoodles() : null}
           <div
             className={`main-content ${hideStepsIndicator ? "no-steps" : ""}`}
-            style={
-              content.background && isCenterPosition
-                ? { background: content.background }
-                : {}
-            }
+            style={{
+              background:
+                content.background && isCenterPosition
+                  ? content.background
+                  : null,
+              width:
+                content.width && content.position !== "split"
+                  ? content.width
+                  : null,
+            }}
           >
             {content.logo ? this.renderPicture(content.logo) : null}
 

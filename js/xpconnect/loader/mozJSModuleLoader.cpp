@@ -65,6 +65,7 @@
 #include "mozilla/ResultExtensions.h"
 #include "mozilla/ScriptPreloader.h"
 #include "mozilla/ScopeExit.h"
+#include "mozilla/Try.h"
 #include "mozilla/dom/AutoEntryScript.h"
 #include "mozilla/dom/ReferrerPolicyBinding.h"
 #include "mozilla/dom/ScriptSettings.h"
@@ -1806,10 +1807,9 @@ nsresult mozJSModuleLoader::ImportESModule(
       mModuleLoader->GetGlobalObject()->PrincipalOrNull();
   MOZ_ASSERT(principal);
 
-  RefPtr<ScriptFetchOptions> options =
-      new ScriptFetchOptions(CORS_NONE, dom::ReferrerPolicy::No_referrer,
-                             /* aNonce = */ u""_ns, dom::RequestPriority::Auto,
-                             ParserMetadata::NotParserInserted, principal);
+  RefPtr<ScriptFetchOptions> options = new ScriptFetchOptions(
+      CORS_NONE, /* aNonce = */ u""_ns, dom::RequestPriority::Auto,
+      ParserMetadata::NotParserInserted, principal);
 
   RefPtr<ComponentLoadContext> context = new ComponentLoadContext();
   context->mSkipCheck = aSkipCheck;
@@ -1818,7 +1818,7 @@ nsresult mozJSModuleLoader::ImportESModule(
       ModuleLoadRequest::NewVisitedSetForTopLevelImport(uri);
 
   RefPtr<ModuleLoadRequest> request = new ModuleLoadRequest(
-      uri, options, dom::SRIMetadata(),
+      uri, dom::ReferrerPolicy::No_referrer, options, dom::SRIMetadata(),
       /* aReferrer = */ nullptr, context,
       /* aIsTopLevel = */ true,
       /* aIsDynamicImport = */ false, mModuleLoader, visitedSet, nullptr);

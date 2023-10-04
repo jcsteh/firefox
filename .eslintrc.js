@@ -342,6 +342,7 @@ module.exports = {
     },
     {
       files: ["layout/**"],
+      excludedFiles: ["layout/tools/reftest/**"],
       rules: {
         "object-shorthand": "off",
         "mozilla/avoid-removeChild": "off",
@@ -350,7 +351,6 @@ module.exports = {
         "mozilla/no-arbitrary-setTimeout": "off",
         "mozilla/no-define-cc-etc": "off",
         "mozilla/prefer-boolean-length-check": "off",
-        "mozilla/use-chromeutils-generateqi": "off",
         "mozilla/use-default-preference-values": "off",
         "mozilla/use-includes-instead-of-indexOf": "off",
         "mozilla/use-services": "off",
@@ -438,7 +438,6 @@ module.exports = {
         "mozilla/no-define-cc-etc": "off",
         "mozilla/reject-importGlobalProperties": "off",
         "mozilla/use-cc-etc": "off",
-        "mozilla/use-chromeutils-generateqi": "off",
         "mozilla/use-includes-instead-of-indexOf": "off",
         "mozilla/use-ownerGlobal": "off",
         "mozilla/use-services": "off",
@@ -579,7 +578,6 @@ module.exports = {
       rules: {
         "mozilla/no-useless-parameters": "off",
         "mozilla/no-useless-removeEventListener": "off",
-        "mozilla/use-chromeutils-generateqi": "off",
         "mozilla/use-services": "off",
         complexity: "off",
         "no-array-constructor": "off",
@@ -658,7 +656,6 @@ module.exports = {
         "toolkit/crashreporter/test/browser/browser_aboutCrashesResubmit.js",
         // Exempt tests that set pref dom.security.https_first to false Bug 1758951
         "browser/tools/mozscreenshots/controlCenter/browser_controlCenter.js",
-        "dom/file/tests/test_agentcluster_bloburl.js",
         "dom/ipc/tests/test_bug1086684.js",
         "dom/manifest/test/browser_ManifestObtainer_obtain.js",
         "dom/media/test/test_access_control.html",
@@ -919,12 +916,6 @@ module.exports = {
         "browser/components/safebrowsing/content/test/browser_bug415846.js",
         "browser/components/safebrowsing/content/test/browser_whitelisted.js",
         "browser/components/screenshots/tests/browser/head.js",
-        "browser/components/search/test/browser/browser_483086.js",
-        "browser/components/search/test/browser/browser_addKeywordSearch.js",
-        "browser/components/search/test/browser/browser_ime_composition.js",
-        "browser/components/search/test/browser/browser_search_discovery.js",
-        "browser/components/search/test/browser/browser_search_telemetry_searchbar.js",
-        "browser/components/search/test/browser/browser_search_telemetry_sources_ads.js",
         "browser/components/sessionstore/test/browser_1284886_suspend_tab.js",
         "browser/components/sessionstore/test/browser_394759_behavior.js",
         "browser/components/sessionstore/test/browser_394759_purge.js",

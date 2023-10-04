@@ -63,6 +63,7 @@ ChromeUtils.defineESModuleGetters(this, {
   PromiseUtils: "resource://gre/modules/PromiseUtils.sys.mjs",
   PromptUtils: "resource://gre/modules/PromptUtils.sys.mjs",
   ReaderMode: "resource://gre/modules/ReaderMode.sys.mjs",
+  ResetPBMPanel: "resource:///modules/ResetPBMPanel.sys.mjs",
   SafeBrowsing: "resource://gre/modules/SafeBrowsing.sys.mjs",
   Sanitizer: "resource:///modules/Sanitizer.sys.mjs",
   SaveToPocket: "chrome://pocket/content/SaveToPocket.sys.mjs",
@@ -587,6 +588,16 @@ XPCOMUtils.defineLazyPreferenceGetter(
 
 XPCOMUtils.defineLazyPreferenceGetter(
   this,
+  "gPrintEnabled",
+  "print.enabled",
+  false,
+  (aPref, aOldVal, aNewVal) => {
+    updatePrintCommands(aNewVal);
+  }
+);
+
+XPCOMUtils.defineLazyPreferenceGetter(
+  this,
   "gScreenshotsComponentEnabled",
   "screenshots.browser.component.enabled",
   false,
@@ -843,6 +854,19 @@ function UpdateBackForwardCommands(aWebNavigation) {
     } else {
       forwardCommand.setAttribute("disabled", true);
     }
+  }
+}
+
+function updatePrintCommands(enabled) {
+  var printCommand = document.getElementById("cmd_print");
+  var printPreviewCommand = document.getElementById("cmd_printPreviewToggle");
+
+  if (enabled) {
+    printCommand.removeAttribute("disabled");
+    printPreviewCommand.removeAttribute("disabled");
+  } else {
+    printCommand.setAttribute("disabled", "true");
+    printPreviewCommand.setAttribute("disabled", "true");
   }
 }
 
@@ -1641,6 +1665,8 @@ var gBrowserInit = {
     });
 
     updateFxaToolbarMenu(gFxaToolbarEnabled, true);
+
+    updatePrintCommands(gPrintEnabled);
 
     gUnifiedExtensions.init();
 
@@ -4670,12 +4696,8 @@ let gShareUtils = {
       return;
     }
 
-    // We only support "share URL" on macOS and on Windows 10:
-    if (
-      AppConstants.platform != "macosx" &&
-      // Windows 10's internal NT version number was initially 6.4
-      !AppConstants.isPlatformAndVersionAtLeast("win", "6.4")
-    ) {
+    // We only support "share URL" on macOS and on Windows:
+    if (AppConstants.platform != "macosx" && AppConstants.platform != "win") {
       return;
     }
 
@@ -6623,7 +6645,7 @@ var TabletModeUpdater = {
 var gTabletModePageCounter = {
   enabled: false,
   inc() {
-    this.enabled = AppConstants.isPlatformAndVersionAtLeast("win", "10.0");
+    this.enabled = AppConstants.platform == "win";
     if (!this.enabled) {
       this.inc = () => {};
       return;
@@ -7527,7 +7549,7 @@ var WebAuthnPromptHelper = {
     // If we receive a cancel, it might be a WebAuthn prompt starting in another
     // window, and the other window's browsing context will send out the
     // cancellations, so any cancel action we get should prompt us to cancel.
-    if (data.action == "cancel") {
+    if (data.prompt.type == "cancel") {
       this.cancel(data);
       return;
     }
@@ -7539,19 +7561,21 @@ var WebAuthnPromptHelper = {
       return;
     }
 
-    let mgr = aSubject.QueryInterface(
-      data.is_ctap2 ? Ci.nsIWebAuthnController : Ci.nsIU2FTokenManager
+    let mgr = Cc["@mozilla.org/webauthn/transport;1"].getService(
+      Ci.nsIWebAuthnTransport
     );
 
-    if (data.action == "presence") {
+    if (data.prompt.type == "presence") {
       this.presence_required(mgr, data);
-    } else if (data.action == "register-direct") {
+    } else if (data.prompt.type == "register-direct") {
       this.registerDirect(mgr, data);
-    } else if (data.action == "pin-required") {
-      this.pin_required(mgr, data);
-    } else if (data.action == "select-sign-result") {
+    } else if (data.prompt.type == "pin-required") {
+      this.pin_required(mgr, false, data);
+    } else if (data.prompt.type == "pin-invalid") {
+      this.pin_required(mgr, true, data);
+    } else if (data.prompt.type == "select-sign-result") {
       this.select_sign_result(mgr, data);
-    } else if (data.action == "already-registered") {
+    } else if (data.prompt.type == "already-registered") {
       this.show_info(
         mgr,
         data.origin,
@@ -7559,7 +7583,7 @@ var WebAuthnPromptHelper = {
         "alreadyRegistered",
         "webauthn.alreadyRegisteredPrompt"
       );
-    } else if (data.action == "select-device") {
+    } else if (data.prompt.type == "select-device") {
       this.show_info(
         mgr,
         data.origin,
@@ -7567,7 +7591,7 @@ var WebAuthnPromptHelper = {
         "selectDevice",
         "webauthn.selectDevicePrompt"
       );
-    } else if (data.action == "pin-auth-blocked") {
+    } else if (data.prompt.type == "pin-auth-blocked") {
       this.show_info(
         mgr,
         data.origin,
@@ -7575,7 +7599,7 @@ var WebAuthnPromptHelper = {
         "pinAuthBlocked",
         "webauthn.pinAuthBlockedPrompt"
       );
-    } else if (data.action == "uv-blocked") {
+    } else if (data.prompt.type == "uv-blocked") {
       this.show_info(
         mgr,
         data.origin,
@@ -7583,8 +7607,8 @@ var WebAuthnPromptHelper = {
         "uvBlocked",
         "webauthn.uvBlockedPrompt"
       );
-    } else if (data.action == "uv-invalid") {
-      let retriesLeft = data.retriesLeft;
+    } else if (data.prompt.type == "uv-invalid") {
+      let retriesLeft = data.prompt.retries;
       let dialogText;
       if (retriesLeft == 0) {
         // We can skip that because it will either be replaced
@@ -7602,7 +7626,7 @@ var WebAuthnPromptHelper = {
       }
       let mainAction = this.buildCancelAction(mgr, data.tid);
       this.show_formatted_msg(data.tid, "uvInvalid", dialogText, mainAction);
-    } else if (data.action == "device-blocked") {
+    } else if (data.prompt.type == "device-blocked") {
       this.show_info(
         mgr,
         data.origin,
@@ -7610,7 +7634,7 @@ var WebAuthnPromptHelper = {
         "deviceBlocked",
         "webauthn.deviceBlockedPrompt"
       );
-    } else if (data.action == "pin-not-set") {
+    } else if (data.prompt.type == "pin-not-set") {
       this.show_info(
         mgr,
         data.origin,
@@ -7653,14 +7677,18 @@ var WebAuthnPromptHelper = {
     return res;
   },
 
-  select_sign_result(mgr, { origin, tid, usernames }) {
+  select_sign_result(mgr, { origin, tid, prompt: { entities } }) {
+    let unknownAccount = this._l10n.formatValueSync(
+      "webauthn-select-sign-result-unknown-account"
+    );
     let secondaryActions = [];
-    for (let i = 0; i < usernames.length; i++) {
+    for (let i = 0; i < entities.length; i++) {
+      let label = entities[i].name ?? unknownAccount;
       secondaryActions.push({
-        label: unescape(decodeURIComponent(usernames[i])),
+        label,
         accessKey: i.toString(),
         callback(aState) {
-          mgr.signatureSelectionCallback(tid, i);
+          mgr.selectionCallback(tid, i);
         },
       });
     }
@@ -7677,14 +7705,9 @@ var WebAuthnPromptHelper = {
     );
   },
 
-  pin_required(mgr, { origin, tid, wasInvalid, retriesLeft }) {
+  pin_required(mgr, wasInvalid, { origin, tid, prompt: { retries } }) {
     let aPassword = Object.create(null); // create a "null" object
-    let res = this.prompt_for_password(
-      origin,
-      wasInvalid,
-      retriesLeft,
-      aPassword
-    );
+    let res = this.prompt_for_password(origin, wasInvalid, retries, aPassword);
     if (res) {
       mgr.pinCallback(tid, aPassword.value);
     } else {
@@ -7848,7 +7871,7 @@ var WebAuthnPromptHelper = {
       label: gNavigatorBundle.getString("webauthn.proceed"),
       accessKey: gNavigatorBundle.getString("webauthn.proceed.accesskey"),
       callback(state) {
-        mgr.resumeRegister(tid, state.checkboxChecked);
+        mgr.resumeMakeCredential(tid, state.checkboxChecked);
       },
     };
   },
@@ -8379,7 +8402,13 @@ var gPrivateBrowsingUI = {
 
     // Bug 1846583 - hide pocket button in PBM
     if (gUseFeltPrivacyUI) {
-      document.getElementById("save-to-pocket-button").remove();
+      const saveToPocketButton = document.getElementById(
+        "save-to-pocket-button"
+      );
+      if (saveToPocketButton) {
+        saveToPocketButton.remove();
+        document.documentElement.setAttribute("pocketdisabled", "true");
+      }
     }
 
     if (PrivateBrowsingUtils.permanentPrivateBrowsing) {
@@ -9735,6 +9764,7 @@ var ConfirmationHint = {
    *         An object with the following optional properties:
    *         - event (DOM event): The event that triggered the feedback
    *         - descriptionId (string): message ID of the description text
+   *         - position (string): position of the panel relative to the anchor.
    *
    */
   show(anchor, messageId, options = {}) {
@@ -9780,7 +9810,7 @@ var ConfirmationHint = {
     );
 
     this._panel.openPopup(anchor, {
-      position: "bottomcenter topleft",
+      position: options.position ?? "bottomcenter topleft",
       triggerEvent: options.event,
     });
   },
@@ -9998,6 +10028,24 @@ var FirefoxViewHandler = {
       const PREF_NAME = "browser.firefox-view.view-count";
       const MAX_VIEW_COUNT = 10;
       let viewCount = Services.prefs.getIntPref(PREF_NAME, 0);
+      let isFirefoxViewNext = Services.prefs.getBoolPref(
+        "browser.tabs.firefox-view-next",
+        false
+      );
+
+      // Record telemetry
+      Services.telemetry.setEventRecordingEnabled(
+        isFirefoxViewNext ? "firefoxview_next" : "firefoxview",
+        true
+      );
+      Services.telemetry.recordEvent(
+        isFirefoxViewNext ? "firefoxview_next" : "firefoxview",
+        "tab_selected",
+        "toolbarbutton",
+        null,
+        {}
+      );
+
       if (viewCount < MAX_VIEW_COUNT) {
         Services.prefs.setIntPref(PREF_NAME, viewCount + 1);
       }
@@ -10043,8 +10091,10 @@ var ShoppingSidebarManager = {
     let optedOut = this.optedInPref === 2;
     let isPBM = PrivateBrowsingUtils.isWindowPrivate(window);
 
-    this._enabled =
-      NimbusFeatures.shopping2023.getVariable("enabled") && !isPBM && !optedOut;
+    // We are forced to cache this value because otherwise we access the pref
+    // too many times.
+    this.inEnabledBranch = NimbusFeatures.shopping2023.getVariable("enabled");
+    this._enabled = this.inEnabledBranch && !isPBM && !optedOut;
 
     if (!this.isActive) {
       document.querySelectorAll("shopping-sidebar").forEach(sidebar => {
@@ -10052,20 +10102,17 @@ var ShoppingSidebarManager = {
       });
     }
 
+    this._maybeToggleButton();
+
     if (!this._enabled) {
       document.querySelectorAll("shopping-sidebar").forEach(sidebar => {
         sidebar.remove();
       });
-
-      if (optedOut) {
-        let button = document.getElementById("shopping-sidebar-button");
-        button.hidden = true;
-      }
       return;
     }
 
     let { selectedBrowser, currentURI } = gBrowser;
-    this.onLocationChange(selectedBrowser, currentURI, 0);
+    this._maybeToggleSidebar(selectedBrowser, currentURI, 0);
   },
 
   /**
@@ -10075,6 +10122,17 @@ var ShoppingSidebarManager = {
    * those can be significant for us.
    */
   onLocationChange(aBrowser, aLocationURI, aFlags) {
+    ShoppingUtils.maybeRecordExposure(aLocationURI, aFlags);
+
+    this._maybeToggleButton();
+    this._maybeToggleSidebar(aBrowser, aLocationURI, aFlags);
+  },
+
+  // The strange signature is because this function was formerly the
+  // onLocationChange function, but we needed to differentiate between
+  // calls triggered by actual location changes and calls triggered by
+  // TabSelect. We will refactor this code in bug 1845842.
+  _maybeToggleSidebar(aBrowser, aLocationURI, aFlags) {
     if (!this._enabled) {
       return;
     }
@@ -10106,30 +10164,12 @@ var ShoppingSidebarManager = {
     this._updateBCActiveness(aBrowser);
     this._setShoppingButtonState(aBrowser);
 
-    if (isProduct) {
-      let isVisible = sidebar && !sidebar.hidden;
-
-      // Ignore same-document navigation, except in the case of Walmart
-      // as they use pushState to navigate between pages.
-      let isWalmart = aLocationURI.host.includes("walmart");
-      let isNewDocument = !aFlags;
-
-      let isSameDocument =
-        aFlags & Ci.nsIWebProgressListener.LOCATION_CHANGE_SAME_DOCUMENT;
-      let isReload = aFlags & Ci.nsIWebProgressListener.LOCATION_CHANGE_RELOAD;
-      let isSessionRestore =
-        aFlags & Ci.nsIWebProgressListener.LOCATION_CHANGE_SESSION_STORE;
-
-      if (
-        isVisible &&
-        // On initial visit to a product page, even from another domain, both a page
-        // load and a pushstate will be triggered by Walmart, so this will
-        // capture only a single displayed event.
-        ((!isWalmart && (isNewDocument || isReload || isSessionRestore)) ||
-          (isWalmart && isSameDocument))
-      ) {
-        Glean.shopping.surfaceDisplayed.record();
-      }
+    if (
+      sidebar &&
+      !sidebar.hidden &&
+      ShoppingUtils.isProductPageNavigation(aLocationURI, aFlags)
+    ) {
+      Glean.shopping.surfaceDisplayed.record();
     }
 
     if (isProduct) {
@@ -10144,6 +10184,14 @@ var ShoppingSidebarManager = {
           context: { isSidebarClosing: !!sidebar },
         });
       }
+    }
+  },
+
+  _maybeToggleButton() {
+    let optedOut = this.optedInPref === 2;
+    let isPBM = PrivateBrowsingUtils.isWindowPrivate(window);
+    if (this.inEnabledBranch && !isPBM && optedOut) {
+      this._setShoppingButtonState(gBrowser.selectedBrowser);
     }
   },
 
@@ -10187,8 +10235,8 @@ var ShoppingSidebarManager = {
     button.hidden = !isCurrentBrowserProduct;
     button.setAttribute("shoppingsidebaropen", !!this.isActive);
     let l10nId = this.isActive
-      ? "shopping-sidebar-close-button"
-      : "shopping-sidebar-open-button";
+      ? "shopping-sidebar-close-button2"
+      : "shopping-sidebar-open-button2";
     document.l10n.setAttributes(button, l10nId);
   },
 

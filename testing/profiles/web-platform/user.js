@@ -50,9 +50,6 @@ user_pref("browser.safebrowsing.phishing.enabled", false);
 user_pref("browser.safebrowsing.update.enabled", false);
 // Automatically unload beforeunload alerts
 user_pref("dom.disable_beforeunload", true);
-// Enable implicit keyframes since the common animation interpolation test
-// function assumes this is available.
-user_pref("dom.animations-api.implicit-keyframes.enabled", true);
 // Disable high DPI
 user_pref("layout.css.devPixelsPerPx", "1.0");
 // Enable the parallel styling code.
@@ -74,7 +71,6 @@ user_pref("layout.css.prefers-color-scheme.content-override", 1);
 user_pref("gfx.offscreencanvas.enabled", true);
 // A lot of tests use the Reporting API for observing things
 user_pref("dom.reporting.enabled", true);
-user_pref("layout.css.font-loading-api.workers.enabled", true);
 // Enable WebDriver BiDi experimental commands and events during tests.
 user_pref("remote.experimental.enabled", true);
 // Disable always partitioning storage with the Storage Access API
@@ -94,3 +90,5 @@ user_pref("security.webauth.webauthn_enable_usbtoken", false);
 user_pref("security.webauth.webauthn_enable_android_fido2", false);
 // Disable the WebAuthn direct attestation consent prompt.
 user_pref("security.webauth.webauthn_testing_allow_direct_attestation", true);
+// Disable captive portal service
+user_pref("network.captive-portal-service.enabled", false);

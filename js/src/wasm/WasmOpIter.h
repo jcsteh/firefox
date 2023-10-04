@@ -205,10 +205,13 @@ enum class OpKind {
   ArrayNewDefault,
   ArrayNewData,
   ArrayNewElem,
+  ArrayInitData,
+  ArrayInitElem,
   ArrayGet,
   ArraySet,
   ArrayLen,
   ArrayCopy,
+  ArrayFill,
   RefTest,
   RefCast,
   BrOnCast,
@@ -761,6 +764,12 @@ class MOZ_STACK_CLASS OpIter : private Policy {
                                       Value* offset, Value* numElements);
   [[nodiscard]] bool readArrayNewElem(uint32_t* typeIndex, uint32_t* segIndex,
                                       Value* offset, Value* numElements);
+  [[nodiscard]] bool readArrayInitData(uint32_t* typeIndex, uint32_t* segIndex,
+                                       Value* array, Value* arrayIndex,
+                                       Value* segOffset, Value* length);
+  [[nodiscard]] bool readArrayInitElem(uint32_t* typeIndex, uint32_t* segIndex,
+                                       Value* array, Value* arrayIndex,
+                                       Value* segOffset, Value* length);
   [[nodiscard]] bool readArrayGet(uint32_t* typeIndex,
                                   FieldWideningOp wideningOp, Value* index,
                                   Value* ptr);
@@ -771,6 +780,8 @@ class MOZ_STACK_CLASS OpIter : private Policy {
                                    Value* dstArray, Value* dstIndex,
                                    Value* srcArray, Value* srcIndex,
                                    Value* numElements);
+  [[nodiscard]] bool readArrayFill(uint32_t* typeIndex, Value* array,
+                                   Value* index, Value* val, Value* length);
   [[nodiscard]] bool readRefTest(bool nullable, RefType* sourceType,
                                  RefType* destType, Value* ref);
   [[nodiscard]] bool readRefCast(bool nullable, RefType* sourceType,
@@ -3352,10 +3363,14 @@ inline bool OpIter<Policy>::readArrayNewFixed(uint32_t* typeIndex,
   if (!readVarU32(numElements)) {
     return false;
   }
-  // Don't resize `values` so as to hold `numElements`.  If `numElements` is
-  // absurdly large, this will will take a large amount of time and memory,
-  // which will be wasted because `popWithType` in the loop below will soon
-  // start failing anyway.
+
+  if (*numElements > MaxArrayNewFixedElements) {
+    return fail("too many array.new_fixed elements");
+  }
+
+  if (!values->reserve(*numElements)) {
+    return false;
+  }
 
   ValType widenedElementType = arrayType.elementType_.widenToValType();
   for (uint32_t i = 0; i < *numElements; i++) {
@@ -3363,9 +3378,7 @@ inline bool OpIter<Policy>::readArrayNewFixed(uint32_t* typeIndex,
     if (!popWithType(widenedElementType, &v)) {
       return false;
     }
-    if (!values->append(v)) {
-      return false;
-    }
+    values->infallibleAppend(v);
   }
 
   return push(RefType::fromTypeDef(&typeDef, false));
@@ -3435,7 +3448,7 @@ template <typename Policy>
 inline bool OpIter<Policy>::readArrayNewElem(uint32_t* typeIndex,
                                              uint32_t* segIndex, Value* offset,
                                              Value* numElements) {
-  MOZ_ASSERT(Classify(op_) == OpKind::ArrayNewData);
+  MOZ_ASSERT(Classify(op_) == OpKind::ArrayNewElem);
 
   if (!readArrayTypeIndex(typeIndex)) {
     return false;
@@ -3470,6 +3483,104 @@ inline bool OpIter<Policy>::readArrayNewElem(uint32_t* typeIndex,
   }
 
   return push(RefType::fromTypeDef(&typeDef, false));
+}
+
+template <typename Policy>
+inline bool OpIter<Policy>::readArrayInitData(uint32_t* typeIndex,
+                                              uint32_t* segIndex, Value* array,
+                                              Value* arrayIndex,
+                                              Value* segOffset, Value* length) {
+  MOZ_ASSERT(Classify(op_) == OpKind::ArrayInitData);
+
+  if (!readArrayTypeIndex(typeIndex)) {
+    return false;
+  }
+
+  if (!readVarU32(segIndex)) {
+    return fail("unable to read segment index");
+  }
+
+  const TypeDef& typeDef = env_.types->type(*typeIndex);
+  const ArrayType& arrayType = typeDef.arrayType();
+  FieldType elemType = arrayType.elementType_;
+  if (!elemType.isNumber() && !elemType.isPacked() && !elemType.isVector()) {
+    return fail("element type must be i8/i16/i32/i64/f32/f64/v128");
+  }
+  if (!arrayType.isMutable_) {
+    return fail("destination array is not mutable");
+  }
+  if (env_.dataCount.isNothing()) {
+    return fail("datacount section missing");
+  }
+  if (*segIndex >= *env_.dataCount) {
+    return fail("segment index is out of range");
+  }
+
+  if (!popWithType(ValType::I32, length)) {
+    return false;
+  }
+  if (!popWithType(ValType::I32, segOffset)) {
+    return false;
+  }
+  if (!popWithType(ValType::I32, arrayIndex)) {
+    return false;
+  }
+  if (!popWithType(RefType::fromTypeDef(&typeDef, true), array)) {
+    return false;
+  }
+
+  return true;
+}
+
+template <typename Policy>
+inline bool OpIter<Policy>::readArrayInitElem(uint32_t* typeIndex,
+                                              uint32_t* segIndex, Value* array,
+                                              Value* arrayIndex,
+                                              Value* segOffset, Value* length) {
+  MOZ_ASSERT(Classify(op_) == OpKind::ArrayInitElem);
+
+  if (!readArrayTypeIndex(typeIndex)) {
+    return false;
+  }
+
+  if (!readVarU32(segIndex)) {
+    return fail("unable to read segment index");
+  }
+
+  const TypeDef& typeDef = env_.types->type(*typeIndex);
+  const ArrayType& arrayType = typeDef.arrayType();
+  FieldType dstElemType = arrayType.elementType_;
+  if (!arrayType.isMutable_) {
+    return fail("destination array is not mutable");
+  }
+  if (!dstElemType.isRefType()) {
+    return fail("element type is not a reftype");
+  }
+  if (*segIndex >= env_.elemSegments.length()) {
+    return fail("segment index is out of range");
+  }
+
+  const ModuleElemSegment& elemSeg = env_.elemSegments[*segIndex];
+  RefType srcElemType = elemSeg.elemType;
+  // srcElemType needs to be a subtype (child) of dstElemType
+  if (!checkIsSubtypeOf(srcElemType, dstElemType.refType())) {
+    return fail("incompatible element types");
+  }
+
+  if (!popWithType(ValType::I32, length)) {
+    return false;
+  }
+  if (!popWithType(ValType::I32, segOffset)) {
+    return false;
+  }
+  if (!popWithType(ValType::I32, arrayIndex)) {
+    return false;
+  }
+  if (!popWithType(RefType::fromTypeDef(&typeDef, true), array)) {
+    return false;
+  }
+
+  return true;
 }
 
 template <typename Policy>
@@ -3611,6 +3722,38 @@ inline bool OpIter<Policy>::readArrayCopy(int32_t* elemSize,
 }
 
 template <typename Policy>
+inline bool OpIter<Policy>::readArrayFill(uint32_t* typeIndex, Value* array,
+                                          Value* index, Value* val,
+                                          Value* length) {
+  MOZ_ASSERT(Classify(op_) == OpKind::ArrayFill);
+
+  if (!readArrayTypeIndex(typeIndex)) {
+    return false;
+  }
+
+  const TypeDef& typeDef = env_.types->type(*typeIndex);
+  const ArrayType& arrayType = typeDef.arrayType();
+  if (!arrayType.isMutable_) {
+    return fail("destination array is not mutable");
+  }
+
+  if (!popWithType(ValType::I32, length)) {
+    return false;
+  }
+  if (!popWithType(arrayType.elementType_.widenToValType(), val)) {
+    return false;
+  }
+  if (!popWithType(ValType::I32, index)) {
+    return false;
+  }
+  if (!popWithType(RefType::fromTypeDef(&typeDef, true), array)) {
+    return false;
+  }
+
+  return true;
+}
+
+template <typename Policy>
 inline bool OpIter<Policy>::readRefTest(bool nullable, RefType* sourceType,
                                         RefType* destType, Value* ref) {
   MOZ_ASSERT(Classify(op_) == OpKind::RefTest);
@@ -3680,6 +3823,12 @@ inline bool OpIter<Policy>::readRefCast(bool nullable, RefType* sourceType,
 // `values` will be nonempty after the call, and its last entry will be the
 // type that causes a branch (rt1\rt2 or rt2, depending).
 
+enum class BrOnCastFlags : uint8_t {
+  SourceNullable = 0x1,
+  DestNullable = 0x1 << 1,
+  AllowedMask = uint8_t(SourceNullable) | uint8_t(DestNullable),
+};
+
 template <typename Policy>
 inline bool OpIter<Policy>::readBrOnCast(bool onSuccess,
                                          uint32_t* labelRelativeDepth,
@@ -3692,8 +3841,11 @@ inline bool OpIter<Policy>::readBrOnCast(bool onSuccess,
   if (!readFixedU8(&flags)) {
     return fail("unable to read br_on_cast flags");
   }
-  bool sourceNullable = flags & (1 << 0);
-  bool destNullable = flags & (1 << 1);
+  if ((flags & ~uint8_t(BrOnCastFlags::AllowedMask)) != 0) {
+    return fail("invalid br_on_cast flags");
+  }
+  bool sourceNullable = flags & uint8_t(BrOnCastFlags::SourceNullable);
+  bool destNullable = flags & uint8_t(BrOnCastFlags::DestNullable);
 
   if (!readVarU32(labelRelativeDepth)) {
     return fail("unable to read br_on_cast depth");
@@ -3754,7 +3906,7 @@ inline bool OpIter<Policy>::readBrOnCast(bool onSuccess,
   if (!popWithType(immediateSourceType, &inputValue, &inputType)) {
     return false;
   }
-  *sourceType = inputType.valTypeOr(RefType::any()).refType();
+  *sourceType = inputType.valTypeOr(immediateSourceType).refType();
   infalliblePush(TypeAndValue(typeOnFallthrough, inputValue));
 
   // Create a copy of the branch target type, with the relevant value slot

@@ -52,6 +52,7 @@ class nsPIDOMWindowOuter;
 namespace mozilla {
 
 class OriginAttributes;
+class OriginAttributesPattern;
 
 namespace ipc {
 
@@ -78,9 +79,12 @@ class UniversalDirectoryLock;
 
 class QuotaManager final : public BackgroundThreadObject {
   friend class CanonicalQuotaObject;
+  friend class ClearStorageOp;
   friend class DirectoryLockImpl;
   friend class GroupInfo;
+  friend class InitOp;
   friend class OriginInfo;
+  friend class ShutdownStorageOp;
 
   using PrincipalInfo = mozilla::ipc::PrincipalInfo;
   using DirectoryLockTable =
@@ -258,6 +262,8 @@ class QuotaManager final : public BackgroundThreadObject {
 
   Result<OriginMetadata, nsresult> GetOriginMetadata(nsIFile* aDirectory);
 
+  Result<Ok, nsresult> RemoveOriginDirectory(nsIFile& aDirectory);
+
   RefPtr<UniversalDirectoryLockPromise> OpenStorageDirectory(
       const Nullable<PersistenceType>& aPersistenceType,
       const OriginScope& aOriginScope,
@@ -335,8 +341,10 @@ class QuotaManager final : public BackgroundThreadObject {
   }
 #endif
 
+ private:
   nsresult EnsureStorageIsInitializedInternal();
 
+ public:
   // Returns a pair of an nsIFile object referring to the directory, and a bool
   // indicating whether the directory was newly created.
   Result<std::pair<nsCOMPtr<nsIFile>, bool>, nsresult>
@@ -349,6 +357,18 @@ class QuotaManager final : public BackgroundThreadObject {
                                      const OriginMetadata& aOriginMetadata);
 
   nsresult EnsureTemporaryStorageIsInitialized();
+
+  RefPtr<BoolPromise> ClearStoragesForOrigin(
+      const Maybe<PersistenceType>& aPersistenceType,
+      const PrincipalInfo& aPrincipalInfo,
+      const Maybe<Client::Type>& aClientType);
+
+  RefPtr<BoolPromise> ClearStoragesForOriginPrefix(
+      const Maybe<PersistenceType>& aPersistenceType,
+      const PrincipalInfo& aPrincipalInfo);
+
+  RefPtr<BoolPromise> ClearStoragesForOriginAttributesPattern(
+      const OriginAttributesPattern& aPattern);
 
   RefPtr<BoolPromise> ClearPrivateRepository();
 
@@ -615,6 +635,8 @@ class QuotaManager final : public BackgroundThreadObject {
 
   DirectoryLockTable& GetDirectoryLockTable(PersistenceType aPersistenceType);
 
+  void ClearDirectoryLockTables();
+
   bool IsSanitizedOriginValid(const nsACString& aSanitizedOrigin);
 
   Result<nsCString, nsresult> EnsureStorageOriginFromOrigin(
@@ -727,6 +749,7 @@ class QuotaManager final : public BackgroundThreadObject {
   LazyInitializedOnce<const nsString> mTemporaryStoragePath;
   LazyInitializedOnce<const nsString> mDefaultStoragePath;
   LazyInitializedOnce<const nsString> mPrivateStoragePath;
+  LazyInitializedOnce<const nsString> mToBeRemovedStoragePath;
 
   uint64_t mTemporaryStorageLimit;
   uint64_t mTemporaryStorageUsage;

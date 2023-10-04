@@ -927,6 +927,7 @@ nsGlobalWindowInner::nsGlobalWindowInner(nsGlobalWindowOuter* aOuterWindow,
   mIsInnerWindow = true;
 
   AssertIsOnMainThread();
+  SetIsOnMainThread();
   nsLayoutStatics::AddRef();
 
   // Initialize the PRCList (this).
@@ -2934,7 +2935,7 @@ bool nsGlobalWindowInner::HasActiveSpeechSynthesis() {
 
 mozilla::glean::Glean* nsGlobalWindowInner::Glean() {
   if (!mGlean) {
-    mGlean = new mozilla::glean::Glean();
+    mGlean = new mozilla::glean::Glean(this);
   }
 
   return mGlean;
@@ -7349,7 +7350,7 @@ void nsGlobalWindowInner::FireOnNewGlobalObject() {
 
 #if defined(_WINDOWS_) && !defined(MOZ_WRAPPED_WINDOWS_H)
 #  pragma message( \
-          "wrapper failure reason: " MOZ_WINDOWS_WRAPPER_DISABLED_REASON)
+      "wrapper failure reason: " MOZ_WINDOWS_WRAPPER_DISABLED_REASON)
 #  error "Never include unwrapped windows.h in this file!"
 #endif
 
@@ -7461,7 +7462,7 @@ void nsGlobalWindowInner::ForgetSharedWorker(SharedWorker* aSharedWorker) {
   mSharedWorkers.RemoveElement(aSharedWorker);
 }
 
-void nsGlobalWindowInner::StorageAccessPermissionGranted() {
+void nsGlobalWindowInner::StorageAccessPermissionChanged() {
   // Invalidate cached StorageAllowed field so that calls to GetLocalStorage
   // give us the updated localStorage object.
   ClearStorageAllowedCache();
@@ -7644,12 +7645,31 @@ const nsIGlobalObject* nsPIDOMWindowInner::AsGlobal() const {
 }
 
 void nsPIDOMWindowInner::SaveStorageAccessPermissionGranted() {
-  mUsingStorageAccess = true;
+  WindowContext* wc = GetWindowContext();
+  if (wc) {
+    Unused << wc->SetUsingStorageAccess(true);
+  }
 
-  nsGlobalWindowInner::Cast(this)->StorageAccessPermissionGranted();
+  nsGlobalWindowInner::Cast(this)->StorageAccessPermissionChanged();
 }
 
-bool nsPIDOMWindowInner::UsingStorageAccess() { return mUsingStorageAccess; }
+void nsPIDOMWindowInner::SaveStorageAccessPermissionRevoked() {
+  WindowContext* wc = GetWindowContext();
+  if (wc) {
+    Unused << wc->SetUsingStorageAccess(false);
+  }
+
+  nsGlobalWindowInner::Cast(this)->StorageAccessPermissionChanged();
+}
+
+bool nsPIDOMWindowInner::UsingStorageAccess() {
+  WindowContext* wc = GetWindowContext();
+  if (!wc) {
+    return false;
+  }
+
+  return wc->GetUsingStorageAccess();
+}
 
 nsPIDOMWindowInner::nsPIDOMWindowInner(nsPIDOMWindowOuter* aOuterWindow,
                                        WindowGlobalChild* aActor)
@@ -7674,7 +7694,6 @@ nsPIDOMWindowInner::nsPIDOMWindowInner(nsPIDOMWindowOuter* aOuterWindow,
       mNumOfIndexedDBDatabases(0),
       mNumOfOpenWebSockets(0),
       mEvent(nullptr),
-      mUsingStorageAccess(false),
       mWindowGlobalChild(aActor),
       mWasSuspendedByGroup(false) {
   MOZ_ASSERT(aOuterWindow);

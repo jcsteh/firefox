@@ -359,7 +359,7 @@ describe("MultiStageAboutWelcomeProton module", () => {
       const wrapper = mount(<MultiStageProtonScreen {...SCREEN_PROPS} />);
       assert.ok(wrapper.exists());
       const imageEl = wrapper.find(".inline-image img");
-      const textEl = wrapper.find(".legal-paragraph");
+      const textEl = wrapper.find(".link-paragraph");
 
       assert.equal(imageEl.length, 2);
       assert.equal(textEl.length, 2);
@@ -606,72 +606,6 @@ describe("MultiStageAboutWelcomeProton module", () => {
         "source",
         "test"
       );
-    });
-    it("should remove theme screens on win7", async () => {
-      sandbox
-        .stub(global.AppConstants, "isPlatformAndVersionAtMost")
-        .returns(true);
-      sandbox
-        .stub(global.AWScreenUtils, "removeScreens")
-        .callsFake((screens, screen) =>
-          AWScreenUtils.removeScreens(screens, screen)
-        );
-
-      const { screens } = await AboutWelcomeDefaults.prepareContentForReact({
-        screens: [
-          {
-            content: {
-              tiles: { type: "theme" },
-            },
-          },
-          { id: "hello" },
-          {
-            content: {
-              tiles: { type: "theme" },
-            },
-          },
-          { id: "world" },
-        ],
-      });
-
-      assert.deepEqual(screens, [{ id: "hello" }, { id: "world" }]);
-    });
-    it("shouldn't remove colorway screens on win7", async () => {
-      sandbox
-        .stub(global.AppConstants, "isPlatformAndVersionAtMost")
-        .returns(true);
-      sandbox
-        .stub(global.AWScreenUtils, "removeScreens")
-        .callsFake((screens, screen) =>
-          AWScreenUtils.removeScreens(screens, screen)
-        );
-
-      const { screens } = await AboutWelcomeDefaults.prepareContentForReact({
-        screens: [
-          {
-            content: {
-              tiles: { type: "colorway" },
-            },
-          },
-          { id: "hello" },
-          {
-            content: {
-              tiles: { type: "theme" },
-            },
-          },
-          { id: "world" },
-        ],
-      });
-
-      assert.deepEqual(screens, [
-        {
-          content: {
-            tiles: { type: "colorway" },
-          },
-        },
-        { id: "hello" },
-        { id: "world" },
-      ]);
     });
   });
 });

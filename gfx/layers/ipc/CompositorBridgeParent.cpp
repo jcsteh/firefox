@@ -1161,6 +1161,9 @@ PWebRenderBridgeParent* CompositorBridgeParent::AllocPWebRenderBridgeParent(
                                         mVsyncRate);
   mWrBridge.get()->AddRef();  // IPDL reference
 
+  mAsyncImageManager->SetTextureFactoryIdentifier(
+      mWrBridge->GetTextureFactoryIdentifier());
+
   mCompositorScheduler = mWrBridge->CompositorScheduler();
   MOZ_ASSERT(mCompositorScheduler);
   {  // scope lock
@@ -1726,15 +1729,6 @@ PTextureParent* CompositorBridgeParent::AllocPTextureParent(
 
 bool CompositorBridgeParent::DeallocPTextureParent(PTextureParent* actor) {
   return TextureHost::DestroyIPDLActor(actor);
-}
-
-mozilla::ipc::IPCResult CompositorBridgeParent::RecvInitPCanvasParent(
-    Endpoint<PCanvasParent>&& aEndpoint) {
-  MOZ_CRASH("PCanvasParent shouldn't be created via CompositorBridgeParent.");
-}
-
-mozilla::ipc::IPCResult CompositorBridgeParent::RecvReleasePCanvasParent() {
-  MOZ_CRASH("PCanvasParent shouldn't be released via CompositorBridgeParent.");
 }
 
 bool CompositorBridgeParent::IsSameProcess() const {

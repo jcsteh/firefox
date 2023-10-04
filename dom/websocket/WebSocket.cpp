@@ -5,6 +5,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "WebSocket.h"
+#include "ErrorList.h"
 #include "mozilla/dom/WebSocketBinding.h"
 #include "mozilla/net/WebSocketChannel.h"
 
@@ -1737,13 +1738,35 @@ nsresult WebSocketImpl::Init(JSContext* aCx, bool aIsSecure,
   }
 
   // Don't allow https:// to open ws://
+  // Check that we aren't a server side websocket or set to be upgraded to wss
+  // or allowing ws from https or a local websocket
   if (!mIsServerSide && !mSecure &&
       !Preferences::GetBool("network.websocket.allowInsecureFromHTTPS",
                             false) &&
       !nsMixedContentBlocker::IsPotentiallyTrustworthyLoopbackHost(
           mAsciiHost)) {
+    // If aIsSecure is true then disallow loading ws
     if (aIsSecure) {
       return NS_ERROR_DOM_SECURITY_ERR;
+    }
+
+    // Obtain the precursor's URI for the loading principal if it exists
+    // otherwise use the loading principal's URI
+    nsCOMPtr<nsIPrincipal> precursorPrincipal =
+        aPrincipal->GetPrecursorPrincipal();
+    nsCOMPtr<nsIURI> precursorOrLoadingURI = precursorPrincipal
+                                                 ? precursorPrincipal->GetURI()
+                                                 : aPrincipal->GetURI();
+
+    // Check if the parent was loaded securely if we have one
+    if (precursorOrLoadingURI) {
+      nsCOMPtr<nsIURI> precursorOrLoadingInnermostURI =
+          NS_GetInnermostURI(precursorOrLoadingURI);
+      // If the parent was loaded securely then disallow loading ws
+      if (precursorOrLoadingInnermostURI &&
+          precursorOrLoadingInnermostURI->SchemeIs("https")) {
+        return NS_ERROR_DOM_SECURITY_ERR;
+      }
     }
   }
 
@@ -2388,37 +2411,31 @@ void WebSocket::Send(Blob& aData, ErrorResult& aRv) {
 void WebSocket::Send(const ArrayBuffer& aData, ErrorResult& aRv) {
   AssertIsOnTargetThread();
 
-  aData.ComputeState();
+  static_assert(
+      sizeof(std::remove_reference_t<decltype(aData)>::element_type) == 1,
+      "byte-sized data required");
 
-  static_assert(sizeof(*aData.Data()) == 1, "byte-sized data required");
-
-  uint32_t len = aData.Length();
-  char* data = reinterpret_cast<char*>(aData.Data());
-
-  nsDependentCSubstring msgString;
-  if (!msgString.Assign(data, len, mozilla::fallible_t())) {
+  nsCString msgString;
+  if (!aData.AppendDataTo(msgString)) {
     aRv.Throw(NS_ERROR_FILE_TOO_BIG);
     return;
   }
-  Send(nullptr, msgString, len, true, aRv);
+  Send(nullptr, msgString, msgString.Length(), true, aRv);
 }
 
 void WebSocket::Send(const ArrayBufferView& aData, ErrorResult& aRv) {
   AssertIsOnTargetThread();
 
-  aData.ComputeState();
+  static_assert(
+      sizeof(std::remove_reference_t<decltype(aData)>::element_type) == 1,
+      "byte-sized data required");
 
-  static_assert(sizeof(*aData.Data()) == 1, "byte-sized data required");
-
-  uint32_t len = aData.Length();
-  char* data = reinterpret_cast<char*>(aData.Data());
-
-  nsDependentCSubstring msgString;
-  if (!msgString.Assign(data, len, mozilla::fallible_t())) {
+  nsCString msgString;
+  if (!aData.AppendDataTo(msgString)) {
     aRv.Throw(NS_ERROR_FILE_TOO_BIG);
     return;
   }
-  Send(nullptr, msgString, len, true, aRv);
+  Send(nullptr, msgString, msgString.Length(), true, aRv);
 }
 
 void WebSocket::Send(nsIInputStream* aMsgStream, const nsACString& aMsgString,

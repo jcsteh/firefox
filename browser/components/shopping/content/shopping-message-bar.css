@@ -17,6 +17,19 @@
   margin: 0;
 }
 
+:host([type="stale"]) #message-bar-container {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  column-gap: 8px;
+
+  > span {
+    display: flex;
+    flex-direction: column;
+    align-self: center;
+  }
+}
+
 button {
   margin-inline-start: 0;
 }
@@ -37,6 +50,19 @@ message-bar::part(icon) {
   animation: spin 1s infinite linear;
 }
 
-:host([type=reanalysis-in-progress]) message-bar::part(container) {
+:host([type=reanalysis-in-progress]) message-bar::part(container),
+:host([type=stale]) message-bar::part(container) {
+  align-items: center;
   background-color: transparent;
+  padding: 0;
+}
+
+:host([type=thank-you-for-feedback]) message-bar::part(icon) {
+  --message-bar-icon-url: url("chrome://global/skin/icons/check-filled.svg");
+}
+
+:host([type=thank-you-for-feedback]) message-bar::part(container) {
+  text-align: start;
+  align-items: center;
+  gap: 12px;
 }

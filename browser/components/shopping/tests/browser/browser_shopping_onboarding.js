@@ -271,9 +271,9 @@ add_task(async function test_onOptIn() {
 });
 
 /**
- * Helper function to click the links in the Legal Paragraph.
+ * Helper function to click the links in the Link Paragraph.
  */
-async function legalParagraphClickLinks() {
+async function linkParagraphClickLinks() {
   const sandbox = sinon.createSandbox();
 
   let handleActionStub = sandbox
@@ -358,13 +358,13 @@ async function legalParagraphClickLinks() {
         await ContentTaskUtils.waitForMutationCondition(
           content.document,
           { childList: true, subtree: true },
-          () => content.document.querySelector(".cta-paragraph a")
+          () => content.document.querySelector(".link-paragraph a")
         );
-        let cta = content.document.querySelector(
-          "shopping-container .cta-paragraph a"
+        let learnMore = content.document.querySelector(
+          "shopping-container .link-paragraph a[value='learn_more']"
         );
         // Learn More link button.
-        cta.click();
+        learnMore.click();
       });
     }
   );
@@ -374,7 +374,7 @@ async function legalParagraphClickLinks() {
 }
 
 /**
- * Test to check behavior when selecting links in the legal-paragraph
+ * Test to check behavior when selecting links in the link-paragraph
  * to opt in to the
  * shopping experience.
  *
@@ -385,7 +385,7 @@ add_task(async function test_linkParagraph() {
   Services.fog.testResetFOG();
   setOnboardingPrefs({ active: false, optedIn: 0, telemetryEnabled: true });
 
-  await legalParagraphClickLinks();
+  await linkParagraphClickLinks();
 
   await Services.fog.testFlushAllChildren();
   let privacyEvents =
@@ -409,6 +409,14 @@ add_task(async function test_linkParagraph() {
 });
 
 add_task(async function test_onboarding_auto_activate_opt_in() {
+  await SpecialPowers.pushPrefEnv({
+    set: [
+      [
+        "browser.newtabpage.activity-stream.asrouter.userprefs.cfr.features",
+        true,
+      ],
+    ],
+  });
   // Opt out of the feature
   setOnboardingPrefs({
     active: false,
@@ -544,5 +552,93 @@ add_task(async function test_onboarding_auto_activate_not_now() {
   ok(
     Services.prefs.getBoolPref("browser.shopping.experience2023.active"),
     "Shopping sidebar should auto-activate a second time if all conditions are met"
+  );
+});
+
+/**
+ * Test to check onboarding message is not shown for user
+ * after a user opt-out and opt back in after seeing survey
+ */
+
+add_task(async function test_hideOnboarding_OptIn_AfterSurveySeen() {
+  await SpecialPowers.pushPrefEnv({
+    set: [
+      ["browser.shopping.experience2023.optedIn", 0],
+      ["browser.shopping.experience2023.survey.enabled", true],
+      ["browser.shopping.experience2023.survey.hasSeen", true],
+      ["browser.shopping.experience2023.survey.pdpVisits", 5],
+    ],
+  });
+
+  await BrowserTestUtils.withNewTab(
+    {
+      url: "about:shoppingsidebar",
+      gBrowser,
+    },
+    async browser => {
+      let actor =
+        gBrowser.selectedBrowser.browsingContext.currentWindowGlobal.getExistingActor(
+          "ShoppingSidebar"
+        );
+      actor.updateProductURL("https://example.com/product/B09TJGHL5F");
+
+      await SpecialPowers.spawn(browser, [], async () => {
+        let shoppingContainer = await ContentTaskUtils.waitForCondition(
+          () => content.document.querySelector("shopping-container"),
+          "shopping-container"
+        );
+
+        ok(
+          !content.document.getElementById("multi-stage-message-root").hidden,
+          "opt-in message is shown"
+        );
+
+        const { TestUtils } = ChromeUtils.importESModule(
+          "resource://testing-common/TestUtils.sys.mjs"
+        );
+
+        let optedInPrefChanged = TestUtils.waitForPrefChange(
+          "browser.shopping.experience2023.optedIn",
+          value => value === 1
+        );
+        await SpecialPowers.pushPrefEnv({
+          set: [["browser.shopping.experience2023.optedIn", 1]],
+        });
+        await optedInPrefChanged;
+        await shoppingContainer.wrappedJSObject.updateComplete;
+
+        ok(
+          content.document.getElementById("multi-stage-message-root").hidden,
+          "opt-in message is hidden"
+        );
+        await SpecialPowers.popPrefEnv();
+      });
+    }
+  );
+  await SpecialPowers.popPrefEnv();
+});
+
+add_task(async function test_deactivate_sidebar_if_user_turns_off_cfr() {
+  await SpecialPowers.pushPrefEnv({
+    set: [
+      [
+        "browser.newtabpage.activity-stream.asrouter.userprefs.cfr.features",
+        false,
+      ],
+    ],
+  });
+  // Opt out of the feature
+  setOnboardingPrefs({
+    active: false,
+    optedIn: 0,
+    lastAutoActivate: 0,
+    autoActivateCount: 0,
+    handledAutoActivate: false,
+  });
+  ShoppingUtils.handleAutoActivateOnProduct();
+
+  ok(
+    !Services.prefs.getBoolPref("browser.shopping.experience2023.active"),
+    "Shopping sidebar should not auto-activate if Recommended features is turned off"
   );
 });

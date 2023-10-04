@@ -1776,12 +1776,26 @@ public class WebExtension {
      * WebExtensionController.EnableSource#APP} as <code>source</code>.
      */
     public static final int APP = 1 << 3;
+
+    /** The extension has been disabled because it is not correctly signed. */
+    public static final int SIGNATURE = 1 << 4;
+
+    /**
+     * The extension has been disabled because it is not compatible with the application version.
+     */
+    public static final int APP_VERSION = 1 << 5;
   }
 
   @Retention(RetentionPolicy.SOURCE)
   @IntDef(
       flag = true,
-      value = {DisabledFlags.USER, DisabledFlags.BLOCKLIST, DisabledFlags.APP})
+      value = {
+        DisabledFlags.USER,
+        DisabledFlags.BLOCKLIST,
+        DisabledFlags.APP,
+        DisabledFlags.SIGNATURE,
+        DisabledFlags.APP_VERSION,
+      })
   public @interface EnabledFlags {}
 
   /** Provides information about a {@link WebExtension}. */
@@ -2004,6 +2018,10 @@ public class WebExtension {
           disabledFlags |= DisabledFlags.BLOCKLIST;
         } else if (flag.equals("appDisabled")) {
           disabledFlags |= DisabledFlags.APP;
+        } else if (flag.equals("signatureDisabled")) {
+          disabledFlags |= DisabledFlags.SIGNATURE;
+        } else if (flag.equals("appVersionDisabled")) {
+          disabledFlags |= DisabledFlags.APP_VERSION;
         } else {
           Log.e(LOGTAG, "Unrecognized disabledFlag state: " + flag);
         }
@@ -2758,16 +2776,13 @@ public class WebExtension {
 
       final boolean saveAs = optionsBundle.getBoolean("saveAs");
 
-      final WebExtension.DownloadRequest request =
-          new WebExtension.DownloadRequest.Builder(mainRequest)
-              .filename(optionsBundle.getString("filename"))
-              .downloadFlags(downloadFlags)
-              .conflictAction(conflictActionFlags)
-              .saveAs(saveAs)
-              .allowHttpErrors(allowHttpErrors)
-              .build();
-
-      return request;
+      return new Builder(mainRequest)
+          .filename(optionsBundle.getString("filename"))
+          .downloadFlags(downloadFlags)
+          .conflictAction(conflictActionFlags)
+          .saveAs(saveAs)
+          .allowHttpErrors(allowHttpErrors)
+          .build();
     }
 
     /* package */ static class Builder {

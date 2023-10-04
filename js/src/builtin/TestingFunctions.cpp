@@ -189,475 +189,457 @@ static bool EnvVarAsInt(const char* name, int* valueOut) {
 static bool GetRealmConfiguration(JSContext* cx, unsigned argc, Value* vp) {
   CallArgs args = CallArgsFromVp(argc, vp);
   RootedObject callee(cx, &args.callee());
-  if (args.length() != 1) {
-    ReportUsageErrorASCII(cx, callee, "Must have one argument");
+  RootedObject info(cx, JS_NewPlainObject(cx));
+  if (!info) {
     return false;
   }
-  if (!args[0].isString()) {
+  if (args.length() > 1) {
+    ReportUsageErrorASCII(cx, callee, "Must have zero or one arguments");
+    return false;
+  }
+  if (args.length() == 1 && !args[0].isString()) {
     ReportUsageErrorASCII(cx, callee, "Argument must be a string");
     return false;
   }
 
-  RootedString argStr(cx, ToString(cx, args[0]));
-  if (!argStr) {
-    return false;
-  }
-  Rooted<JSLinearString*> str(cx, argStr->ensureLinear(cx));
-  if (!str) {
+  bool importAssertions = cx->options().importAssertions();
+  if (!JS_SetProperty(cx, info, "importAssertions",
+                      importAssertions ? TrueHandleValue : FalseHandleValue)) {
     return false;
   }
 
-  if (StringEqualsLiteral(str, "importAssertions")) {
-    args.rval().setBoolean(cx->options().importAssertions());
-    return true;
-  }
-
-  if (StringEqualsLiteral(str, "enableArrayGrouping")) {
-    args.rval().setBoolean(
 #ifdef NIGHTLY_BUILD
-        cx->realm()->creationOptions().getArrayGroupingEnabled()
-#else
-        false
-#endif
-    );
-    return true;
+  bool arrayGrouping = cx->realm()->creationOptions().getArrayGroupingEnabled();
+  if (!JS_SetProperty(cx, info, "enableArrayGrouping",
+                      arrayGrouping ? TrueHandleValue : FalseHandleValue)) {
+    return false;
   }
+#endif
 
-  if (StringEqualsLiteral(str, "enableNewSetMethods")) {
-    args.rval().setBoolean(
 #ifdef NIGHTLY_BUILD
-        cx->realm()->creationOptions().getNewSetMethodsEnabled()
-#else
-        false
+  bool newSetMethods = cx->realm()->creationOptions().getNewSetMethodsEnabled();
+  if (!JS_SetProperty(cx, info, "enableNewSetMethods",
+                      newSetMethods ? TrueHandleValue : FalseHandleValue)) {
+    return false;
+  }
 #endif
-    );
-    return true;
+
+  if (args.length() == 1) {
+    RootedString str(cx, ToString(cx, args[0]));
+    if (!str) {
+      return false;
+    }
+    RootedId id(cx);
+    if (!JS_StringToId(cx, str, &id)) {
+      return false;
+    }
+
+    bool hasProperty;
+    if (JS_HasPropertyById(cx, info, id, &hasProperty) && hasProperty) {
+      // Returning a true/false from GetProperty
+      return GetProperty(cx, info, info, id, args.rval());
+    }
+
+    ReportUsageErrorASCII(cx, callee, "Invalid option name");
+    return false;
   }
 
-  ReportUsageErrorASCII(cx, callee, "Invalid option name");
-  return false;
+  args.rval().setObject(*info);
+  return true;
 }
 
 static bool GetBuildConfiguration(JSContext* cx, unsigned argc, Value* vp) {
   CallArgs args = CallArgsFromVp(argc, vp);
   RootedObject callee(cx, &args.callee());
-  if (args.length() != 1) {
-    ReportUsageErrorASCII(cx, callee, "Must have one argument");
+  RootedObject info(cx, JS_NewPlainObject(cx));
+  if (!info) {
     return false;
   }
-  if (!args[0].isString()) {
+  if (args.length() > 1) {
+    ReportUsageErrorASCII(cx, callee, "Must have zero or one arguments");
+    return false;
+  }
+  if (args.length() == 1 && !args[0].isString()) {
     ReportUsageErrorASCII(cx, callee, "Argument must be a string");
     return false;
   }
 
-  RootedString argStr(cx, ToString(cx, args[0]));
-  if (!argStr) {
-    return false;
-  }
-  Rooted<JSLinearString*> str(cx, argStr->ensureLinear(cx));
-  if (!str) {
+  if (!JS_SetProperty(cx, info, "rooting-analysis", FalseHandleValue)) {
     return false;
   }
 
-  if (StringEqualsLiteral(str, "rooting-analysis")) {
-    args.rval().setBoolean(false);
-    return true;
+  if (!JS_SetProperty(cx, info, "exact-rooting", TrueHandleValue)) {
+    return false;
   }
 
-  if (StringEqualsLiteral(str, "exact-rooting")) {
-    args.rval().setBoolean(true);
-    return true;
+  if (!JS_SetProperty(cx, info, "trace-jscalls-api", FalseHandleValue)) {
+    return false;
   }
 
-  if (StringEqualsLiteral(str, "trace-jscalls-api")) {
-    args.rval().setBoolean(false);
-    return true;
+  if (!JS_SetProperty(cx, info, "incremental-gc", TrueHandleValue)) {
+    return false;
   }
 
-  if (StringEqualsLiteral(str, "incremental-gc")) {
-    args.rval().setBoolean(true);
-    return true;
+  if (!JS_SetProperty(cx, info, "generational-gc", TrueHandleValue)) {
+    return false;
   }
 
-  if (StringEqualsLiteral(str, "generational-gc")) {
-    args.rval().setBoolean(true);
-    return true;
+  if (!JS_SetProperty(cx, info, "oom-backtraces", FalseHandleValue)) {
+    return false;
   }
 
-  if (StringEqualsLiteral(str, "oom-backtraces")) {
-    args.rval().setBoolean(false);
-    return true;
-  }
-
-  bool value;
-
-  if (StringEqualsLiteral(str, "debug")) {
+  RootedValue value(cx);
 #ifdef DEBUG
-    value = true;
+  value = BooleanValue(true);
 #else
-    value = false;
+  value = BooleanValue(false);
 #endif
-    args.rval().setBoolean(value);
-    return true;
+  if (!JS_SetProperty(cx, info, "debug", value)) {
+    return false;
   }
 
-  if (StringEqualsLiteral(str, "release_or_beta")) {
 #ifdef RELEASE_OR_BETA
-    value = true;
+  value = BooleanValue(true);
 #else
-    value = false;
+  value = BooleanValue(false);
 #endif
-    args.rval().setBoolean(value);
-    return true;
+  if (!JS_SetProperty(cx, info, "release_or_beta", value)) {
+    return false;
   }
 
-  if (StringEqualsLiteral(str, "early_beta_or_earlier")) {
 #ifdef EARLY_BETA_OR_EARLIER
-    value = true;
+  value = BooleanValue(true);
 #else
-    value = false;
+  value = BooleanValue(false);
 #endif
-    args.rval().setBoolean(value);
-    return true;
+  if (!JS_SetProperty(cx, info, "early_beta_or_earlier", value)) {
+    return false;
   }
 
-  if (StringEqualsLiteral(str, "coverage")) {
 #ifdef MOZ_CODE_COVERAGE
-    value = true;
+  value = BooleanValue(true);
 #else
-    value = false;
+  value = BooleanValue(false);
 #endif
-    args.rval().setBoolean(value);
-    return true;
+  if (!JS_SetProperty(cx, info, "coverage", value)) {
+    return false;
   }
 
-  if (StringEqualsLiteral(str, "has-ctypes")) {
 #ifdef JS_HAS_CTYPES
-    value = true;
+  value = BooleanValue(true);
 #else
-    value = false;
+  value = BooleanValue(false);
 #endif
-    args.rval().setBoolean(value);
-    return true;
+  if (!JS_SetProperty(cx, info, "has-ctypes", value)) {
+    return false;
   }
 
-  if (StringEqualsLiteral(str, "x86")) {
 #if defined(_M_IX86) || defined(__i386__)
-    value = true;
+  value = BooleanValue(true);
 #else
-    value = false;
+  value = BooleanValue(false);
 #endif
-    args.rval().setBoolean(value);
-    return true;
+  if (!JS_SetProperty(cx, info, "x86", value)) {
+    return false;
   }
 
-  if (StringEqualsLiteral(str, "x64")) {
 #if defined(_M_X64) || defined(__x86_64__)
-    value = true;
+  value = BooleanValue(true);
 #else
-    value = false;
+  value = BooleanValue(false);
 #endif
-    args.rval().setBoolean(value);
-    return true;
+  if (!JS_SetProperty(cx, info, "x64", value)) {
+    return false;
   }
 
-  if (StringEqualsLiteral(str, "arm")) {
 #ifdef JS_CODEGEN_ARM
-    value = true;
+  value = BooleanValue(true);
 #else
-    value = false;
+  value = BooleanValue(false);
 #endif
-    args.rval().setBoolean(value);
-    return true;
+  if (!JS_SetProperty(cx, info, "arm", value)) {
+    return false;
   }
 
-  if (StringEqualsLiteral(str, "arm-simulator")) {
 #ifdef JS_SIMULATOR_ARM
-    value = true;
+  value = BooleanValue(true);
 #else
-    value = false;
+  value = BooleanValue(false);
 #endif
-    args.rval().setBoolean(value);
-    return true;
+  if (!JS_SetProperty(cx, info, "arm-simulator", value)) {
+    return false;
   }
 
-  if (StringEqualsLiteral(str, "android")) {
 #ifdef ANDROID
-    value = true;
+  value = BooleanValue(true);
 #else
-    value = false;
+  value = BooleanValue(false);
 #endif
-    args.rval().setBoolean(value);
-    return true;
+  if (!JS_SetProperty(cx, info, "android", value)) {
+    return false;
   }
 
-  if (StringEqualsLiteral(str, "windows")) {
 #ifdef XP_WIN
-    value = true;
+  value = BooleanValue(true);
 #else
-    value = false;
+  value = BooleanValue(false);
 #endif
-    args.rval().setBoolean(value);
-    return true;
+  if (!JS_SetProperty(cx, info, "windows", value)) {
+    return false;
   }
 
-  if (StringEqualsLiteral(str, "osx")) {
 #ifdef XP_MACOSX
-    value = true;
+  value = BooleanValue(true);
 #else
-    value = false;
+  value = BooleanValue(false);
 #endif
-    args.rval().setBoolean(value);
-    return true;
+  if (!JS_SetProperty(cx, info, "osx", value)) {
+    return false;
   }
 
-  if (StringEqualsLiteral(str, "arm64")) {
 #ifdef JS_CODEGEN_ARM64
-    value = true;
+  value = BooleanValue(true);
 #else
-    value = false;
+  value = BooleanValue(false);
 #endif
-    args.rval().setBoolean(value);
-    return true;
+  if (!JS_SetProperty(cx, info, "arm64", value)) {
+    return false;
   }
 
-  if (StringEqualsLiteral(str, "arm64-simulator")) {
 #ifdef JS_SIMULATOR_ARM64
-    value = true;
+  value = BooleanValue(true);
 #else
-    value = false;
+  value = BooleanValue(false);
 #endif
-    args.rval().setBoolean(value);
-    return true;
+  if (!JS_SetProperty(cx, info, "arm64-simulator", value)) {
+    return false;
   }
 
-  if (StringEqualsLiteral(str, "mips32")) {
 #ifdef JS_CODEGEN_MIPS32
-    value = true;
+  value = BooleanValue(true);
 #else
-    value = false;
+  value = BooleanValue(false);
 #endif
-    args.rval().setBoolean(value);
-    return true;
+  if (!JS_SetProperty(cx, info, "mips32", value)) {
+    return false;
   }
 
-  if (StringEqualsLiteral(str, "mips64")) {
 #ifdef JS_CODEGEN_MIPS64
-    value = true;
+  value = BooleanValue(true);
 #else
-    value = false;
+  value = BooleanValue(false);
 #endif
-    args.rval().setBoolean(value);
-    return true;
+  if (!JS_SetProperty(cx, info, "mips64", value)) {
+    return false;
   }
 
-  if (StringEqualsLiteral(str, "mips32-simulator")) {
 #ifdef JS_SIMULATOR_MIPS32
-    value = true;
+  value = BooleanValue(true);
 #else
-    value = false;
+  value = BooleanValue(false);
 #endif
-    args.rval().setBoolean(value);
-    return true;
+  if (!JS_SetProperty(cx, info, "mips32-simulator", value)) {
+    return false;
   }
 
-  if (StringEqualsLiteral(str, "mips64-simulator")) {
 #ifdef JS_SIMULATOR_MIPS64
-    value = true;
+  value = BooleanValue(true);
 #else
-    value = false;
+  value = BooleanValue(false);
 #endif
-    args.rval().setBoolean(value);
-    return true;
+  if (!JS_SetProperty(cx, info, "mips64-simulator", value)) {
+    return false;
   }
 
-  if (StringEqualsLiteral(str, "simulator")) {
 #ifdef JS_SIMULATOR
-    value = true;
+  value = BooleanValue(true);
 #else
-    value = false;
+  value = BooleanValue(false);
 #endif
-    args.rval().setBoolean(value);
-    return true;
+  if (!JS_SetProperty(cx, info, "simulator", value)) {
+    return false;
   }
 
-  if (StringEqualsLiteral(str, "wasi")) {
 #ifdef __wasi__
-    value = true;
+  value = BooleanValue(true);
 #else
-    value = false;
+  value = BooleanValue(false);
 #endif
-    args.rval().setBoolean(value);
-    return true;
+  if (!JS_SetProperty(cx, info, "wasi", value)) {
+    return false;
   }
 
-  if (StringEqualsLiteral(str, "loong64")) {
 #ifdef JS_CODEGEN_LOONG64
-    value = true;
+  value = BooleanValue(true);
 #else
-    value = false;
+  value = BooleanValue(false);
 #endif
-    args.rval().setBoolean(value);
-    return true;
+  if (!JS_SetProperty(cx, info, "loong64", value)) {
+    return false;
   }
 
-  if (StringEqualsLiteral(str, "loong64-simulator")) {
 #ifdef JS_SIMULATOR_LOONG64
-    value = true;
+  value = BooleanValue(true);
 #else
-    value = false;
+  value = BooleanValue(false);
 #endif
-    args.rval().setBoolean(value);
-    return true;
+  if (!JS_SetProperty(cx, info, "loong64-simulator", value)) {
+    return false;
   }
 
-  if (StringEqualsLiteral(str, "riscv64")) {
 #ifdef JS_CODEGEN_RISCV64
-    value = true;
+  value = BooleanValue(true);
 #else
-    value = false;
+  value = BooleanValue(false);
 #endif
-    args.rval().setBoolean(value);
-    return true;
+  if (!JS_SetProperty(cx, info, "riscv64", value)) {
+    return false;
   }
 
-  if (StringEqualsLiteral(str, "riscv64-simulator")) {
 #ifdef JS_SIMULATOR_RISCV64
-    value = true;
+  value = BooleanValue(true);
 #else
-    value = false;
+  value = BooleanValue(false);
 #endif
-    args.rval().setBoolean(value);
-    return true;
+  if (!JS_SetProperty(cx, info, "riscv64-simulator", value)) {
+    return false;
   }
 
-  if (StringEqualsLiteral(str, "asan")) {
 #ifdef MOZ_ASAN
-    value = true;
+  value = BooleanValue(true);
 #else
-    value = false;
+  value = BooleanValue(false);
 #endif
-    args.rval().setBoolean(value);
-    return true;
+  if (!JS_SetProperty(cx, info, "asan", value)) {
+    return false;
   }
 
-  if (StringEqualsLiteral(str, "tsan")) {
 #ifdef MOZ_TSAN
-    value = true;
+  value = BooleanValue(true);
 #else
-    value = false;
+  value = BooleanValue(false);
 #endif
-    args.rval().setBoolean(value);
-    return true;
+  if (!JS_SetProperty(cx, info, "tsan", value)) {
+    return false;
   }
 
-  if (StringEqualsLiteral(str, "ubsan")) {
 #ifdef MOZ_UBSAN
-    value = true;
+  value = BooleanValue(true);
 #else
-    value = false;
+  value = BooleanValue(false);
 #endif
-    args.rval().setBoolean(value);
-    return true;
+  if (!JS_SetProperty(cx, info, "ubsan", value)) {
+    return false;
   }
 
-  if (StringEqualsLiteral(str, "has-gczeal")) {
 #ifdef JS_GC_ZEAL
-    value = true;
+  value = BooleanValue(true);
 #else
-    value = false;
+  value = BooleanValue(false);
 #endif
-    args.rval().setBoolean(value);
-    return true;
+  if (!JS_SetProperty(cx, info, "has-gczeal", value)) {
+    return false;
   }
 
-  if (StringEqualsLiteral(str, "profiling")) {
 #ifdef MOZ_PROFILING
-    value = true;
+  value = BooleanValue(true);
 #else
-    value = false;
+  value = BooleanValue(false);
 #endif
-    args.rval().setBoolean(value);
-    return true;
+  if (!JS_SetProperty(cx, info, "profiling", value)) {
+    return false;
   }
 
-  if (StringEqualsLiteral(str, "dtrace")) {
 #ifdef INCLUDE_MOZILLA_DTRACE
-    value = true;
+  value = BooleanValue(true);
 #else
-    value = false;
+  value = BooleanValue(false);
 #endif
-    args.rval().setBoolean(value);
-    return true;
+  if (!JS_SetProperty(cx, info, "dtrace", value)) {
+    return false;
   }
 
-  if (StringEqualsLiteral(str, "valgrind")) {
 #ifdef MOZ_VALGRIND
-    value = true;
+  value = BooleanValue(true);
 #else
-    value = false;
+  value = BooleanValue(false);
 #endif
-    args.rval().setBoolean(value);
-    return true;
+  if (!JS_SetProperty(cx, info, "valgrind", value)) {
+    return false;
   }
 
-  if (StringEqualsLiteral(str, "intl-api")) {
 #ifdef JS_HAS_INTL_API
-    value = true;
+  value = BooleanValue(true);
 #else
-    value = false;
+  value = BooleanValue(false);
 #endif
-    args.rval().setBoolean(value);
-    return true;
+  if (!JS_SetProperty(cx, info, "intl-api", value)) {
+    return false;
   }
 
-  if (StringEqualsLiteral(str, "mapped-array-buffer")) {
 #if defined(SOLARIS)
-    value = false;
+  value = BooleanValue(false);
 #else
-    value = true;
+  value = BooleanValue(true);
 #endif
-    args.rval().setBoolean(value);
-    return true;
+  if (!JS_SetProperty(cx, info, "mapped-array-buffer", value)) {
+    return false;
   }
 
-  if (StringEqualsLiteral(str, "moz-memory")) {
 #ifdef MOZ_MEMORY
-    value = true;
+  value = BooleanValue(true);
 #else
-    value = false;
+  value = BooleanValue(false);
 #endif
-    args.rval().setBoolean(value);
-    return true;
+  if (!JS_SetProperty(cx, info, "moz-memory", value)) {
+    return false;
   }
 
-  if (StringEqualsLiteral(str, "pointer-byte-size")) {
-    args.rval().setInt32(sizeof(void*));
-    return true;
+  value.setInt32(sizeof(void*));
+  if (!JS_SetProperty(cx, info, "pointer-byte-size", value)) {
+    return false;
   }
 
-  if (StringEqualsLiteral(str, "decorators")) {
 #ifdef ENABLE_DECORATORS
-    value = true;
+  value = BooleanValue(true);
 #else
-    value = false;
+  value = BooleanValue(false);
 #endif
-    args.rval().setBoolean(value);
-    return true;
+  if (!JS_SetProperty(cx, info, "decorators", value)) {
+    return false;
   }
 
-  if (StringEqualsLiteral(str, "fuzzing-defined")) {
 #ifdef FUZZING
-    value = true;
+  value = BooleanValue(true);
 #else
-    value = false;
+  value = BooleanValue(false);
 #endif
-    args.rval().setBoolean(value);
-    return true;
+  if (!JS_SetProperty(cx, info, "fuzzing-defined", value)) {
+    return false;
   }
 
-  ReportUsageErrorASCII(cx, callee, "Invalid option name");
-  return false;
+  if (args.length() == 1) {
+    RootedString str(cx, ToString(cx, args[0]));
+    if (!str) {
+      return false;
+    }
+    RootedId id(cx);
+    if (!JS_StringToId(cx, str, &id)) {
+      return false;
+    }
+
+    bool hasProperty;
+    if (JS_HasPropertyById(cx, info, id, &hasProperty) && hasProperty) {
+      // Returning a true/false from GetProperty
+      return GetProperty(cx, info, info, id, args.rval());
+    }
+
+    ReportUsageErrorASCII(cx, callee, "Invalid option name");
+    return false;
+  }
+
+  args.rval().setObject(*info);
+  return true;
 }
 
 static bool IsLCovEnabled(JSContext* cx, unsigned argc, Value* vp) {
@@ -1335,8 +1317,8 @@ static bool WasmGlobalsEqual(JSContext* cx, unsigned argc, Value* vp) {
   Rooted<WasmGlobalObject*> b(cx,
                               &args.get(1).toObject().as<WasmGlobalObject>());
 
-  if (a->type() != b->type()) {
-    JS_ReportErrorASCII(cx, "globals are of different type");
+  if (a->type().kind() != b->type().kind()) {
+    JS_ReportErrorASCII(cx, "globals are of different kind");
     return false;
   }
 
@@ -5687,6 +5669,28 @@ static bool DetachArrayBuffer(JSContext* cx, unsigned argc, Value* vp) {
   return true;
 }
 
+static bool EnsureNonInline(JSContext* cx, unsigned argc, Value* vp) {
+  CallArgs args = CallArgsFromVp(argc, vp);
+
+  if (args.length() != 1) {
+    JS_ReportErrorASCII(cx, "ensureNonInline() requires a single argument");
+    return false;
+  }
+
+  if (!args[0].isObject()) {
+    JS_ReportErrorASCII(cx, "ensureNonInline must be passed an object");
+    return false;
+  }
+
+  RootedObject obj(cx, &args[0].toObject());
+  if (!JS::EnsureNonInlineArrayBufferOrView(cx, obj)) {
+    return false;
+  }
+
+  args.rval().setUndefined();
+  return true;
+}
+
 static bool JSONStringify(JSContext* cx, unsigned argc, Value* vp) {
   CallArgs args = CallArgsFromVp(argc, vp);
 
@@ -8825,14 +8829,15 @@ static const JSFunctionSpecWithHelp TestingFunctions[] = {
 "  Perform a GC and allow relazification of functions. Accepts the same\n"
 "  arguments as gc()."),
 
-    JS_FN_HELP("getBuildConfiguration", GetBuildConfiguration, 0, 0,
-"getBuildConfiguration()",
-"  Return an object describing some of the configuration options SpiderMonkey\n"
-"  was built with."),
+    JS_FN_HELP("getBuildConfiguration", GetBuildConfiguration, 1, 0,
+"getBuildConfiguration([option])",
+"  Query the options SpiderMonkey was built with, or return an object\n"
+"  with the options if no argument is given."),
 
     JS_FN_HELP("getRealmConfiguration", GetRealmConfiguration, 1, 0,
-"getRealmConfiguration(option)",
-"  Query the runtime options SpiderMonkey is running with."),
+"getRealmConfiguration([option])",
+"  Query the runtime options SpiderMonkey is running with, or return an\n."
+"  object with the options if no argument is given."),
 
     JS_FN_HELP("isLcovEnabled", ::IsLCovEnabled, 0, 0,
 "isLcovEnabled()",
@@ -9497,6 +9502,11 @@ JS_FOR_WASM_FEATURES(WASM_FEATURE)
 "     1 - fail during readTransfer() hook\n"
 "     2 - fail during read() hook\n"
 "  Set the log to null to clear it."),
+
+    JS_FN_HELP("ensureNonInline", EnsureNonInline, 1, 0,
+"ensureNonInline(view or buffer)",
+"  Ensure that the memory for the given ArrayBuffer or ArrayBufferView\n"
+"  is not inline."),
 
     JS_FN_HELP("JSONStringify", JSONStringify, 4, 0,
 "JSONStringify(value, behavior)",

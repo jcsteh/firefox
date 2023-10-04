@@ -114,7 +114,7 @@ bool nsImageRenderer::PrepareImage() {
 
       bool canDrawPartial =
           (mFlags & nsImageRenderer::FLAG_DRAW_PARTIAL_FRAMES) &&
-          isImageRequest && mImage->IsSizeAvailable() && !mImage->IsRect();
+          isImageRequest && mImage->IsSizeAvailable();
 
       // If we are drawing a partial frame then we want to make sure there are
       // some pixels to draw, otherwise we waste effort pushing through to draw
@@ -153,29 +153,10 @@ bool nsImageRenderer::PrepareImage() {
       srcImage = nsLayoutUtils::OrientImage(srcImage, orientation);
     }
 
-    if (!mImage->IsRect()) {
-      mImageContainer.swap(srcImage);
-    } else {
-      auto croprect = mImage->ComputeActualCropRect();
-      if (!croprect || croprect->mRect.IsEmpty()) {
-        // The cropped image has zero size
-        mPrepareResult = ImgDrawResult::BAD_IMAGE;
-        return false;
-      }
-      if (croprect->mIsEntireImage) {
-        // The cropped image is identical to the source image
-        mImageContainer.swap(srcImage);
-      } else {
-        nsCOMPtr<imgIContainer> subImage =
-            ImageOps::Clip(srcImage, croprect->mRect, Nothing());
-        mImageContainer.swap(subImage);
-      }
-    }
+    mImageContainer.swap(srcImage);
     mPrepareResult = ImgDrawResult::SUCCESS;
   } else if (mImage->IsGradient()) {
     mGradientData = &*mImage->AsGradient();
-    mPrepareResult = ImgDrawResult::SUCCESS;
-  } else if (mImage->IsMozThemed()) {
     mPrepareResult = ImgDrawResult::SUCCESS;
   } else if (mImage->IsElement()) {
     dom::Element* paintElement =  // may be null
@@ -204,7 +185,8 @@ bool nsImageRenderer::PrepareImage() {
 
     mPrepareResult = ImgDrawResult::SUCCESS;
   } else if (mImage->IsCrossFade()) {
-    // See bug 546052 - cross-fade implementation still being worked on.
+    // See bug 546052 - cross-fade implementation still being worked
+    // on.
     mPrepareResult = ImgDrawResult::BAD_IMAGE;
     return false;
   } else {
@@ -221,7 +203,6 @@ CSSSizeOrRatio nsImageRenderer::ComputeIntrinsicSize() {
 
   CSSSizeOrRatio result;
   switch (mType) {
-    case StyleImage::Tag::Rect:
     case StyleImage::Tag::Url: {
       bool haveWidth, haveHeight;
       CSSIntSize imageIntSize;
@@ -282,7 +263,6 @@ CSSSizeOrRatio nsImageRenderer::ComputeIntrinsicSize() {
       MOZ_FALLTHROUGH_ASSERT("image-set should be resolved already");
     // Bug 546052 cross-fade not yet implemented.
     case StyleImage::Tag::CrossFade:
-    case StyleImage::Tag::MozThemed:
     // Per <http://dev.w3.org/csswg/css3-images/#gradients>, gradients have no
     // intrinsic dimensions.
     case StyleImage::Tag::Gradient:
@@ -508,7 +488,6 @@ ImgDrawResult nsImageRenderer::Draw(nsPresContext* aPresContext,
   }
 
   switch (mType) {
-    case StyleImage::Tag::Rect:
     case StyleImage::Tag::Url: {
       result = nsLayoutUtils::DrawBackgroundImage(
           *ctx, mForFrame, aPresContext, mImageContainer, samplingFilter, aDest,
@@ -536,13 +515,6 @@ ImgDrawResult nsImageRenderer::Draw(nsPresContext* aPresContext,
           *ctx, mForFrame->Style(), aPresContext, image, samplingFilter, aDest,
           aFill, aAnchor, aDirtyRect, ConvertImageRendererToDrawFlags(mFlags),
           aOpacity);
-      break;
-    }
-    case StyleImage::Tag::MozThemed: {
-      auto appearance = mImage->AsMozThemed();
-      mForFrame->PresContext()->Theme()->DrawWidgetBackground(
-          ctx, mForFrame, appearance, aDest, aDirtyRect,
-          nsITheme::DrawOverflow::Yes);
       break;
     }
     case StyleImage::Tag::ImageSet:
@@ -615,7 +587,6 @@ ImgDrawResult nsImageRenderer::BuildWebRenderDisplayItems(
                                           !aItem->BackfaceIsHidden(), aOpacity);
       break;
     }
-    case StyleImage::Tag::Rect:
     case StyleImage::Tag::Url: {
       ExtendMode extendMode = mExtendMode;
       if (aDest.Contains(aFill)) {
@@ -914,8 +885,7 @@ ImgDrawResult nsImageRenderer::DrawBorderImageComponent(
     return ImgDrawResult::SUCCESS;
   }
 
-  const bool isRequestBacked =
-      mType == StyleImage::Tag::Url || mType == StyleImage::Tag::Rect;
+  const bool isRequestBacked = mType == StyleImage::Tag::Url;
   MOZ_ASSERT(isRequestBacked == mImage->IsImageRequestType());
 
   if (isRequestBacked || mType == StyleImage::Tag::Element) {

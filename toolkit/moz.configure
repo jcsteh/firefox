@@ -825,13 +825,11 @@ def eme_choices(target, wmf):
         return ("widevine",)
 
 
-# Widevine is enabled by default in desktop browser builds, except
-# on aarch64 Windows.
-@depends(build_project, eme_choices, target)
-def eme_default(build_project, choices, target):
+# Widevine is enabled by default in desktop browser builds.
+@depends(build_project, eme_choices)
+def eme_default(build_project, choices):
     if build_project == "browser":
-        if target.kernel != "WINNT" or target.cpu != "aarch64":
-            return choices
+        return choices
 
 
 option(
@@ -852,15 +850,6 @@ def eme_modules(value):
 # Fallback to an empty list when eme_choices is empty, setting eme_modules to
 # None.
 set_config("MOZ_EME_MODULES", eme_modules | dependable([]))
-
-
-@depends(eme_modules, target, when=eme_modules)
-def eme_win32_artifact(modules, target):
-    if "widevine" in modules and target.kernel == "WINNT" and target.cpu == "aarch64":
-        return True
-
-
-set_config("MOZ_EME_WIN32_ARTIFACT", eme_win32_artifact)
 
 
 # Media Foundation CDM support
@@ -1425,7 +1414,6 @@ def x11_libs(webrtc):
             "xdamage",
             "xfixes",
             "xi",
-            "xtst",
         ]
     return libs
 
@@ -1517,12 +1505,12 @@ with only_when("--enable-compile-environment"):
         if enable and enable != ("relr",):
             return enable
 
-    @depends("--enable-elf-hack", "MOZ_AUTOMATION", target, when=has_elfhack)
-    def may_enable_relrhack(enable, automation, target):
+    @depends("--enable-elf-hack", "MOZ_AUTOMATION", when=has_elfhack)
+    def may_enable_relrhack(enable, automation):
         # For now, only enable relrhack when explicitly given with
         # --enable-elf-hack=relr. On automation, we automatically
         # enable it when possible.
-        if automation and target.os != "Android" and enable and enable != ("legacy",):
+        if automation and enable and enable != ("legacy",):
             return enable
         if enable == ("relr",):
             return enable
@@ -2603,7 +2591,7 @@ def wasm_sandboxing_libraries():
 @depends(dependable(wasm_sandboxing_libraries), build_project)
 def default_wasm_sandboxing_libraries(libraries, build_project):
     if build_project != "tools/rusttests":
-        non_default_libs = {"soundtouch"}
+        non_default_libs = {}
 
         return tuple(l for l in libraries if l not in non_default_libs)
 
@@ -2771,6 +2759,35 @@ def wasm_sandboxing_config_defines():
 
 
 wasm_sandboxing_config_defines()
+
+
+with only_when(compile_environment & wasm_sandboxing.hunspell):
+    clock_in_wasi_sysroot = wasm_cc.try_run(
+        header="#include <time.h>",
+        body="clock();",
+        check_msg="for clock() in wasi sysroot",
+        flags=depends(wasi_sysroot_flags)(
+            lambda sysroot_flags: ["-Werror"] + sysroot_flags
+        ),
+    )
+
+    wasi_emulated_clock = wasm_cc.try_run(
+        header="#include <time.h>",
+        body="clock();",
+        check_msg="for emulated clock() in wasi sysroot",
+        flags=depends(wasi_sysroot_flags)(
+            lambda sysroot_flags: [
+                "-Werror",
+                "-D_WASI_EMULATED_PROCESS_CLOCKS",
+                "-lwasi-emulated-process-clocks",
+            ]
+            + sysroot_flags
+        ),
+        when=depends(clock_in_wasi_sysroot)(lambda x: not x),
+        onerror=lambda: die("Can't find clock() in wasi sysroot."),
+    )
+
+    set_config("MOZ_WASI_EMULATED_CLOCK", True, when=wasi_emulated_clock)
 
 
 # new Notification Store implementation

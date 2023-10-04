@@ -684,7 +684,7 @@ __webpack_require__.r(__webpack_exports__);
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-const CONFIGURABLE_STYLES = ["color", "fontSize", "fontWeight", "letterSpacing", "lineHeight", "marginBlock", "marginInline", "paddingBlock", "paddingInline"];
+const CONFIGURABLE_STYLES = ["color", "fontSize", "fontWeight", "letterSpacing", "lineHeight", "marginBlock", "marginInline", "paddingBlock", "paddingInline", "whiteSpace"];
 const ZAP_SIZE_THRESHOLD = 160;
 /**
  * Based on the .text prop, localizes an inner element if a string_id
@@ -804,7 +804,7 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony import */ var _AdditionalCTA__WEBPACK_IMPORTED_MODULE_12__ = __webpack_require__(15);
 /* harmony import */ var _EmbeddedMigrationWizard__WEBPACK_IMPORTED_MODULE_13__ = __webpack_require__(16);
 /* harmony import */ var _AddonsPicker__WEBPACK_IMPORTED_MODULE_14__ = __webpack_require__(17);
-/* harmony import */ var _LegalParagraph__WEBPACK_IMPORTED_MODULE_15__ = __webpack_require__(18);
+/* harmony import */ var _LinkParagraph__WEBPACK_IMPORTED_MODULE_15__ = __webpack_require__(18);
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -961,13 +961,23 @@ class ProtonScreen extends (react__WEBPACK_IMPORTED_MODULE_0___default().PureCom
     title,
     title_logo
   }) {
-    return title_logo ? /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0___default().createElement("div", {
-      className: "inline-icon-container"
-    }, this.renderPicture(title_logo), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0___default().createElement(_MSLocalized__WEBPACK_IMPORTED_MODULE_1__.Localized, {
-      text: title
-    }, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0___default().createElement("h1", {
-      id: "mainContentHeader"
-    }))) : /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0___default().createElement(_MSLocalized__WEBPACK_IMPORTED_MODULE_1__.Localized, {
+    if (title_logo) {
+      const {
+        alignment,
+        ...rest
+      } = title_logo;
+      return /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0___default().createElement("div", {
+        className: "inline-icon-container",
+        alignment: alignment ?? "center"
+      }, this.renderPicture({ ...rest
+      }), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0___default().createElement(_MSLocalized__WEBPACK_IMPORTED_MODULE_1__.Localized, {
+        text: title
+      }, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0___default().createElement("h1", {
+        id: "mainContentHeader"
+      })));
+    }
+
+    return /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0___default().createElement(_MSLocalized__WEBPACK_IMPORTED_MODULE_1__.Localized, {
       text: title
     }, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0___default().createElement("h1", {
       id: "mainContentHeader"
@@ -980,10 +990,10 @@ class ProtonScreen extends (react__WEBPACK_IMPORTED_MODULE_0___default().PureCom
     reducedMotionImageURL,
     darkModeReducedMotionImageURL,
     alt = "",
-    height,
     width,
-    marginInline,
+    height,
     marginBlock,
+    marginInline,
     className = "logo-container"
   }) {
     function getLoadingStrategy() {
@@ -1082,15 +1092,28 @@ class ProtonScreen extends (react__WEBPACK_IMPORTED_MODULE_0___default().PureCom
   }
 
   renderDismissButton() {
+    const {
+      size,
+      marginBlock,
+      marginInline,
+      label
+    } = this.props.content.dismiss_button;
     return /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0___default().createElement("button", {
       className: "dismiss-button",
       onClick: this.props.handleAction,
       value: "dismiss_button",
-      "data-l10n-id": "spotlight-dialog-close-button"
+      "data-l10n-id": (label === null || label === void 0 ? void 0 : label.string_id) || "spotlight-dialog-close-button",
+      "button-size": size,
+      style: {
+        marginBlock,
+        marginInline
+      }
     });
   }
 
   renderStepsIndicator() {
+    var _content$steps_indica;
+
     const currentStep = (this.props.order ?? 0) + 1;
     const previousStep = (this.props.previousOrder ?? -1) + 1;
     const {
@@ -1100,7 +1123,7 @@ class ProtonScreen extends (react__WEBPACK_IMPORTED_MODULE_0___default().PureCom
     return /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0___default().createElement("div", {
       id: "steps",
       className: `steps${content.progress_bar ? " progress-bar" : ""}`,
-      "data-l10n-id": "onboarding-welcome-steps-indicator-label",
+      "data-l10n-id": ((_content$steps_indica = content.steps_indicator) === null || _content$steps_indica === void 0 ? void 0 : _content$steps_indica.string_id) || "onboarding-welcome-steps-indicator-label",
       "data-l10n-args": JSON.stringify({
         current: currentStep,
         total: total ?? 0
@@ -1151,7 +1174,7 @@ class ProtonScreen extends (react__WEBPACK_IMPORTED_MODULE_0___default().PureCom
     for (const item of content) {
       switch (item.type) {
         case "text":
-          elements.push( /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0___default().createElement(_LegalParagraph__WEBPACK_IMPORTED_MODULE_15__.LegalParagraph, {
+          elements.push( /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0___default().createElement(_LinkParagraph__WEBPACK_IMPORTED_MODULE_15__.LinkParagraph, {
             text_content: item,
             handleAction: this.props.handleAction
           }));
@@ -1218,9 +1241,10 @@ class ProtonScreen extends (react__WEBPACK_IMPORTED_MODULE_0___default().PureCom
       position: "top"
     }) : null, includeNoodles ? this.renderNoodles() : null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0___default().createElement("div", {
       className: `main-content ${hideStepsIndicator ? "no-steps" : ""}`,
-      style: content.background && isCenterPosition ? {
-        background: content.background
-      } : {}
+      style: {
+        background: content.background && isCenterPosition ? content.background : null,
+        width: content.width && content.position !== "split" ? content.width : null
+      }
     }, content.logo ? this.renderPicture(content.logo) : null, isRtamo ? /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0___default().createElement("div", {
       className: "rtamo-icon"
     }, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0___default().createElement("img", {
@@ -2232,7 +2256,7 @@ const AddonsPicker = props => {
 
 __webpack_require__.r(__webpack_exports__);
 /* harmony export */ __webpack_require__.d(__webpack_exports__, {
-/* harmony export */   "LegalParagraph": () => (/* binding */ LegalParagraph)
+/* harmony export */   "LinkParagraph": () => (/* binding */ LinkParagraph)
 /* harmony export */ });
 /* harmony import */ var react__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(1);
 /* harmony import */ var react__WEBPACK_IMPORTED_MODULE_0___default = /*#__PURE__*/__webpack_require__.n(react__WEBPACK_IMPORTED_MODULE_0__);
@@ -2242,7 +2266,7 @@ __webpack_require__.r(__webpack_exports__);
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 
-const LegalParagraph = props => {
+const LinkParagraph = props => {
   var _text_content$link_ke;
 
   const {
@@ -2263,18 +2287,19 @@ const LegalParagraph = props => {
   }, [handleParagraphAction]);
   return /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0___default().createElement(_MSLocalized__WEBPACK_IMPORTED_MODULE_1__.Localized, {
     text: text_content.text
-  }, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0___default().createElement("span", {
-    className: "legal-paragraph",
+  }, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0___default().createElement("p", {
+    className: text_content.font_styles === "legal" ? "legal-paragraph" : "link-paragraph",
     onClick: handleParagraphAction,
-    value: "legal_paragraph",
+    value: "link_paragraph",
     onKeyPress: onKeyPress
   }, (_text_content$link_ke = text_content.link_keys) === null || _text_content$link_ke === void 0 ? void 0 : _text_content$link_ke.map(link => /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0___default().createElement("a", {
     key: link,
     value: link,
-    "data-l10n-name": link,
-    role: "button",
-    tabIndex: "0" // must pass in tabIndex when no href is provided
-
+    role: "link",
+    className: "text-link",
+    "data-l10n-name": link // must pass in tabIndex when no href is provided
+    ,
+    tabIndex: "0"
   }, " "))));
 };
 

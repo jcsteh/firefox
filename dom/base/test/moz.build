@@ -10,7 +10,7 @@ XPCSHELL_TESTS_MANIFESTS += [
 ]
 
 MOCHITEST_MANIFESTS += [
-    "mochitest.ini",
+    "mochitest.toml",
 ]
 
 MOCHITEST_CHROME_MANIFESTS += [
@@ -19,8 +19,8 @@ MOCHITEST_CHROME_MANIFESTS += [
 ]
 
 BROWSER_CHROME_MANIFESTS += [
-    "browser.ini",
-    "fmm/browser.ini",
+    "browser.toml",
+    "fmm/browser.toml",
 ]
 
 TEST_DIRS += [

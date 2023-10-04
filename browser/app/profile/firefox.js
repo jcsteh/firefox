@@ -473,6 +473,10 @@ pref("browser.urlbar.quicksuggest.dataCollection.enabled", false, sticky);
 // Whether the quick suggest feature in the urlbar is enabled.
 pref("browser.urlbar.quicksuggest.enabled", false);
 
+// Whether Firefox Suggest will use the new Rust backend instead of the original
+// JS backend.
+pref("browser.urlbar.quicksuggest.rustEnabled", false);
+
 // Whether to show the QuickSuggest onboarding dialog.
 pref("browser.urlbar.quicksuggest.shouldShowOnboardingDialog", true);
 
@@ -2171,9 +2175,6 @@ pref("view_source.tab", true);
 pref("toolkit.pageThumbs.minWidth", 280);
 pref("toolkit.pageThumbs.minHeight", 190);
 
-// Enable speech synthesis
-pref("media.webspeech.synth.enabled", true);
-
 pref("browser.esedbreader.loglevel", "Error");
 
 pref("browser.laterrun.enabled", false);
@@ -2192,7 +2193,7 @@ pref("browser.migrate.chrome.enabled", true);
 // See comments in bug 1340115 on how we got to this number.
 pref("browser.migrate.chrome.history.limit", 2000);
 pref("browser.migrate.chrome.payment_methods.enabled", true);
-pref("browser.migrate.chrome.extensions.enabled", false);
+pref("browser.migrate.chrome.extensions.enabled", true);
 
 pref("browser.migrate.chrome-beta.enabled", true);
 pref("browser.migrate.chrome-dev.enabled", true);
@@ -2878,3 +2879,9 @@ pref("cookiebanners.ui.desktop.cfrVariant", 0);
 #ifdef NIGHTLY_BUILD
   pref("dom.security.credentialmanagement.identity.enabled", true);
 #endif
+
+// Reset Private Browsing Session feature
+pref("browser.privatebrowsing.resetPBM.enabled", false);
+// Whether the reset private browsing panel should ask for confirmation before
+// performing the clear action.
+pref("browser.privatebrowsing.resetPBM.showConfirmationDialog", true);

@@ -134,7 +134,7 @@ enum class WasmFeatureStage {
   FEATURE(                                                              \
     /* capitalized name   */ FunctionReferences,                        \
     /* lower case name    */ functionReferences,                        \
-    /* stage              */ WasmFeatureStage::Experimental,            \
+    /* stage              */ WasmFeatureStage::Tentative,               \
     /* compile predicate  */ WASM_FUNCTION_REFERENCES_ENABLED,          \
     /* compiler predicate */ AnyCompilerAvailable(cx),                  \
     /* flag predicate     */ true,                                      \
@@ -145,7 +145,7 @@ enum class WasmFeatureStage {
   FEATURE(                                                              \
     /* capitalized name   */ Gc,                                        \
     /* lower case name    */ gc,                                        \
-    /* stage              */ WasmFeatureStage::Experimental,            \
+    /* stage              */ WasmFeatureStage::Tentative,               \
     /* compile predicate  */ WASM_GC_ENABLED,                           \
     /* compiler predicate */ AnyCompilerAvailable(cx),                  \
     /* flag predicate     */ true,                                      \
@@ -230,17 +230,6 @@ enum class WasmFeatureStage {
     /* flag fuzz enable   */ false,                                     \
     /* shell flag         */ "test-serialization",                      \
     /* preference name    */ "test-serialization")                      \
-  FEATURE(                                                              \
-    /* capitalized name   */ FinalTypes,                                \
-    /* lower case name    */ finalTypes,                                \
-    /* stage              */ WasmFeatureStage::Experimental,            \
-    /* compile predicate  */ 1,                                         \
-    /* compiler predicate */ AnyCompilerAvailable(cx),                  \
-    /* flag predicate     */ true,                                      \
-    /* flag force enable  */ false,                                     \
-    /* flag fuzz enable   */ false,                                     \
-    /* shell flag         */ "final-types",                             \
-    /* preference name    */ "final_types")                             \
   FEATURE(                                                              \
     /* capitalized name   */ TestMetadata,                              \
     /* lower case name    */ testMetadata,                              \

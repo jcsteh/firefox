@@ -48,6 +48,7 @@
 #include "mozStorageCID.h"
 #include "mozStorageHelper.h"
 #include "mozilla/AlreadyAddRefed.h"
+#include "mozilla/AppShutdown.h"
 #include "mozilla/Assertions.h"
 #include "mozilla/Atomics.h"
 #include "mozilla/Attributes.h"
@@ -266,7 +267,8 @@ constexpr auto kStorageName = u"storage"_ns;
 #define PERMANENT_DIRECTORY_NAME u"permanent"
 #define TEMPORARY_DIRECTORY_NAME u"temporary"
 #define DEFAULT_DIRECTORY_NAME u"default"
-#define DEFAULT_PRIVATE_DIRECTORY_NAME u"private"
+#define PRIVATE_DIRECTORY_NAME u"private"
+#define TOBEREMOVED_DIRECTORY_NAME u"to-be-removed"
 
 #define WEB_APPS_STORE_FILE_NAME u"webappsstore.sqlite"
 #define LS_ARCHIVE_FILE_NAME u"ls-archive.sqlite"
@@ -1861,11 +1863,11 @@ void QuotaManager::UnregisterDirectoryLock(DirectoryLockImpl& aLock) {
     DirectoryLockTable& directoryLockTable =
         GetDirectoryLockTable(aLock.GetPersistenceType());
 
+    // ClearDirectoryLockTables may have been called, so the element or entire
+    // array may not exist anymre.
     nsTArray<NotNull<DirectoryLockImpl*>>* array;
-    MOZ_ALWAYS_TRUE(directoryLockTable.Get(aLock.Origin(), &array));
-
-    MOZ_ALWAYS_TRUE(array->RemoveElement(&aLock));
-    if (array->IsEmpty()) {
+    if (directoryLockTable.Get(aLock.Origin(), &array) &&
+        array->RemoveElement(&aLock) && array->IsEmpty()) {
       directoryLockTable.Remove(aLock.Origin());
 
       if (!IsShuttingDown()) {
@@ -2095,9 +2097,13 @@ nsresult QuotaManager::Init() {
       do_Init(mDefaultStoragePath),
       GetPathForStorage(*baseDir, nsLiteralString(DEFAULT_DIRECTORY_NAME)));
 
-  QM_TRY_UNWRAP(do_Init(mPrivateStoragePath),
-                GetPathForStorage(
-                    *baseDir, nsLiteralString(DEFAULT_PRIVATE_DIRECTORY_NAME)));
+  QM_TRY_UNWRAP(
+      do_Init(mPrivateStoragePath),
+      GetPathForStorage(*baseDir, nsLiteralString(PRIVATE_DIRECTORY_NAME)));
+
+  QM_TRY_UNWRAP(
+      do_Init(mToBeRemovedStoragePath),
+      GetPathForStorage(*baseDir, nsLiteralString(TOBEREMOVED_DIRECTORY_NAME)));
 
   QM_TRY_UNWRAP(do_Init(mIOThread),
                 MOZ_TO_RESULT_INVOKE_TYPED(
@@ -3479,6 +3485,24 @@ Result<OriginMetadata, nsresult> QuotaManager::GetOriginMetadata(
 
   return OriginMetadata{std::move(principalMetadata),
                         maybePersistenceType.value()};
+}
+
+Result<Ok, nsresult> QuotaManager::RemoveOriginDirectory(nsIFile& aDirectory) {
+  AssertIsOnIOThread();
+
+  if (!AppShutdown::IsInOrBeyond(ShutdownPhase::AppShutdownTeardown)) {
+    QM_TRY_RETURN(MOZ_TO_RESULT(aDirectory.Remove(true)));
+  }
+
+  QM_TRY_INSPECT(const auto& toBeRemovedStorageDir,
+                 QM_NewLocalFile(*mToBeRemovedStoragePath));
+
+  QM_TRY_INSPECT(const bool& created, EnsureDirectory(*toBeRemovedStorageDir));
+
+  (void)created;
+
+  QM_TRY_RETURN(MOZ_TO_RESULT(aDirectory.MoveTo(
+      toBeRemovedStorageDir, NSID_TrimBracketsUTF16(nsID::GenerateUUID()))));
 }
 
 template <typename OriginFunc>
@@ -5296,6 +5320,52 @@ nsresult QuotaManager::EnsureTemporaryStorageIsInitialized() {
       "dom::quota::FirstInitializationAttempt::TemporaryStorage"_ns, innerFunc);
 }
 
+RefPtr<BoolPromise> QuotaManager::ClearStoragesForOrigin(
+    const Maybe<PersistenceType>& aPersistenceType,
+    const PrincipalInfo& aPrincipalInfo,
+    const Maybe<Client::Type>& aClientType) {
+  AssertIsOnOwningThread();
+
+  auto clearOriginOp =
+      CreateClearOriginOp(WrapMovingNotNullUnchecked(this), aPersistenceType,
+                          aPrincipalInfo, aClientType);
+
+  RegisterNormalOriginOp(*clearOriginOp);
+
+  clearOriginOp->RunImmediately();
+
+  return clearOriginOp->OnResults();
+}
+
+RefPtr<BoolPromise> QuotaManager::ClearStoragesForOriginPrefix(
+    const Maybe<PersistenceType>& aPersistenceType,
+    const PrincipalInfo& aPrincipalInfo) {
+  AssertIsOnOwningThread();
+
+  auto clearStoragesForOriginPrefixOp = CreateClearStoragesForOriginPrefixOp(
+      WrapMovingNotNullUnchecked(this), aPersistenceType, aPrincipalInfo);
+
+  RegisterNormalOriginOp(*clearStoragesForOriginPrefixOp);
+
+  clearStoragesForOriginPrefixOp->RunImmediately();
+
+  return clearStoragesForOriginPrefixOp->OnResults();
+}
+
+RefPtr<BoolPromise> QuotaManager::ClearStoragesForOriginAttributesPattern(
+    const OriginAttributesPattern& aPattern) {
+  AssertIsOnOwningThread();
+
+  auto clearDataOp =
+      CreateClearDataOp(WrapMovingNotNullUnchecked(this), aPattern);
+
+  RegisterNormalOriginOp(*clearDataOp);
+
+  clearDataOp->RunImmediately();
+
+  return clearDataOp->OnResults();
+}
+
 RefPtr<BoolPromise> QuotaManager::ClearPrivateRepository() {
   AssertIsOnOwningThread();
 
@@ -6343,6 +6413,30 @@ auto QuotaManager::GetDirectoryLockTable(PersistenceType aPersistenceType)
     case PERSISTENCE_TYPE_INVALID:
     default:
       MOZ_CRASH("Bad persistence type value!");
+  }
+}
+
+void QuotaManager::ClearDirectoryLockTables() {
+  AssertIsOnOwningThread();
+
+  for (const PersistenceType type : kBestEffortPersistenceTypes) {
+    DirectoryLockTable& directoryLockTable = GetDirectoryLockTable(type);
+
+    if (!IsShuttingDown()) {
+      for (const auto& entry : directoryLockTable) {
+        const auto& array = entry.GetData();
+
+        // It doesn't matter which lock is used, they all have the same
+        // persistence type and origin metadata.
+        MOZ_ASSERT(!array->IsEmpty());
+        const auto& lock = array->ElementAt(0);
+
+        UpdateOriginAccessTime(lock->GetPersistenceType(),
+                               lock->OriginMetadata());
+      }
+    }
+
+    directoryLockTable.Clear();
   }
 }
 

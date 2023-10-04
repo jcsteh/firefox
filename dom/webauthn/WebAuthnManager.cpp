@@ -386,6 +386,20 @@ already_AddRefed<Promise> WebAuthnManager::MakeCredential(
     }
   }
 
+  if (aOptions.mExtensions.mCredProps.WasPassed()) {
+    bool credProps = aOptions.mExtensions.mCredProps.Value();
+    if (credProps) {
+      extensions.AppendElement(WebAuthnExtensionCredProps(credProps));
+    }
+  }
+
+  if (aOptions.mExtensions.mMinPinLength.WasPassed()) {
+    bool minPinLength = aOptions.mExtensions.mMinPinLength.Value();
+    if (minPinLength) {
+      extensions.AppendElement(WebAuthnExtensionMinPinLength(minPinLength));
+    }
+  }
+
   const auto& selection = aOptions.mAuthenticatorSelection;
   const auto& attachment = selection.mAuthenticatorAttachment;
   const nsString& attestation = aOptions.mAttestation;
@@ -610,6 +624,18 @@ already_AddRefed<Promise> WebAuthnManager::GetAssertion(
   // result of this processing clientExtensions.
   nsTArray<WebAuthnExtension> extensions;
 
+  // credProps is only supported in MakeCredentials
+  if (aOptions.mExtensions.mCredProps.WasPassed()) {
+    promise->MaybeReject(NS_ERROR_DOM_NOT_SUPPORTED_ERR);
+    return promise.forget();
+  }
+
+  // minPinLength is only supported in MakeCredentials
+  if (aOptions.mExtensions.mMinPinLength.WasPassed()) {
+    promise->MaybeReject(NS_ERROR_DOM_NOT_SUPPORTED_ERR);
+    return promise.forget();
+  }
+
   // <https://w3c.github.io/webauthn/#sctn-appid-extension>
   if (aOptions.mExtensions.mAppid.WasPassed()) {
     nsString appId(aOptions.mExtensions.mAppid.Value());
@@ -717,10 +743,15 @@ void WebAuthnManager::FinishMakeCredential(
   credential->SetId(NS_ConvertASCIItoUTF16(keyHandleBase64Url));
   credential->SetType(u"public-key"_ns);
   credential->SetRawId(aResult.KeyHandle());
-  credential->SetResponse(attestation);
+  credential->SetAttestationResponse(attestation);
 
   // Forward client extension results.
   for (const auto& ext : aResult.Extensions()) {
+    if (ext.type() ==
+        WebAuthnExtensionResult::TWebAuthnExtensionResultCredProps) {
+      bool credPropsRk = ext.get_WebAuthnExtensionResultCredProps().rk();
+      credential->SetClientExtensionResultCredPropsRk(credPropsRk);
+    }
     if (ext.type() ==
         WebAuthnExtensionResult::TWebAuthnExtensionResultHmacSecret) {
       bool hmacCreateSecret =
@@ -765,7 +796,7 @@ void WebAuthnManager::FinishGetAssertion(
   credential->SetId(NS_ConvertASCIItoUTF16(keyHandleBase64Url));
   credential->SetType(u"public-key"_ns);
   credential->SetRawId(aResult.KeyHandle());
-  credential->SetResponse(assertion);
+  credential->SetAssertionResponse(assertion);
 
   // Forward client extension results.
   for (const auto& ext : aResult.Extensions()) {

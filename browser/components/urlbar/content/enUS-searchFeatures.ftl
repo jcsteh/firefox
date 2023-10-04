@@ -36,10 +36,6 @@ urlbar-group-mdn =
 urlbar-group-pocket =
   .label = Recommended reads
 
-# A label shown above sponsored suggestions in the urlbar results if priority.
-urlbar-group-sponsored =
-  .label = Sponsored
-
 # Tooltip text for the block button shown in top pick rows.
 firefox-suggest-urlbar-block =
   .title = Dismiss this suggestion
@@ -190,6 +186,12 @@ addressbar-firefox-suggest-nonsponsored =
 addressbar-firefox-suggest-sponsored =
   .label = Suggestions from sponsors
   .description = Support the development of { -brand-short-name } with occasional sponsored suggestions.
+
+# An additional toggle button in the Firefox Suggest settings that controls
+# whether userdata-based suggestions like history and bookmarks should be
+# shown in private windows
+addressbar-firefox-suggest-private =
+  .label = Show suggestions in Private Windows
 
 # Third Firefox Suggest toggle button main label and description. This toggle
 # controls data collection related to the user's search string.

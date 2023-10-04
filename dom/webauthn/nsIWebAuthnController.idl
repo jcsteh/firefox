@@ -4,7 +4,6 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "nsISupports.idl"
-#include "nsIU2FTokenManager.idl"
 
 typedef long COSEAlgorithmIdentifier;
 
@@ -44,7 +43,9 @@ interface nsICtapRegisterArgs : nsISupports {
     // WebAuthn AuthenticationExtensionsClientInputs. That's not feasible here.
     // So we define a getter for each supported extension input and use the
     // return code to signal presence.
+    [must_use] readonly attribute bool credProps;
     [must_use] readonly attribute bool hmacCreateSecret;
+    [must_use] readonly attribute bool minPinLength;
 
     // Options.
     [must_use] readonly attribute AString residentKey;
@@ -123,6 +124,8 @@ interface nsICtapRegisterResult : nsISupports {
 
     // bug 1593571
     // readonly attribute bool hmacCreateSecret;
+
+    readonly attribute bool credPropsRk;
 };
 
 [uuid(91e41be0-ed73-4a10-b55e-3312319bfddf)]
@@ -163,32 +166,17 @@ interface nsICtapSignResult : nsISupports {
     // returned from authenticatorGetAssertion. (Optional)
     [must_use] readonly attribute ACString userName;
 
-    // The SHA-256 hash of the RP ID of the requester. Used to
-    // implement the FIDO AppID extension.
-    readonly attribute Array<octet> rpIdHash;
-
-    // bug 1593571
-    // readonly attribute bool hmacCreateSecret;
+    // appId field of AuthenticationExtensionsClientOutputs (Optional)
+    [must_use] readonly attribute bool usedAppId;
 };
 
-// The nsIWebAuthnController interface coordinates interactions between the user
-// and the authenticator to drive a WebAuthn transaction forward.
-// It allows an nsIWebAuthnTransport to
-//      1) prompt the user for input,
-//      2) receive a callback from a prompt, and
-//      3) return results to the content process.
-//
+// Callbacks for sending results from an nsIWebAuthnTransport to the IPC parent.
 [scriptable, uuid(c0744f48-ad64-11ed-b515-cf5149f4d6a6)]
-interface nsIWebAuthnController : nsIU2FTokenManager
+interface nsIWebAuthnController : nsISupports
 {
-    // Prompt callbacks
-    void pinCallback(in uint64_t aTransactionId, in ACString aPin);
-    void signatureSelectionCallback(in uint64_t aTransactionId, in uint64_t aIndex);
-
-    // Authenticator callbacks
-    [noscript] void sendPromptNotificationPreformatted(in uint64_t aTransactionId, in ACString aJSON);
+    [noscript] void cancel(in uint64_t aTransactionID);
     [noscript] void finishRegister(in uint64_t aTransactionId, in nsICtapRegisterResult aResult);
-    [noscript] void finishSign(in uint64_t aTransactionId, in Array<nsICtapSignResult> aResult);
+    [noscript] void finishSign(in uint64_t aTransactionId, in nsICtapSignResult aResult);
 };
 
 [scriptable, uuid(6c4ecd9f-57c0-4d7d-8080-bf6e4d499f8f)]
@@ -211,6 +199,14 @@ interface nsIWebAuthnTransport : nsISupports
 
     void makeCredential(in uint64_t aTransactionId, in uint64_t browsingContextId, in nsICtapRegisterArgs args);
     void getAssertion(in uint64_t aTransactionId, in uint64_t browsingContextId, in nsICtapSignArgs args);
+
+    [noscript] void reset();
+
+    // Prompt callbacks
+    void cancel(in uint64_t aTransactionId);
+    void pinCallback(in uint64_t aTransactionId, in ACString aPin);
+    void resumeMakeCredential(in uint64_t aTransactionId, in bool aForceNoneAttestation);
+    void selectionCallback(in uint64_t aTransactionId, in uint64_t aIndex);
 
     // Adds a virtual (software) authenticator for use in tests (particularly
     // tests run via WebDriver). See
@@ -254,9 +250,4 @@ interface nsIWebAuthnTransport : nsISupports
     // Sets the "isUserVerified" bit on a virtual authenticator. See
     // https://w3c.github.io/webauthn/#sctn-automation-set-user-verified
     void setUserVerified(in uint64_t authenticatorId, in bool isUserVerified);
-
-    // These are prompt callbacks but they're not intended to be called directly from
-    // JavaScript---they are proxied through the nsIWebAuthnController first.
-    [noscript] void pinCallback(in uint64_t aTransactionId, in ACString aPin);
-    [noscript] void cancel();
 };

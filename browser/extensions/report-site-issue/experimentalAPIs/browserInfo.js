@@ -124,7 +124,6 @@ this.browserInfo = class extends ExtensionAPI {
           for (const [name, dflt] of Object.entries({
             "layers.acceleration.force-enabled": false,
             "gfx.webrender.all": false,
-            "gfx.webrender.blob-images": true,
           })) {
             prefs[name] = Services.prefs.getBoolPref(name, dflt);
           }
@@ -178,7 +177,7 @@ this.browserInfo = class extends ExtensionAPI {
             memoryMb,
           };
 
-          if (AppConstants.isPlatformAndVersionAtLeast("win", "6.2")) {
+          if (AppConstants.platform == "win") {
             data.sec = getSecurityAppData();
           }
 

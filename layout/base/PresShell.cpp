@@ -39,6 +39,7 @@
 #include "mozilla/StaticPrefs_image.h"
 #include "mozilla/StaticPrefs_layout.h"
 #include "mozilla/StaticPrefs_toolkit.h"
+#include "mozilla/Try.h"
 #include "mozilla/TextEvents.h"
 #include "mozilla/TimeStamp.h"
 #include "mozilla/TouchEvents.h"
@@ -787,8 +788,6 @@ PresShell::PresShell(Document* aDocument)
       mForceDispatchKeyPressEventsForNonPrintableKeys(false),
       mForceUseLegacyKeyCodeAndCharCodeValues(false),
       mInitializedWithKeyPressEventDispatchingBlacklist(false),
-      mForceUseLegacyNonPrimaryDispatch(false),
-      mInitializedWithClickEventDispatchingBlacklist(false),
       mMouseLocationWasSetBySynthesizedMouseEventForTests(false),
       mHasTriedFastUnsuppress(false),
       mProcessingReflowCommands(false),
@@ -1524,9 +1523,6 @@ void PresShell::AddAuthorSheet(StyleSheet* aSheet) {
 }
 
 bool PresShell::FixUpFocus() {
-  if (!StaticPrefs::dom_focus_fixup()) {
-    return false;
-  }
   if (NS_WARN_IF(!mDocument)) {
     return false;
   }
@@ -7382,6 +7378,32 @@ bool PresShell::EventHandler::DispatchPrecedingPointerEvent(
   return !!aEventTargetData->mPresShell;
 }
 
+/**
+ * Event retargetting may retarget a mouse event and change the reference point.
+ * If event retargetting changes the reference point of a event that accessible
+ * caret will not handle, restore the original reference point.
+ */
+class AutoEventTargetPointResetter {
+ public:
+  explicit AutoEventTargetPointResetter(WidgetGUIEvent* aGUIEvent)
+      : mGUIEvent(aGUIEvent),
+        mRefPoint(aGUIEvent->mRefPoint),
+        mHandledByAccessibleCaret(false) {}
+
+  void SetHandledByAccessibleCaret() { mHandledByAccessibleCaret = true; }
+
+  ~AutoEventTargetPointResetter() {
+    if (!mHandledByAccessibleCaret) {
+      mGUIEvent->mRefPoint = mRefPoint;
+    }
+  }
+
+ private:
+  WidgetGUIEvent* mGUIEvent;
+  LayoutDeviceIntPoint mRefPoint;
+  bool mHandledByAccessibleCaret;
+};
+
 bool PresShell::EventHandler::MaybeHandleEventWithAccessibleCaret(
     nsIFrame* aFrameForPresShell, WidgetGUIEvent* aGUIEvent,
     nsEventStatus* aEventStatus) {
@@ -7407,6 +7429,7 @@ bool PresShell::EventHandler::MaybeHandleEventWithAccessibleCaret(
     return false;
   }
 
+  AutoEventTargetPointResetter autoEventTargetPointResetter(aGUIEvent);
   // First, try the event hub at the event point to handle a long press to
   // select a word in an unfocused window.
   do {
@@ -7434,6 +7457,7 @@ bool PresShell::EventHandler::MaybeHandleEventWithAccessibleCaret(
     // If the event is consumed, cancel APZC panning by setting
     // mMultipleActionsPrevented.
     aGUIEvent->mFlags.mMultipleActionsPrevented = true;
+    autoEventTargetPointResetter.SetHandledByAccessibleCaret();
     return true;
   } while (false);
 
@@ -7463,6 +7487,7 @@ bool PresShell::EventHandler::MaybeHandleEventWithAccessibleCaret(
   // If the event is consumed, cancel APZC panning by setting
   // mMultipleActionsPrevented.
   aGUIEvent->mFlags.mMultipleActionsPrevented = true;
+  autoEventTargetPointResetter.SetHandledByAccessibleCaret();
   return true;
 }
 
@@ -8689,29 +8714,6 @@ nsresult PresShell::EventHandler::DispatchEventToDOM(
       }
       if (mPresShell->mForceUseLegacyKeyCodeAndCharCodeValues) {
         aEvent->AsKeyboardEvent()->mUseLegacyKeyCodeAndCharCodeValues = true;
-      }
-    } else if (aEvent->mMessage == eMouseUp) {
-      // Historically Firefox has dispatched click events for non-primary
-      // buttons, but only on window and document (and inside input/textarea),
-      // not on elements in general. The UI events spec forbids click (and
-      // dblclick) for non-primary mouse buttons, and specifies auxclick
-      // instead. In case of some websites that rely on non-primary click to
-      // prevent new tab etc. and don't have auxclick code to do the same, we
-      // need to revert to the historial non-standard behaviour
-      if (!mPresShell->mInitializedWithClickEventDispatchingBlacklist) {
-        mPresShell->mInitializedWithClickEventDispatchingBlacklist = true;
-
-        nsCOMPtr<nsIPrincipal> principal =
-            GetDocumentPrincipalToCompareWithBlacklist(*mPresShell);
-
-        if (principal) {
-          mPresShell->mForceUseLegacyNonPrimaryDispatch =
-              principal->IsURIInPrefList(
-                  "dom.mouseevent.click.hack.use_legacy_non-primary_dispatch");
-        }
-      }
-      if (mPresShell->mForceUseLegacyNonPrimaryDispatch) {
-        aEvent->AsMouseEvent()->mUseLegacyNonPrimaryDispatch = true;
       }
     }
 

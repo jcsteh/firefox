@@ -217,7 +217,8 @@ class nsGlobalWindowInner final : public mozilla::dom::EventTarget,
       mozilla::dom::WindowGlobalChild* aActor);
 
   // nsISupports
-  NS_DECL_CYCLE_COLLECTING_ISUPPORTS
+  NS_DECL_ISUPPORTS_INHERITED
+  NS_IMETHOD_(void) DeleteCycleCollectable() override;
 
   // nsWrapperCache
   virtual JSObject* WrapObject(JSContext* cx,
@@ -1097,9 +1098,9 @@ class nsGlobalWindowInner final : public mozilla::dom::EventTarget,
   nsIPrincipal* GetClientPrincipal();
 
   // This method is called if this window loads a 3rd party tracking resource
-  // and the storage is just been granted. The window can reset the partitioned
+  // and the storage is just been changed. The window can reset the partitioned
   // storage objects and switch to the first party cookie jar.
-  void StorageAccessPermissionGranted();
+  void StorageAccessPermissionChanged();
 
  protected:
   static void NotifyDOMWindowDestroyed(nsGlobalWindowInner* aWindow);

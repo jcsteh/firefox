@@ -605,3 +605,51 @@ function navigateToCategory(document, category) {
 async function switchToFxViewTab(win = window) {
   return BrowserTestUtils.switchTab(win.gBrowser, win.FirefoxViewHandler.tab);
 }
+
+function isElInViewport(element) {
+  const boundingRect = element.getBoundingClientRect();
+  return (
+    boundingRect.top >= 0 &&
+    boundingRect.left >= 0 &&
+    boundingRect.bottom <=
+      (window.innerHeight || document.documentElement.clientHeight) &&
+    boundingRect.right <=
+      (window.innerWidth || document.documentElement.clientWidth)
+  );
+}
+
+// TODO once we port over old tests, helpers and cleanup old firefox view
+// we should decide whether to keep this or openFirefoxViewTab.
+async function clickFirefoxViewButton(win) {
+  await BrowserTestUtils.synthesizeMouseAtCenter(
+    "#firefox-view-button",
+    { type: "mousedown" },
+    win.browsingContext
+  );
+}
+
+/**
+ * Wait for and assert telemetry events.
+ *
+ * @param {Array} Nested array of event details
+ */
+async function telemetryEvent(eventDetails) {
+  await TestUtils.waitForCondition(
+    () => {
+      let events = Services.telemetry.snapshotEvents(
+        Ci.nsITelemetry.DATASET_PRERELEASE_CHANNELS,
+        false
+      ).parent;
+      return events && events.length >= 1;
+    },
+    "Waiting for firefoxview_next telemetry event.",
+    200,
+    100
+  );
+
+  TelemetryTestUtils.assertEvents(
+    eventDetails,
+    { category: "firefoxview_next" },
+    { clear: true, process: "parent" }
+  );
+}

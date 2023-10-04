@@ -1058,7 +1058,7 @@ export class UrlbarView {
     }
     this.controller.userSelectionBehavior = "none";
 
-    this.panel.removeAttribute("actionoverride");
+    this.panel.removeAttribute("action-override");
 
     this.#enableOrDisableRowWrap();
 
@@ -1822,11 +1822,17 @@ export class UrlbarView {
     item.toggleAttribute("has-url", setURL);
     let url = item._elements.get("url");
     if (setURL) {
-      this.#addTextContentWithHighlights(
-        url,
-        result.payload.displayUrl,
-        result.payloadHighlights.displayUrl || []
-      );
+      item.setAttribute("has-url", "true");
+      let displayedUrl = result.payload.displayUrl;
+      let urlHighlights = result.payloadHighlights.displayUrl || [];
+      if (lazy.UrlbarUtils.isTextDirectionRTL(displayedUrl, this.window)) {
+        // Stripping the url prefix may change the initial text directionality,
+        // causing parts of it to jump to the end. To prevent that we insert a
+        // LRM character in place of the prefix.
+        displayedUrl = "\u200e" + displayedUrl;
+        urlHighlights = this.#offsetHighlights(urlHighlights, 1);
+      }
+      this.#addTextContentWithHighlights(url, displayedUrl, urlHighlights);
       this.#updateOverflowTooltip(url, result.payload.displayUrl);
     } else {
       url.textContent = "";
@@ -2129,12 +2135,6 @@ export class UrlbarView {
           return { id: "urlbar-group-mdn" };
         case "pocket":
           return { id: "urlbar-group-pocket" };
-        case "adm_sponsored": {
-          if (lazy.UrlbarPrefs.get("quickSuggestSponsoredPriority")) {
-            return { id: "urlbar-group-sponsored" };
-          }
-          break;
-        }
       }
     }
 
@@ -2501,6 +2501,21 @@ export class UrlbarView {
       result.title,
       result.titleHighlights
     );
+  }
+
+  /**
+   * Offsets all highlight ranges by a given amount.
+   *
+   * @param {Array} highlights The highlights which should be offset.
+   * @param {int} startOffset
+   *    The number by which we want to offset the highlights range starts.
+   * @returns {Array} The offset highlights.
+   */
+  #offsetHighlights(highlights, startOffset) {
+    return highlights.map(highlight => [
+      highlight[0] + startOffset,
+      highlight[1],
+    ]);
   }
 
   /**
@@ -3176,9 +3191,15 @@ export class UrlbarView {
     this.#mousedownSelectedElement = null;
   }
 
+  #isRelevantOverflowEvent(event) {
+    // We're interested only in the horizontal axis.
+    // 0 - vertical, 1 - horizontal, 2 - both
+    return event.detail != 0;
+  }
+
   on_overflow(event) {
     if (
-      event.detail == 1 /* horizontal overflow */ &&
+      this.#isRelevantOverflowEvent(event) &&
       this.#canElementOverflow(event.target)
     ) {
       this.#setElementOverflowing(event.target, true);
@@ -3187,7 +3208,7 @@ export class UrlbarView {
 
   on_underflow(event) {
     if (
-      event.detail == 1 /* horizontal underflow */ &&
+      this.#isRelevantOverflowEvent(event) &&
       this.#canElementOverflow(event.target)
     ) {
       this.#setElementOverflowing(event.target, false);

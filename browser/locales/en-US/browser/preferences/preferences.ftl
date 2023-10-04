@@ -16,6 +16,11 @@ global-privacy-control-description =
     .label = Tell websites not to sell or share my data
     .accesskey = s
 
+# Do not translate.
+# "Global Privacy Control" or "GPC" are a web platform feature name and abbreviation
+# included to facilitate power-user search of the about:preferences page.
+global-privacy-control-search = Global Privacy Control (GPC)
+
 settings-page-title = Settings
 
 # This is used to determine the width of the search field in about:preferences,
@@ -1476,6 +1481,10 @@ certs-view =
 certs-devices =
     .label = Security Devices…
     .accesskey = D
+
+certs-thirdparty-toggle =
+    .label = Allow { -brand-short-name } to automatically trust third-party root certificates you install
+    .accesskey = t
 
 space-alert-over-5gb-settings-button =
     .label = Open Settings

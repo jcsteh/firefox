@@ -677,8 +677,8 @@ void gfxPlatformMac::GetCommonFallbackFonts(uint32_t aCh, Script aRunScript,
 void gfxPlatformMac::LookupSystemFont(
     mozilla::LookAndFeel::FontID aSystemFontID, nsACString& aSystemFontName,
     gfxFontStyle& aFontStyle) {
-  auto* pfl = PlatformFontListClass::PlatformFontList();
-  return pfl->LookupSystemFont(aSystemFontID, aSystemFontName, aFontStyle);
+  return PlatformFontListClass::LookupSystemFont(aSystemFontID,
+                                                 aSystemFontName, aFontStyle);
 }
 
 uint32_t gfxPlatformMac::ReadAntiAliasingThreshold() {

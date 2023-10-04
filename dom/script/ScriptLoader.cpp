@@ -666,6 +666,47 @@ void ScriptLoader::PrepareCacheInfoChannel(nsIChannel* aChannel,
   }
 }
 
+static void AdjustPriorityForNonLinkPreloadScripts(
+    nsIChannel* aChannel, ScriptLoadRequest* aRequest) {
+  MOZ_ASSERT(!aRequest->GetScriptLoadContext()->IsLinkPreloadScript());
+
+  if (!StaticPrefs::network_fetchpriority_enabled()) {
+    return;
+  }
+
+  if (nsCOMPtr<nsISupportsPriority> supportsPriority =
+          do_QueryInterface(aChannel)) {
+    const RequestPriority fetchPriority = aRequest->FetchPriority();
+    // The spec defines the priority to be set in an implementation defined
+    // manner (<https://fetch.spec.whatwg.org/#concept-fetch>, step 15 and
+    // <https://html.spec.whatwg.org/#concept-script-fetch-options-fetch-priority>).
+    // For web-compatibility, the fetch priority mapping from
+    // <https://web.dev/fetch-priority/#browser-priority-and-fetchpriority> is
+    // taken.
+    switch (fetchPriority) {
+      case RequestPriority::Auto:
+        LOG(("ScriptLoader::%s:, fetchpriority=auto", __FUNCTION__));
+        break;
+      case RequestPriority::Low: {
+        LOG(("ScriptLoader::%s:, fetchpriority=low, setting priority",
+             __FUNCTION__));
+        supportsPriority->SetPriority(nsISupportsPriority::PRIORITY_LOW);
+        break;
+      }
+      case RequestPriority::High: {
+        LOG(("ScriptLoader::%s:, fetchpriority=high, setting priority",
+             __FUNCTION__));
+        supportsPriority->SetPriority(nsISupportsPriority::PRIORITY_HIGH);
+        break;
+      }
+      default: {
+        MOZ_ASSERT_UNREACHABLE();
+        break;
+      }
+    }
+  }
+}
+
 // static
 void ScriptLoader::PrepareRequestPriorityAndRequestDependencies(
     nsIChannel* aChannel, ScriptLoadRequest* aRequest) {
@@ -679,6 +720,8 @@ void ScriptLoader::PrepareRequestPriorityAndRequestDependencies(
     ScriptLoadContext::PrioritizeAsPreload(aChannel);
     ScriptLoadContext::AddLoadBackgroundFlag(aChannel);
   } else if (nsCOMPtr<nsIClassOfService> cos = do_QueryInterface(aChannel)) {
+    AdjustPriorityForNonLinkPreloadScripts(aChannel, aRequest);
+
     if (aRequest->GetScriptLoadContext()->mScriptFromHead &&
         aRequest->GetScriptLoadContext()->IsBlockingScript()) {
       // synchronous head scripts block loading of most other non js/css
@@ -907,21 +950,22 @@ already_AddRefed<ScriptLoadRequest> ScriptLoader::CreateLoadRequest(
     ParserMetadata aParserMetadata) {
   nsIURI* referrer = mDocument->GetDocumentURIAsReferrer();
   nsCOMPtr<Element> domElement = do_QueryInterface(aElement);
-  RefPtr<ScriptFetchOptions> fetchOptions = new ScriptFetchOptions(
-      aCORSMode, aReferrerPolicy, aNonce, aRequestPriority, aParserMetadata,
-      aTriggeringPrincipal, domElement);
+  RefPtr<ScriptFetchOptions> fetchOptions =
+      new ScriptFetchOptions(aCORSMode, aNonce, aRequestPriority,
+                             aParserMetadata, aTriggeringPrincipal, domElement);
   RefPtr<ScriptLoadContext> context = new ScriptLoadContext();
 
   if (aKind == ScriptKind::eClassic || aKind == ScriptKind::eImportMap) {
-    RefPtr<ScriptLoadRequest> aRequest = new ScriptLoadRequest(
-        aKind, aURI, fetchOptions, aIntegrity, referrer, context);
+    RefPtr<ScriptLoadRequest> aRequest =
+        new ScriptLoadRequest(aKind, aURI, aReferrerPolicy, fetchOptions,
+                              aIntegrity, referrer, context);
 
     return aRequest.forget();
   }
 
   MOZ_ASSERT(aKind == ScriptKind::eModule);
   RefPtr<ModuleLoadRequest> aRequest = ModuleLoader::CreateTopLevel(
-      aURI, fetchOptions, aIntegrity, referrer, this, context);
+      aURI, aReferrerPolicy, fetchOptions, aIntegrity, referrer, this, context);
   return aRequest.forget();
 }
 
@@ -1827,8 +1871,16 @@ class ScriptOrModuleCompileTask final : public CompileOrDecodeTask {
   }
 
  private:
+  static size_t ThreadStackQuotaForSize(size_t size) {
+    // Set the stack quota to 10% less that the actual size.
+    // NOTE: This follows what JS helper thread does.
+    return size_t(double(size) * 0.9);
+  }
+
   already_AddRefed<JS::Stencil> Compile() {
-    JS::SetNativeStackQuota(mFrontendContext, kDefaultStackQuota);
+    size_t stackSize = TaskController::GetThreadStackSize();
+    JS::SetNativeStackQuota(mFrontendContext,
+                            ThreadStackQuotaForSize(stackSize));
 
     JS::CompilationStorage compileStorage;
     auto compile = [&](auto& source) {
@@ -2652,8 +2704,8 @@ nsresult ScriptLoader::EvaluateScript(nsIGlobalObject* aGlobalObject,
   aRequest->GetScriptLoadContext()->GetProfilerLabel(profilerLabelString);
 
   // Create a ClassicScript object and associate it with the JSScript.
-  RefPtr<ClassicScript> classicScript =
-      new ClassicScript(aRequest->mFetchOptions, aRequest->mBaseURL);
+  RefPtr<ClassicScript> classicScript = new ClassicScript(
+      aRequest->ReferrerPolicy(), aRequest->mFetchOptions, aRequest->mBaseURL);
   JS::Rooted<JS::Value> classicScriptValue(cx, JS::PrivateValue(classicScript));
 
   JS::CompileOptions options(cx);
@@ -3676,6 +3728,17 @@ nsresult ScriptLoader::PrepareLoadedRequest(ScriptLoadRequest* aRequest,
     rv = httpChannel->GetRequestSucceeded(&requestSucceeded);
     if (NS_SUCCEEDED(rv) && !requestSucceeded) {
       return NS_ERROR_NOT_AVAILABLE;
+    }
+
+    if (aRequest->IsModuleRequest()) {
+      // https://html.spec.whatwg.org/multipage/webappapis.html#fetch-a-single-module-script
+      // Update script's referrer-policy if there's a Referrer-Policy header in
+      // the HTTP response.
+      ReferrerPolicy policy =
+          nsContentUtils::GetReferrerPolicyFromChannel(httpChannel);
+      if (policy != ReferrerPolicy::_empty) {
+        aRequest->UpdateReferrerPolicy(policy);
+      }
     }
 
     nsAutoCString sourceMapURL;

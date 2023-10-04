@@ -25,6 +25,9 @@
   --fxview-sidebar-width: 288px;
   --fxview-margin-top: 72px;
   --fxview-card-padding-inline: 4px;
+
+  /* copy over newtab background color from activity-stream-[os].css files */
+  --newtab-background-color: #F9F9FB;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -32,6 +35,9 @@
     --fxview-element-background-hover: color-mix(in srgb, var(--fxview-background-color) 80%, white);
     --fxview-element-background-active: color-mix(in srgb, var(--fxview-background-color) 60%, white);
     --fxview-border: #8F8F9D;
+
+    /* copy over newtab colors from activity-stream-[os].css files */
+    --newtab-background-color: #2B2A33;
     --newtab-background-color-secondary: #42414d;
     --newtab-primary-action-background: #00ddff;
   }
@@ -44,6 +50,7 @@
     --fxview-text-color-hover: ButtonFace;
     --fxview-border: var(--fc-border-hcm, -moz-dialogtext);
     --newtab-primary-action-background: LinkText;
+    --newtab-background-color: Canvas;
     --newtab-background-color-secondary: Canvas;
   }
 }
@@ -62,12 +69,6 @@ body {
   color: var(--fxview-text-primary-color);
 }
 
-#pages {
-  overflow-y: auto;
-  max-height: 100vh;
-  max-width: 100%;
-}
-
 .main-container {
   width: 90%;
   margin: 0 auto;
@@ -83,7 +84,6 @@ body {
 
 .page-header {
   margin: 0;
-  font-weight: 400;
 }
 
 fxview-category-button[name="recentbrowsing"]::part(icon) {
@@ -157,6 +157,10 @@ panel-item::part(button):hover:active {
   background-color: var(--fxview-element-background-active);
 }
 
+panel-list {
+  overflow-y: visible;
+}
+
 fxview-category-navigation {
   overflow-y: auto;
 }
@@ -164,6 +168,7 @@ fxview-category-navigation {
 fxview-category-navigation h1 {
   font-size: 1.6em;
   font-weight: 700;
+  margin-block: 0;
 }
 
 fxview-empty-state:not([isSelectedTab]) button[slot="primary-action"] {

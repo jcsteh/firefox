@@ -324,6 +324,7 @@
 // For VP9Benchmark::sBenchmarkFpsPref
 #include "Benchmark.h"
 
+#include "mozilla/RemoteDecodeUtils.h"
 #include "nsIToolkitProfileService.h"
 #include "nsIToolkitProfile.h"
 
@@ -352,6 +353,9 @@ using mozilla::Telemetry::ProcessID;
 extern mozilla::LazyLogModule gFocusLog;
 
 #define LOGFOCUS(args) MOZ_LOG(gFocusLog, mozilla::LogLevel::Debug, args)
+
+extern mozilla::LazyLogModule sPDMLog;
+#define LOGPDM(...) MOZ_LOG(sPDMLog, mozilla::LogLevel::Debug, (__VA_ARGS__))
 
 namespace mozilla {
 namespace CubebUtils {
@@ -1642,6 +1646,9 @@ void ContentParent::BroadcastMediaCodecsSupportedUpdate(
   nsCString supportString;
   media::MCSInfo::GetMediaCodecsSupportedString(supportString, support);
   gfx::gfxVars::SetCodecSupportInfo(supportString);
+  supportString.ReplaceSubstring("\n"_ns, ", "_ns);
+  LOGPDM("Broadcast support from '%s', support=%s",
+         RemoteDecodeInToStr(aLocation), supportString.get());
 }
 
 const nsACString& ContentParent::GetRemoteType() const { return mRemoteType; }
@@ -1680,7 +1687,9 @@ void ContentParent::Init() {
 
   RefPtr<GeckoMediaPluginServiceParent> gmps(
       GeckoMediaPluginServiceParent::GetSingleton());
-  gmps->UpdateContentProcessGMPCapabilities(this);
+  if (gmps) {
+    gmps->UpdateContentProcessGMPCapabilities(this);
+  }
 
   // Flush any pref updates that happened during launch and weren't
   // included in the blobs set up in BeginSubprocessLaunch.
@@ -3292,34 +3301,34 @@ bool ContentParent::InitInternal(ProcessPriority aInitialPriority) {
 
   {
     nsTArray<BlobURLRegistrationData> registrations;
-    BlobURLProtocolHandler::ForEachBlobURL(
-        [&](BlobImpl* aBlobImpl, nsIPrincipal* aPrincipal,
-            const Maybe<nsID>& aAgentClusterId, const nsCString& aPartitionKey,
-            const nsACString& aURI, bool aRevoked) {
-          // We send all moz-extension Blob URL's to all content processes
-          // because content scripts mean that a moz-extension can live in any
-          // process. Same thing for system principal Blob URLs. Content Blob
-          // URL's are sent for content principals on-demand by
-          // AboutToLoadHttpFtpDocumentForChild and RemoteWorkerManager.
-          if (!BlobURLProtocolHandler::IsBlobURLBroadcastPrincipal(
-                  aPrincipal)) {
-            return true;
-          }
+    BlobURLProtocolHandler::ForEachBlobURL([&](BlobImpl* aBlobImpl,
+                                               nsIPrincipal* aPrincipal,
+                                               const nsCString& aPartitionKey,
+                                               const nsACString& aURI,
+                                               bool aRevoked) {
+      // We send all moz-extension Blob URL's to all content processes
+      // because content scripts mean that a moz-extension can live in any
+      // process. Same thing for system principal Blob URLs. Content Blob
+      // URL's are sent for content principals on-demand by
+      // AboutToLoadHttpFtpDocumentForChild and RemoteWorkerManager.
+      if (!BlobURLProtocolHandler::IsBlobURLBroadcastPrincipal(aPrincipal)) {
+        return true;
+      }
 
-          IPCBlob ipcBlob;
-          nsresult rv = IPCBlobUtils::Serialize(aBlobImpl, ipcBlob);
-          if (NS_WARN_IF(NS_FAILED(rv))) {
-            return false;
-          }
+      IPCBlob ipcBlob;
+      nsresult rv = IPCBlobUtils::Serialize(aBlobImpl, ipcBlob);
+      if (NS_WARN_IF(NS_FAILED(rv))) {
+        return false;
+      }
 
-          registrations.AppendElement(BlobURLRegistrationData(
-              nsCString(aURI), ipcBlob, aPrincipal, aAgentClusterId,
-              nsCString(aPartitionKey), aRevoked));
+      registrations.AppendElement(
+          BlobURLRegistrationData(nsCString(aURI), ipcBlob, aPrincipal,
+                                  nsCString(aPartitionKey), aRevoked));
 
-          rv = TransmitPermissionsForPrincipal(aPrincipal);
-          Unused << NS_WARN_IF(NS_FAILED(rv));
-          return true;
-        });
+      rv = TransmitPermissionsForPrincipal(aPrincipal);
+      Unused << NS_WARN_IF(NS_FAILED(rv));
+      return true;
+    });
 
     if (!registrations.IsEmpty()) {
       Unused << SendInitBlobURLs(registrations);
@@ -6169,10 +6178,11 @@ ContentParent::RecvNotifyPushSubscriptionModifiedObservers(
 }
 
 /* static */
-void ContentParent::BroadcastBlobURLRegistration(
-    const nsACString& aURI, BlobImpl* aBlobImpl, nsIPrincipal* aPrincipal,
-    const Maybe<nsID>& aAgentClusterId, const nsCString& aPartitionKey,
-    ContentParent* aIgnoreThisCP) {
+void ContentParent::BroadcastBlobURLRegistration(const nsACString& aURI,
+                                                 BlobImpl* aBlobImpl,
+                                                 nsIPrincipal* aPrincipal,
+                                                 const nsCString& aPartitionKey,
+                                                 ContentParent* aIgnoreThisCP) {
   uint64_t originHash = ComputeLoadedOriginHash(aPrincipal);
 
   bool toBeSent =
@@ -6198,7 +6208,7 @@ void ContentParent::BroadcastBlobURLRegistration(
       }
 
       Unused << cp->SendBlobURLRegistration(uri, ipcBlob, aPrincipal,
-                                            aAgentClusterId, aPartitionKey);
+                                            aPartitionKey);
     }
   }
 }
@@ -6224,7 +6234,7 @@ void ContentParent::BroadcastBlobURLUnregistration(
 
 mozilla::ipc::IPCResult ContentParent::RecvStoreAndBroadcastBlobURLRegistration(
     const nsACString& aURI, const IPCBlob& aBlob, nsIPrincipal* aPrincipal,
-    const Maybe<nsID>& aAgentClusterId, const nsCString& aPartitionKey) {
+    const nsCString& aPartitionKey) {
   if (!aPrincipal) {
     return IPC_FAIL(this, "No principal");
   }
@@ -6237,10 +6247,9 @@ mozilla::ipc::IPCResult ContentParent::RecvStoreAndBroadcastBlobURLRegistration(
     return IPC_FAIL(this, "Blob deserialization failed.");
   }
 
-  BlobURLProtocolHandler::AddDataEntry(aURI, aPrincipal, aAgentClusterId,
-                                       aPartitionKey, blobImpl);
-  BroadcastBlobURLRegistration(aURI, blobImpl, aPrincipal, aAgentClusterId,
-                               aPartitionKey, this);
+  BlobURLProtocolHandler::AddDataEntry(aURI, aPrincipal, aPartitionKey,
+                                       blobImpl);
+  BroadcastBlobURLRegistration(aURI, blobImpl, aPrincipal, aPartitionKey, this);
 
   // We want to store this blobURL, so we can unregister it if the child
   // crashes.
@@ -6459,6 +6468,16 @@ nsresult ContentParent::TransmitPermissionsForPrincipal(
     EnsurePermissionsByKey(pair.first, pair.second);
   }
 
+  // We need to add the Site to the secondary keys of interest here.
+  // This allows site-scoped permission updates to propogate when the
+  // port is non-standard.
+  nsAutoCString siteKey;
+  nsresult rv =
+      PermissionManager::GetKeyForPrincipal(aPrincipal, false, true, siteKey);
+  if (NS_SUCCEEDED(rv) && !siteKey.IsEmpty()) {
+    mActiveSecondaryPermissionKeys.EnsureInserted(siteKey);
+  }
+
   return NS_OK;
 }
 
@@ -6486,8 +6505,8 @@ void ContentParent::TransmitBlobURLsForPrincipal(nsIPrincipal* aPrincipal) {
     nsTArray<BlobURLRegistrationData> registrations;
     BlobURLProtocolHandler::ForEachBlobURL(
         [&](BlobImpl* aBlobImpl, nsIPrincipal* aBlobPrincipal,
-            const Maybe<nsID>& aAgentClusterId, const nsCString& aPartitionKey,
-            const nsACString& aURI, bool aRevoked) {
+            const nsCString& aPartitionKey, const nsACString& aURI,
+            bool aRevoked) {
           // This check uses `ComputeLoadedOriginHash` to compare, rather than
           // doing the more accurate `Equals` check, as it needs to match the
           // behaviour of the logic to broadcast new registrations.
@@ -6501,9 +6520,9 @@ void ContentParent::TransmitBlobURLsForPrincipal(nsIPrincipal* aPrincipal) {
             return false;
           }
 
-          registrations.AppendElement(BlobURLRegistrationData(
-              nsCString(aURI), ipcBlob, aBlobPrincipal, aAgentClusterId,
-              nsCString(aPartitionKey), aRevoked));
+          registrations.AppendElement(
+              BlobURLRegistrationData(nsCString(aURI), ipcBlob, aPrincipal,
+                                      nsCString(aPartitionKey), aRevoked));
 
           rv = TransmitPermissionsForPrincipal(aBlobPrincipal);
           Unused << NS_WARN_IF(NS_FAILED(rv));
@@ -6551,6 +6570,11 @@ void ContentParent::EnsurePermissionsByKey(const nsACString& aKey,
 bool ContentParent::NeedsPermissionsUpdate(
     const nsACString& aPermissionKey) const {
   return mActivePermissionKeys.Contains(aPermissionKey);
+}
+
+bool ContentParent::NeedsSecondaryKeyPermissionsUpdate(
+    const nsACString& aPermissionKey) const {
+  return mActiveSecondaryPermissionKeys.Contains(aPermissionKey);
 }
 
 mozilla::ipc::IPCResult ContentParent::RecvAccumulateChildHistograms(
@@ -7747,8 +7771,8 @@ mozilla::ipc::IPCResult ContentParent::RecvCommitBrowsingContextTransaction(
 mozilla::ipc::IPCResult ContentParent::RecvBlobURLDataRequest(
     const nsACString& aBlobURL, nsIPrincipal* aTriggeringPrincipal,
     nsIPrincipal* aLoadingPrincipal, const OriginAttributes& aOriginAttributes,
-    uint64_t aInnerWindowId, const Maybe<nsID>& aAgentClusterId,
-    const nsCString& aPartitionKey, BlobURLDataRequestResolver&& aResolver) {
+    uint64_t aInnerWindowId, const nsCString& aPartitionKey,
+    BlobURLDataRequestResolver&& aResolver) {
   RefPtr<BlobImpl> blobImpl;
 
   // Since revoked blobs are also retrieved, it is possible that the blob no
@@ -7756,7 +7780,7 @@ mozilla::ipc::IPCResult ContentParent::RecvBlobURLDataRequest(
   if (!BlobURLProtocolHandler::GetDataEntry(
           aBlobURL, getter_AddRefs(blobImpl), aLoadingPrincipal,
           aTriggeringPrincipal, aOriginAttributes, aInnerWindowId,
-          aAgentClusterId, aPartitionKey, true /* AlsoIfRevoked */)) {
+          aPartitionKey, true /* AlsoIfRevoked */)) {
     aResolver(NS_ERROR_DOM_BAD_URI);
     return IPC_OK();
   }
@@ -8246,3 +8270,5 @@ ParentIdleListener::Observe(nsISupports*, const char* aTopic,
       mObserver, nsDependentCString(aTopic), nsDependentString(aData));
   return NS_OK;
 }
+
+#undef LOGPDM

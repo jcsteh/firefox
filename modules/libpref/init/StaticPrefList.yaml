@@ -2037,6 +2037,14 @@
   value: false
   mirror: always
 
+# Whether global rules are allowed to run in sub-frames. Running query selectors
+# in every sub-frame may negatively impact performance, but is required for some
+# CMPs.
+- name: cookiebanners.service.enableGlobalRules.subFrames
+  type: bool
+  value: true
+  mirror: always
+
 # Enables the cookie banner cookie injector. The cookie banner cookie injector
 # depends on the `cookiebanners.service.mode` pref above.
 - name: cookiebanners.cookieInjector.enabled
@@ -2044,33 +2052,12 @@
   value: true
   mirror: always
 
-
 # By default, how many seconds in the future cookies should expire after they
 # have been injected. Defaults to 12 months. Individual cookie rules may
 # override this.
 - name: cookiebanners.cookieInjector.defaultExpiryRelative
   type: uint32_t
   value: 31536000
-  mirror: always
-
-# Enables the cookie banner auto clicking. The cookie banner auto clicking
-# depends on the `cookiebanners.service.mode` pref above.
-- name: cookiebanners.bannerClicking.enabled
-  type: bool
-  value: true
-  mirror: always
-
-# The maximum time in ms for detecting banner and button elements for cookie
-# banner auto clicking.
-- name: cookiebanners.bannerClicking.timeout
-  type: uint32_t
-  value: 3000
-  mirror: always
-
-# Whether or not banner auto clicking test mode is enabled.
-- name: cookiebanners.bannerClicking.testing
-  type: bool
-  value: false
   mirror: always
 
 #---------------------------------------------------------------------------
@@ -2185,20 +2172,8 @@
   value: true
   mirror: always
 
-# Is support for automatically removing replaced filling animations enabled?
-- name: dom.animations-api.autoremove.enabled
-  type: bool
-  value: true
-  mirror: always
-
 # Is support for composite operations from the Web Animations API enabled?
 - name: dom.animations-api.compositing.enabled
-  type: bool
-  value: true
-  mirror: always
-
-# Is support for the core interfaces of Web Animations API enabled?
-- name: dom.animations-api.core.enabled
   type: bool
   value: true
   mirror: always
@@ -2206,13 +2181,6 @@
 # Is support for Document.getAnimations() and Element.getAnimations()
 # supported?
 - name: dom.animations-api.getAnimations.enabled
-  type: bool
-  value: true
-  mirror: always
-
-# Is support for animations from the Web Animations API without 0%/100%
-# keyframes enabled?
-- name: dom.animations-api.implicit-keyframes.enabled
   type: bool
   value: true
   mirror: always
@@ -2382,11 +2350,6 @@
   value: false
   mirror: always
 
-- name: dom.enable_window_print
-  type: bool
-  value: true
-  mirror: always
-
 # Only intended for fuzzing purposes, this will break mozPrintCallback, etc.
 - name: dom.window_print.fuzzing.block_while_printing
   type: bool
@@ -2405,14 +2368,6 @@
   value: false
   mirror: always
   rust: true
-
-# Controls whether the "focus fixup rule" is enabled. Subject to minor changes
-# based on https://github.com/whatwg/html/pull/8392 and
-# https://github.com/whatwg/html/issues/8225
-- name: dom.focus.fixup
-  type: bool
-  value: true
-  mirror: always
 
 - name: dom.mouse_capture.enabled
   type: bool
@@ -2979,7 +2934,7 @@
 
 - name: dom.forms.always_allow_pointer_events.enabled
   type: bool
-  value: @IS_NIGHTLY_BUILD@
+  value: @IS_EARLY_BETA_OR_EARLIER@
   mirror: always
 
 # Is support for key events and focus events on disabled elements enabled?
@@ -2992,7 +2947,7 @@
 # Note that this still allows it to be selected by `:disable`.
 - name: dom.forms.fieldset_disable_only_descendants.enabled
   type: bool
-  value: @IS_NIGHTLY_BUILD@
+  value: @IS_EARLY_BETA_OR_EARLIER@
   mirror: always
 
 # Whether to allow or disallow web apps to cancel `beforeinput` events caused
@@ -3988,12 +3943,6 @@
   value: true
   mirror: always
 
-# Whether the Storage API is enabled.
-- name: dom.storageManager.enabled
-  type: RelaxedAtomicBool
-  value: true
-  mirror: always
-
 # Whether the File System API is enabled
 - name: dom.fs.enabled
   type: RelaxedAtomicBool
@@ -4585,6 +4534,13 @@
   mirror: always
   rust: true
 
+# For testing purposes, crash if we don't get a hardware adapter.
+- name: dom.webgpu.testing.assert-hardware-adapter
+  type: RelaxedAtomicBool
+  value: false
+  mirror: always
+  rust: true
+
 # Is support for HTMLInputElement.webkitEntries enabled?
 - name: dom.webkitBlink.filesystem.enabled
   type: bool
@@ -4655,7 +4611,7 @@
 # Whether Window.sizeToContent() is enabled.
 - name: dom.window.sizeToContent.enabled
   type: bool
-  value: @IS_NOT_NIGHTLY_BUILD@
+  value: false
   mirror: always
 
 - name: dom.worker.canceling.timeoutMilliseconds
@@ -4804,6 +4760,13 @@
   type: String
   value: "#FFFFFF"
   mirror: never
+
+# Whether HTMLEditor consides block or inline element with computed style or
+# only with the default style of HTML definition.
+- name: editor.block_inline_check.use_computed_style
+  type: bool
+  value: @IS_EARLY_BETA_OR_EARLIER@
+  mirror: always
 
 # Use compatible range computation when applying inline style.  This is used
 # for making it possible to backout with Normandy Pref Rollout.
@@ -4958,6 +4921,15 @@
 # is not controlled by this pref, only the extension code ability to use
 # navigator.serviceWorker.register is locked behind this pref.
 - name: extensions.serviceWorkerRegister.allowed
+  type: bool
+  value: false
+  mirror: always
+
+# Temporary pref to allow reverting the fix to bug 1853409.
+# TODO bug 1856071: Remove this pref.
+# When true, extensions can run content scripts in about:blank documents that
+# have a null principal. When false, extensions require permissions to all URLs.
+- name: extensions.script_about_blank_without_permission
   type: bool
   value: false
   mirror: always
@@ -5700,13 +5672,37 @@
   mirror: always
 
 - name: gfx.canvas.remote
-  type: RelaxedAtomicBool
+  type: bool
 #if defined(XP_WIN)
   value: true
 #else
   value: false
 #endif
+  mirror: once
+
+- name: gfx.canvas.remote.allow-in-parent
+  type: bool
+  value: false
+  mirror: once
+
+# How long to wait in milliseconds for a texture to be resolved
+- name: gfx.canvas.remote.texture-timeout-ms
+  type: RelaxedAtomicUint32
+  value: 10000
   mirror: always
+
+# How many worker threads spawned for remote canvas
+#  -1 - Calculate based on processor cores
+#   0 - No worker threads spawned, will do work on CanvasRenderThread
+#  >0 - Create worker thread pool with given size
+- name: gfx.canvas.remote.worker-threads
+  type: int32_t
+#if defined(XP_WIN)
+  value: -1
+#else
+  value: 0
+#endif
+  mirror: once
 
 - name: gfx.canvas.willreadfrequently.enabled
   type: bool
@@ -6292,11 +6288,6 @@
   mirror: once
 #endif
 
-- name: gfx.webrender.blob-images
-  type: RelaxedAtomicBool
-  value: true
-  mirror: always
-
 - name: gfx.webrender.svg-images
   type: RelaxedAtomicBool
   value: true
@@ -6500,6 +6491,10 @@
     type: bool
     value: false
     mirror: once
+-   name: gfx.video.convert-yuv-to-nv12.image-host-win
+    type: RelaxedAtomicBool
+    value: false
+    mirror: always
 #endif
 
 # Whether or not fallback to Software WebRender requires the GPU process.
@@ -6961,6 +6956,14 @@
 - name: image.mem.surfacecache.size_factor
   type: uint32_t
   value: 4
+  mirror: once
+
+# Maximum size in kilobytes that we allow to allocate an imgFrame, meant for
+# testing/fuzzing purposes. -1 disables this limit (there are other limits in
+# place).
+- name: image.mem.max_legal_imgframe_size_kb
+  type: int32_t
+  value: -1
   mirror: once
 
 # Whether we record SVG images as blobs or not.
@@ -7569,21 +7572,14 @@
 #if defined(ENABLE_WASM_FUNCTION_REFERENCES)
 -   name: javascript.options.wasm_function_references
     type: bool
-    value: false
+    value: true
     mirror: always
 #endif // defined(ENABLE_WASM_FUNCTION_REFERENCES)
 
 #if defined(ENABLE_WASM_GC)
 -   name: javascript.options.wasm_gc
     type: bool
-    value: false
-    mirror: always
-#endif // defined(ENABLE_WASM_GC)
-
-#if defined(ENABLE_WASM_GC)
--   name: javascript.options.wasm_final_types
-    type: bool
-    value: false
+    value: true
     mirror: always
 #endif // defined(ENABLE_WASM_GC)
 
@@ -7699,7 +7695,7 @@
 # anyway.
 - name: javascript.options.use_fdlibm_for_sin_cos_tan
   type: bool
-  value: false
+  value: @IS_EARLY_BETA_OR_EARLIER@
   mirror: always
 
 # Whether to support parsing '//(#@) source(Mapping)?URL=' pragmas.
@@ -8229,12 +8225,6 @@
   value: true
   mirror: always
 
-# Whether we should avoid exposing styles of elements outside the flat tree in getComputedStyle().
-- name: layout.css.computed-style.styles-outside-flat-tree
-  type: bool
-  value: false
-  mirror: always
-
 # Are implicit tracks in computed grid templates serialized?
 - name: layout.css.serialize-grid-implicit-tracks
   type: RelaxedAtomicBool
@@ -8379,12 +8369,6 @@
   mirror: always
   rust: true
 
-# Is support for workerGlobalScope.fonts enabled?
-- name: layout.css.font-loading-api.workers.enabled
-  type: RelaxedAtomicBool
-  value: true
-  mirror: always
-
 # Is support for the @font-palette-values rule and font-palette property enabled?
 - name: layout.css.font-palette.enabled
   type: RelaxedAtomicBool
@@ -8442,12 +8426,6 @@
   mirror: always
   rust: true
 
-# Is support for caching an grid item's block axis measurement enabled?
-- name: layout.css.grid-item-baxis-measurement.enabled
-  type: bool
-  value: true
-  mirror: always
-
 # Is support for CSS masonry layout enabled?
 - name: layout.css.grid-template-masonry-value.enabled
   type: RelaxedAtomicBool
@@ -8458,7 +8436,7 @@
 # Is support for :has() enabled?
 - name: layout.css.has-selector.enabled
   type: RelaxedAtomicBool
-  value: false
+  value: @IS_NIGHTLY_BUILD@
   mirror: always
   rust: true
 
@@ -8807,6 +8785,29 @@
   type: bool
   value: false
   mirror: always
+
+- name: layout.css.text-wrap-balance.enabled
+  type: bool
+  value: @IS_NIGHTLY_BUILD@
+  mirror: always
+
+# Maximum number of lines to try balancing.
+- name: layout.css.text-wrap-balance.limit
+  type: int32_t
+  value: 10
+  mirror: always
+
+- name: layout.css.text-wrap-balance-after-clamp.enabled
+  type: bool
+  value: true
+  mirror: always
+
+# Support for the css Zoom property.
+- name: layout.css.zoom.enabled
+  type: RelaxedAtomicBool
+  value: false
+  mirror: always
+  rust: true
 
 # Whether to block large cursors intersecting UI.
 - name: layout.cursor.block.enabled
@@ -9232,7 +9233,7 @@
   mirror: always
 
 - name: layout.word_select.stop_at_punctuation
-  type: bool
+  type: RelaxedAtomicBool
   value: true
   mirror: always
 
@@ -10162,6 +10163,14 @@
 #endif
     mirror: always
 
+# Enable HEVC support via the windows media foundation
+# 0 : disable, 1 : enable for media engine and MFT,
+# 2 : enable for media engine only
+-   name: media.wmf.hevc.enabled
+    type: RelaxedAtomicUint32
+    value: 2
+    mirror: always
+
 #endif  # MOZ_WMF
 
 - name: media.decoder-doctor.testing
@@ -10306,7 +10315,7 @@
 #ifdef MOZ_WEBSPEECH
 -   name: media.webspeech.synth.enabled
     type: bool
-    value: false
+    value: true
     mirror: always
 #endif  # MOZ_WEBSPEECH
 
@@ -10952,11 +10961,7 @@
 
 - name: memory.phc.enabled
   type: bool
-#if defined(MOZ_PHC)
-  value: true
-#else
-  value: false
-#endif
+  value: @IS_EARLY_BETA_OR_EARLIER@
   mirror: always
 
 #---------------------------------------------------------------------------
@@ -11144,6 +11149,12 @@
 - name: network.auth.choose_most_secure_challenge
   type: RelaxedAtomicBool
   value: true
+  mirror: always
+
+# whether to redirect the channel for auth redirects. See Bug 1820807
+- name: network.auth.use_redirect_for_retries
+  type: RelaxedAtomicBool
+  value: false
   mirror: always
 
 # Whether to allow truncated brotli with empty output. This also fixes
@@ -12826,6 +12837,12 @@
   value: true
   mirror: always
 
+# Disabling this will no-op window.print()
+- name: print.enabled
+  type: RelaxedAtomicBool
+  value: true
+  mirror: always
+
 #---------------------------------------------------------------------------
 # Prefs starting with "privacy."
 #---------------------------------------------------------------------------
@@ -13246,14 +13263,9 @@
   value: false
   mirror: always
 
-- name: privacy.partition.bloburl_per_agent_cluster
-  type: RelaxedAtomicBool
-  value: false
-  mirror: always
-
 - name: privacy.partition.bloburl_per_partition_key
   type: bool
-  value: @IS_NIGHTLY_BUILD@
+  value: true
   mirror: always
 
 - name: privacy.window.name.update.enabled
@@ -13733,6 +13745,7 @@
   type: RelaxedAtomicBool
   value: false
   mirror: always
+  rust: true
 
 # Block Worker/SharedWorker scripts with wrong MIME type.
 - name: security.block_Worker_with_wrong_mime
@@ -13858,7 +13871,7 @@
 # Whether or not to import and trust third party root certificates from the OS.
 - name: security.enterprise_roots.enabled
   type: RelaxedAtomicBool
-  value: false
+  value: true
   mirror: always
 
 - name: security.intermediate_preloading_healer.enabled

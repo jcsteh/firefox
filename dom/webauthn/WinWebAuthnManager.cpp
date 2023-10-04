@@ -174,9 +174,8 @@ void WinWebAuthnManager::Register(
   ClearTransaction();
   mTransactionParent = aTransactionParent;
 
-  WEBAUTHN_EXTENSION rgExtension[1] = {};
-  DWORD cExtensions = 0;
   BOOL HmacCreateSecret = FALSE;
+  BOOL MinPinLength = FALSE;
 
   // RP Information
   WEBAUTHN_RP_ENTITY_INFORMATION rpInfo = {
@@ -309,6 +308,13 @@ void WinWebAuthnManager::Register(
     winAttestation = WEBAUTHN_ATTESTATION_CONVEYANCE_PREFERENCE_ANY;
   }
 
+  bool requestedCredProps = FALSE;
+
+  // The number of entries in rgExtension should match the number of supported
+  // extensions.
+  // Supported extensions: credProps, hmac-secret, minPinLength.
+  WEBAUTHN_EXTENSION rgExtension[3] = {};
+  DWORD cExtensions = 0;
   if (aInfo.Extensions().Length() >
       (int)(sizeof(rgExtension) / sizeof(rgExtension[0]))) {
     nsresult aError = NS_ERROR_DOM_INVALID_STATE_ERR;
@@ -316,6 +322,9 @@ void WinWebAuthnManager::Register(
     return;
   }
   for (const WebAuthnExtension& ext : aInfo.Extensions()) {
+    if (ext.type() == WebAuthnExtension::TWebAuthnExtensionCredProps) {
+      requestedCredProps = ext.get_WebAuthnExtensionCredProps().credProps();
+    }
     if (ext.type() == WebAuthnExtension::TWebAuthnExtensionHmacSecret) {
       HmacCreateSecret =
           ext.get_WebAuthnExtensionHmacSecret().hmacCreateSecret() == true;
@@ -324,6 +333,17 @@ void WinWebAuthnManager::Register(
             WEBAUTHN_EXTENSIONS_IDENTIFIER_HMAC_SECRET;
         rgExtension[cExtensions].cbExtension = sizeof(BOOL);
         rgExtension[cExtensions].pvExtension = &HmacCreateSecret;
+        cExtensions++;
+      }
+    }
+    if (ext.type() == WebAuthnExtension::TWebAuthnExtensionMinPinLength) {
+      MinPinLength =
+          ext.get_WebAuthnExtensionMinPinLength().minPinLength() == true;
+      if (MinPinLength) {
+        rgExtension[cExtensions].pwszExtensionIdentifier =
+            WEBAUTHN_EXTENSIONS_IDENTIFIER_MIN_PIN_LENGTH;
+        rgExtension[cExtensions].cbExtension = sizeof(BOOL);
+        rgExtension[cExtensions].pvExtension = &MinPinLength;
         cExtensions++;
       }
     }
@@ -374,7 +394,7 @@ void WinWebAuthnManager::Register(
 
   // MakeCredentialOptions
   WEBAUTHN_AUTHENTICATOR_MAKE_CREDENTIAL_OPTIONS WebAuthNCredentialOptions = {
-      WEBAUTHN_AUTHENTICATOR_MAKE_CREDENTIAL_OPTIONS_VERSION_4,
+      WEBAUTHN_AUTHENTICATOR_MAKE_CREDENTIAL_OPTIONS_VERSION_7,
       aInfo.TimeoutMS(),
       {0, NULL},
       {0, NULL},
@@ -388,6 +408,11 @@ void WinWebAuthnManager::Register(
       WEBAUTHN_ENTERPRISE_ATTESTATION_NONE,
       WEBAUTHN_LARGE_BLOB_SUPPORT_NONE,
       winPreferResidentKey,  // PreferResidentKey
+      FALSE,                 // BrowserInPrivateMode
+      FALSE,                 // EnablePrf
+      NULL,                  // LinkedDevice
+      0,                     // size of JsonExt
+      NULL,                  // JsonExt
   };
 
   GUID cancellationId = {0};
@@ -401,7 +426,7 @@ void WinWebAuthnManager::Register(
     WebAuthNCredentialOptions.Extensions.pExtensions = rgExtension;
   }
 
-  WEBAUTHN_CREDENTIAL_ATTESTATION* pWebAuthNCredentialAttestation = nullptr;
+  PWEBAUTHN_CREDENTIAL_ATTESTATION pWebAuthNCredentialAttestation = nullptr;
 
   // Bug 1518876: Get Window Handle from Content process for Windows WebAuthN
   // APIs
@@ -477,6 +502,16 @@ void WinWebAuthnManager::Register(
       }
     }
 
+    // WEBAUTHN_CREDENTIAL_ATTESTATION structs of version >= 4 always include a
+    // flag to indicate whether a resident key was created. We copy that flag to
+    // the credProps extension output only if the RP requested the credProps
+    // extension.
+    if (requestedCredProps && pWebAuthNCredentialAttestation->dwVersion >=
+                                  WEBAUTHN_CREDENTIAL_ATTESTATION_VERSION_4) {
+      BOOL rk = pWebAuthNCredentialAttestation->bResidentKey;
+      extensions.AppendElement(WebAuthnExtensionResultCredProps(rk == TRUE));
+    }
+
     nsTArray<nsString> transports;
     if (pWebAuthNCredentialAttestation->dwVersion >=
         WEBAUTHN_CREDENTIAL_ATTESTATION_VERSION_3) {
@@ -495,6 +530,16 @@ void WinWebAuthnManager::Register(
       if (pWebAuthNCredentialAttestation->dwUsedTransport &
           WEBAUTHN_CTAP_TRANSPORT_INTERNAL) {
         transports.AppendElement(u"internal"_ns);
+      }
+    }
+    // WEBAUTHN_CREDENTIAL_ATTESTATION_VERSION_5 corresponds to
+    // WEBAUTHN_API_VERSION_6 which is where WEBAUTHN_CTAP_TRANSPORT_HYBRID was
+    // defined.
+    if (pWebAuthNCredentialAttestation->dwVersion >=
+        WEBAUTHN_CREDENTIAL_ATTESTATION_VERSION_5) {
+      if (pWebAuthNCredentialAttestation->dwUsedTransport &
+          WEBAUTHN_CTAP_TRANSPORT_HYBRID) {
+        transports.AppendElement(u"hybrid"_ns);
       }
     }
 
@@ -627,7 +672,7 @@ void WinWebAuthnManager::Sign(PWebAuthnTransactionParent* aTransactionParent,
   }
 
   WEBAUTHN_AUTHENTICATOR_GET_ASSERTION_OPTIONS WebAuthNAssertionOptions = {
-      WEBAUTHN_AUTHENTICATOR_GET_ASSERTION_OPTIONS_CURRENT_VERSION,
+      WEBAUTHN_AUTHENTICATOR_GET_ASSERTION_OPTIONS_VERSION_7,
       aInfo.TimeoutMS(),
       {0, NULL},
       {0, NULL},
@@ -638,6 +683,15 @@ void WinWebAuthnManager::Sign(PWebAuthnTransactionParent* aTransactionParent,
       pbU2fAppIdUsed,
       nullptr,  // pCancellationId
       pAllowCredentialList,
+      WEBAUTHN_CRED_LARGE_BLOB_OPERATION_NONE,
+      0,      // Size of CredLargeBlob
+      NULL,   // CredLargeBlob
+      NULL,   // HmacSecretSaltValues
+      FALSE,  // BrowserInPrivateMode
+      NULL,   // LinkedDevice
+      FALSE,  // AutoFill
+      0,      // Size of JsonExt
+      NULL,   // JsonExt
   };
 
   GUID cancellationId = {0};

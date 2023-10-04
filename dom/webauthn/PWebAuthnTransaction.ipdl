@@ -36,17 +36,31 @@ struct WebAuthnExtensionAppId {
   nsString appIdentifier;
 };
 
+struct WebAuthnExtensionCredProps {
+  bool credProps;
+};
+
 struct WebAuthnExtensionHmacSecret {
   bool hmacCreateSecret;
 };
 
+struct WebAuthnExtensionMinPinLength {
+  bool minPinLength;
+};
+
 union WebAuthnExtension {
   WebAuthnExtensionAppId;
+  WebAuthnExtensionCredProps;
   WebAuthnExtensionHmacSecret;
+  WebAuthnExtensionMinPinLength;
 };
 
 struct WebAuthnExtensionResultAppId {
   bool AppId;
+};
+
+struct WebAuthnExtensionResultCredProps {
+  bool rk;
 };
 
 struct WebAuthnExtensionResultHmacSecret {
@@ -55,6 +69,7 @@ struct WebAuthnExtensionResultHmacSecret {
 
 union WebAuthnExtensionResult {
   WebAuthnExtensionResultAppId;
+  WebAuthnExtensionResultCredProps;
   WebAuthnExtensionResultHmacSecret;
 };
 

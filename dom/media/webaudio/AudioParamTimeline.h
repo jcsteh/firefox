@@ -13,6 +13,19 @@
 
 namespace mozilla::dom {
 
+struct AudioParamEvent final : public AudioTimelineEvent {
+  AudioParamEvent(Type aType, double aTime, float aValue,
+                  double aTimeConstant = 0.0)
+      : AudioTimelineEvent(aType, aTime, aValue, aTimeConstant) {}
+  AudioParamEvent(Type aType, const nsTArray<float>& aValues, double aStartTime,
+                  double aDuration)
+      : AudioTimelineEvent(aType, aValues, aStartTime, aDuration) {}
+  explicit AudioParamEvent(AudioNodeTrack* aTrack)
+      : AudioTimelineEvent(Track, 0.0, 0.f), mTrack(aTrack) {}
+
+  RefPtr<AudioNodeTrack> mTrack;
+};
+
 // This helper class is used to represent the part of the AudioParam
 // class that gets sent to AudioNodeEngine instances.  In addition to
 // AudioEventTimeline methods, it holds a pointer to an optional
@@ -36,8 +49,13 @@ class AudioParamTimeline : public AudioEventTimeline {
   template <class TimeType>
   float GetValueAtTime(TimeType aTime);
 
+  // Prefer this method over GetValueAtTime() only if HasSimpleValue() is
+  // known false.
+  float GetComplexValueAtTime(int64_t aTime);
+  float GetComplexValueAtTime(double aTime) = delete;
+
   template <typename TimeType>
-  void InsertEvent(const AudioTimelineEvent& aEvent) {
+  void InsertEvent(const AudioParamEvent& aEvent) {
     if (aEvent.mType == AudioTimelineEvent::Cancel) {
       CancelScheduledValues(aEvent.Time<TimeType>());
       return;
@@ -47,7 +65,7 @@ class AudioParamTimeline : public AudioEventTimeline {
       return;
     }
     if (aEvent.mType == AudioTimelineEvent::SetValue) {
-      AudioEventTimeline::SetValue(aEvent.mValue);
+      AudioEventTimeline::SetValue(aEvent.NominalValue());
       return;
     }
     AudioEventTimeline::InsertEvent<TimeType>(aEvent);
@@ -89,6 +107,14 @@ inline float AudioParamTimeline::GetValueAtTime(double aTime) {
 template <>
 inline float AudioParamTimeline::GetValueAtTime(int64_t aTime) {
   // Use GetValuesAtTime() for a-rate parameters.
+  MOZ_ASSERT(aTime % WEBAUDIO_BLOCK_SIZE == 0);
+  if (HasSimpleValue()) {
+    return GetValue();
+  }
+  return GetComplexValueAtTime(aTime);
+}
+
+inline float AudioParamTimeline::GetComplexValueAtTime(int64_t aTime) {
   MOZ_ASSERT(aTime % WEBAUDIO_BLOCK_SIZE == 0);
 
   // Mix the value of the AudioParam itself with that of the AudioNode inputs.

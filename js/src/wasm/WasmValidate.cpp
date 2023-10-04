@@ -633,6 +633,16 @@ static bool DecodeFunctionBodyExprs(const ModuleEnvironment& env,
             CHECK(iter.readArrayNewElem(&unusedUint1, &unusedUint2, &nothing,
                                         &nothing));
           }
+          case uint32_t(GcOp::ArrayInitData): {
+            uint32_t unusedUint1, unusedUint2;
+            CHECK(iter.readArrayInitData(&unusedUint1, &unusedUint2, &nothing,
+                                         &nothing, &nothing, &nothing));
+          }
+          case uint32_t(GcOp::ArrayInitElem): {
+            uint32_t unusedUint1, unusedUint2;
+            CHECK(iter.readArrayInitElem(&unusedUint1, &unusedUint2, &nothing,
+                                         &nothing, &nothing, &nothing));
+          }
           case uint32_t(GcOp::ArrayGet): {
             uint32_t unusedUint1;
             CHECK(iter.readArrayGet(&unusedUint1, FieldWideningOp::None,
@@ -662,7 +672,12 @@ static bool DecodeFunctionBodyExprs(const ModuleEnvironment& env,
             CHECK(iter.readArrayCopy(&unusedInt, &unusedBool, &nothing,
                                      &nothing, &nothing, &nothing, &nothing));
           }
-          case uint32_t(GcOp::I31New): {
+          case uint32_t(GcOp::ArrayFill): {
+            uint32_t unusedTypeIndex;
+            CHECK(iter.readArrayFill(&unusedTypeIndex, &nothing, &nothing,
+                                     &nothing, &nothing));
+          }
+          case uint32_t(GcOp::RefI31): {
             CHECK(iter.readConversion(ValType::I32,
                                       ValType(RefType::i31().asNonNullable()),
                                       &nothing));
@@ -1724,31 +1739,21 @@ static bool DecodeTypeSection(Decoder& d, ModuleEnvironment* env) {
 
       // Check if we've reached our implementation defined limit of type
       // definitions.
-      if (typeIndex > MaxTypes) {
+      if (typeIndex >= MaxTypes) {
         return d.fail("too many types");
       }
 
       uint8_t form;
       const TypeDef* superTypeDef = nullptr;
 
-      bool finalTypeFlag = false;
-
-      // This feature is hidden behind a flag for now
-      if (env->finalTypesEnabled()) {
-        // By default, all types are final unless the sub keyword is specified.
-        finalTypeFlag = true;
-      }
+      // By default, all types are final unless the sub keyword is specified.
+      bool finalTypeFlag = true;
 
       // Decode an optional declared super type index, if the GC proposal is
       // enabled.
       if (env->gcEnabled() && d.peekByte(&form) &&
           (form == (uint8_t)TypeCode::SubNoFinalType ||
            form == (uint8_t)TypeCode::SubFinalType)) {
-        if (!env->finalTypesEnabled() &&
-            form == (uint8_t)TypeCode::SubFinalType) {
-          return d.fail("final types are not enabled");
-        }
-
         if (form == (uint8_t)TypeCode::SubNoFinalType) {
           finalTypeFlag = false;
         }

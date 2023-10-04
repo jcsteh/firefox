@@ -76,6 +76,9 @@ export var SearchSERPTelemetryUtils = {
     REFINE_ON_SERP: "follow_on_from_refine_on_SERP",
     SEARCHBOX: "follow_on_from_refine_on_incontent_search",
   },
+  CATEGORIZATION: {
+    INCONCLUSIVE: 0,
+  },
 };
 
 /**
@@ -1394,7 +1397,7 @@ class ContentHandler {
     if (lazy.serpEventTelemetryCategorization && telemetryState) {
       let provider = item?.info.provider;
       if (provider) {
-        SearchSERPCategorization.categorizeDomainsFromProvider(
+        SearchSERPCategorization.maybeCategorizeAndReportDomainsFromProvider(
           info.nonAdDomains,
           info.adDomains,
           provider
@@ -1413,7 +1416,9 @@ class ContentHandler {
  */
 class DomainCategorizer {
   /**
-   * Categorizes domains extracted from SERPs.
+   * Categorizes and reports domains extracted from SERPs. Note that we don't
+   * process domains if the domain-to-categories map is empty (if the client
+   * couldn't download Remote Settings attachments, for example).
    *
    * @param {Set} nonAdDomains
    *   The non-ad domains extracted from the page.
@@ -1422,29 +1427,107 @@ class DomainCategorizer {
    * @param {string} provider
    *   The provider associated with the page.
    */
-  categorizeDomainsFromProvider(nonAdDomains, adDomains, provider) {
-    nonAdDomains = this.processDomains(nonAdDomains, provider);
-    this.applyCategorizationLogic(nonAdDomains, false);
-    this.logDomains(nonAdDomains, false);
-
-    adDomains = this.processDomains(adDomains, provider);
-    this.applyCategorizationLogic(adDomains, true);
-    this.logDomains(adDomains, true);
-  }
-
-  // TODO: insert logic from DS for reducing extracted domains to a single
-  // category for the SERP.
-  applyCategorizationLogic(domains, areAdDomains) {}
-
-  // TODO: replace this method once we know where to send the categorized
-  // domains and overall SERP category.
-  logDomains(domains, areAdDomains) {
-    if (domains?.size) {
-      lazy.logConsole.debug(
-        areAdDomains ? "Ad Domains:" : "Domains:",
-        ...domains
+  maybeCategorizeAndReportDomainsFromProvider(
+    nonAdDomains,
+    adDomains,
+    provider
+  ) {
+    for (let domains of [nonAdDomains, adDomains]) {
+      // We don't want to generate and report telemetry if a client was unable
+      // to download the domain-to-categories mapping from Remote Settings.
+      if (SearchSERPDomainToCategoriesMap.empty) {
+        continue;
+      }
+      domains = this.processDomains(domains, provider);
+      let resultsToReport = this.applyCategorizationLogic(domains);
+      this.dummyLogger(
+        domains,
+        resultsToReport,
+        SearchSERPDomainToCategoriesMap.version
       );
     }
+  }
+
+  // TODO: check with DS to get the final aggregation logic. (Bug 1854196)
+  /**
+   * Applies the logic for reducing extracted domains to a single category for
+   * the SERP.
+   *
+   * @param {Set} domains
+   *   The domains extracted from the page.
+   * @returns {object} resultsToReport
+   *   The final categorization results. Keys are: "category", "num_domains",
+   *   "num_unknown" and "num_inconclusive".
+   */
+  applyCategorizationLogic(domains) {
+    let totalScoresPerCategory = {};
+    let domainsCount = 0;
+    let unknownsCount = 0;
+    let inconclusivesCount = 0;
+
+    for (let domain of domains) {
+      domainsCount++;
+
+      let categoryCandidates = SearchSERPDomainToCategoriesMap.get(domain);
+      if (!categoryCandidates.length) {
+        unknownsCount++;
+        continue;
+      }
+
+      for (let candidate of categoryCandidates) {
+        if (
+          candidate.category ==
+          SearchSERPTelemetryUtils.CATEGORIZATION.INCONCLUSIVE
+        ) {
+          inconclusivesCount++;
+          continue;
+        }
+
+        if (totalScoresPerCategory[candidate.category]) {
+          totalScoresPerCategory[candidate.category] += candidate.score;
+        } else {
+          totalScoresPerCategory[candidate.category] = candidate.score;
+        }
+      }
+    }
+
+    let finalCategory;
+    // Determine if all domains were unknown or inconclusive.
+    if (unknownsCount + inconclusivesCount == domainsCount) {
+      finalCategory = "inconclusive";
+    } else {
+      let maxScore = Math.max(...Object.values(totalScoresPerCategory));
+      // Handles ties by randomly returning one of the categories with the
+      // maximum score.
+      let topCategories = [];
+      for (let category in totalScoresPerCategory) {
+        if (totalScoresPerCategory[category] == maxScore) {
+          topCategories.push(category);
+        }
+      }
+      finalCategory =
+        topCategories.length > 1
+          ? this.#chooseRandomlyFrom(topCategories)
+          : topCategories[0];
+    }
+
+    return {
+      category: finalCategory,
+      num_domains: domainsCount,
+      num_unknown: unknownsCount,
+      num_inconclusive: inconclusivesCount,
+    };
+  }
+
+  // TODO: replace this method once we know where to send the categorized
+  // domains and overall SERP category. (Bug 1854692)
+  dummyLogger(domains, resultsToReport, version) {
+    lazy.logConsole.debug("Version of the attachments:", version);
+    lazy.logConsole.debug("Domains extracted from SERP:", [...domains]);
+    lazy.logConsole.debug(
+      "Categorization results to report to Glean:",
+      resultsToReport
+    );
   }
 
   /**
@@ -1504,6 +1587,11 @@ class DomainCategorizer {
     let secondLevelDomain = domainWithoutTLD.split(".").at(-2);
 
     return secondLevelDomain ? `${secondLevelDomain}.${tld}` : "";
+  }
+
+  #chooseRandomlyFrom(categories) {
+    let randIdx = Math.floor(Math.random() * categories.length);
+    return categories[randIdx];
   }
 }
 
@@ -1648,6 +1736,18 @@ class DomainToCategoriesMap {
   }
 
   /**
+   * Test-only function, used to override the domainToCategoriesMap so that
+   * unit tests can set it to easy to test values.
+   *
+   * @param {object} domainToCategoriesMap
+   *   An object where the key is a hashed domain and the value is an array
+   *   containing an arbitrary number of DomainCategoryScores.
+   */
+  overrideMapForTests(domainToCategoriesMap) {
+    this.#map = domainToCategoriesMap;
+  }
+
+  /**
    * Inspects a list of records from the categorization domain bucket and finds
    * the maximum version score from the set of records. Each record should have
    * the same version number but if for any reason one entry has a lower
@@ -1708,13 +1808,6 @@ class DomainToCategoriesMap {
 
     if (!records?.length) {
       lazy.logConsole.debug("No records found for domain-to-categories map.");
-      return;
-    }
-
-    if (!records.length) {
-      lazy.logConsole.error(
-        "No valid attachments available for domain-to-categories map."
-      );
       return;
     }
 

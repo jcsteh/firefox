@@ -64,7 +64,7 @@ optional = true
 [dependencies.naga]
 version = "0.13.0"
 git = "https://github.com/gfx-rs/naga"
-rev = "7a19f3af909202c7eafd36633b5584bfbb353ecb"
+rev = "df8107b7"
 features = ["clone"]
 
 [dependencies.profiling]
@@ -83,11 +83,11 @@ env_logger = "0.10"
 [dev-dependencies.naga]
 version = "0.13.0"
 git = "https://github.com/gfx-rs/naga"
-rev = "7a19f3af909202c7eafd36633b5584bfbb353ecb"
+rev = "df8107b7"
 features = ["wgsl-in"]
 
 [dev-dependencies.winit]
-version = "0.28.6"
+version = "0.28.7"
 features = ["android-native-activity"]
 
 [features]
@@ -158,12 +158,15 @@ features = [
 
 [target."cfg(any(target_os=\"macos\", target_os=\"ios\"))".dependencies]
 core-graphics-types = "0.1"
-metal = "0.26.0"
 objc = "0.2.5"
 
 [target."cfg(any(target_os=\"macos\", target_os=\"ios\"))".dependencies.block]
 version = "0.1"
 optional = true
+
+[target."cfg(any(target_os=\"macos\", target_os=\"ios\"))".dependencies.metal]
+git = "https://github.com/gfx-rs/metal-rs/"
+rev = "d24f1a4"
 
 [target."cfg(not(target_arch = \"wasm32\"))".dependencies.ash]
 version = "0.37.3"

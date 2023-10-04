@@ -44,15 +44,15 @@ class WithCommonStyles extends MozLitElement {
     :host,
     :root {
       font: message-box;
+      font-size: var(--font-size-root);
       appearance: none;
-      background-color: var(--in-content-page-background);
-      color: var(--in-content-page-color);
+      background-color: var(--color-canvas);
+      color: var(--text-color);
       -moz-box-layout: flex;
     }
 
-    :host,
-    :root:not(.system-font-size) {
-      font-size: 15px;
+    :host {
+      font-size: var(--font-size-root);
     }
   `;
 
@@ -60,6 +60,11 @@ class WithCommonStyles extends MozLitElement {
     story: { type: Function },
     context: { type: Object },
   };
+
+  connectedCallback() {
+    super.connectedCallback();
+    this.classList.add("anonymous-content-host");
+  }
 
   storyContent() {
     if (this.story) {

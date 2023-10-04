@@ -61,6 +61,7 @@ ChromeUtils.defineESModuleGetters(lazy, {
   Schemas: "resource://gre/modules/Schemas.sys.mjs",
   ServiceWorkerCleanUp: "resource://gre/modules/ServiceWorkerCleanUp.sys.mjs",
   extensionStorageSync: "resource://gre/modules/ExtensionStorageSync.sys.mjs",
+  PERMISSION_L10N: "resource://gre/modules/ExtensionPermissionMessages.sys.mjs",
   permissionToL10nId:
     "resource://gre/modules/ExtensionPermissionMessages.sys.mjs",
   QuarantinedDomains: "resource://gre/modules/ExtensionPermissions.sys.mjs",
@@ -70,20 +71,6 @@ ChromeUtils.defineLazyGetter(lazy, "resourceProtocol", () =>
   Services.io
     .getProtocolHandler("resource")
     .QueryInterface(Ci.nsIResProtocolHandler)
-);
-
-ChromeUtils.defineLazyGetter(
-  lazy,
-  "l10n",
-  () =>
-    new Localization(
-      [
-        "toolkit/global/extensions.ftl",
-        "toolkit/global/extensionPermissions.ftl",
-        "branding/brand.ftl",
-      ],
-      true
-    )
 );
 
 XPCOMUtils.defineLazyServiceGetters(lazy, {
@@ -2332,8 +2319,6 @@ export class ExtensionData {
    * @param {boolean} options.buildOptionalOrigins
    *                  Wether to build optional origins Maps for permission
    *                  controls.  Defaults to false.
-   * @param {Localization} options.localization
-   *                       Optional custom localization instance.
    *
    * @returns {object} An object with properties containing localized strings
    *                   for various elements of a permission dialog. The "header"
@@ -2360,9 +2345,9 @@ export class ExtensionData {
       type,
       unsigned,
     },
-    { collapseOrigins = false, buildOptionalOrigins = false, localization } = {}
+    { collapseOrigins = false, buildOptionalOrigins = false } = {}
   ) {
-    const l10n = localization ?? lazy.l10n;
+    const l10n = lazy.PERMISSION_L10N;
 
     const msgIds = [];
     const headerArgs = { extension: "<>" };

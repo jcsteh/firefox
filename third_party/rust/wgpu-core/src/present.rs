@@ -15,7 +15,7 @@ use std::borrow::Borrow;
 use crate::device::trace::Action;
 use crate::{
     conv,
-    device::{DeviceError, MissingDownlevelFlags},
+    device::{DeviceError, MissingDownlevelFlags, WaitIdleError},
     global::Global,
     hal_api::HalApi,
     hub::Token,
@@ -96,6 +96,18 @@ pub enum ConfigureSurfaceError {
     },
     #[error("Requested usage is not supported")]
     UnsupportedUsage,
+    #[error("Gpu got stuck :(")]
+    StuckGpu,
+}
+
+impl From<WaitIdleError> for ConfigureSurfaceError {
+    fn from(e: WaitIdleError) -> Self {
+        match e {
+            WaitIdleError::Device(d) => ConfigureSurfaceError::Device(d),
+            WaitIdleError::WrongSubmissionIndex(..) => unreachable!(),
+            WaitIdleError::StuckGpu => ConfigureSurfaceError::StuckGpu,
+        }
+    }
 }
 
 #[repr(C)]
@@ -126,6 +138,9 @@ impl<G: GlobalIdentityHandlerFactory> Global<G> {
         let (device, config) = match surface.presentation {
             Some(ref present) => {
                 let device = &device_guard[present.device_id.value];
+                if !device.is_valid() {
+                    return Err(DeviceError::Invalid.into());
+                }
                 (device, present.config.clone())
             }
             None => return Err(SurfaceError::NotConfigured),
@@ -278,6 +293,9 @@ impl<G: GlobalIdentityHandlerFactory> Global<G> {
         };
 
         let device = &mut device_guard[present.device_id.value];
+        if !device.is_valid() {
+            return Err(DeviceError::Invalid.into());
+        }
 
         #[cfg(feature = "trace")]
         if let Some(ref trace) = device.trace {
@@ -364,6 +382,9 @@ impl<G: GlobalIdentityHandlerFactory> Global<G> {
         };
 
         let device = &mut device_guard[present.device_id.value];
+        if !device.is_valid() {
+            return Err(DeviceError::Invalid.into());
+        }
 
         #[cfg(feature = "trace")]
         if let Some(ref trace) = device.trace {

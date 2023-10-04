@@ -20,6 +20,7 @@ class ShoppingMessageBar extends MozLitElement {
     ["analysis-in-progress", () => this.analysisInProgressTemplate()],
     ["reanalysis-in-progress", () => this.reanalysisInProgressTemplate()],
     ["page-not-supported", () => this.pageNotSupportedTemplate()],
+    ["thank-you-for-feedback", () => this.thankYouForFeedbackTemplate()],
   ]);
 
   static properties = {
@@ -29,12 +30,12 @@ class ShoppingMessageBar extends MozLitElement {
 
   static get queries() {
     return {
-      reAnalysisLinkEl: "#message-bar-reanalysis-link",
+      reAnalysisButtonEl: "#message-bar-reanalysis-button",
       productAvailableBtnEl: "#message-bar-report-product-available-btn",
     };
   }
 
-  onClickAnalysisLink() {
+  onClickAnalysisButton() {
     this.dispatchEvent(
       new CustomEvent("ReanalysisRequested", {
         bubbles: true,
@@ -60,26 +61,23 @@ class ShoppingMessageBar extends MozLitElement {
   }
 
   getStaleWarningTemplate() {
-    return html` <message-bar type="warning">
+    return html` <message-bar>
       <article id="message-bar-container" aria-labelledby="header">
-        <strong
-          id="header"
-          data-l10n-id="shopping-message-bar-warning-stale-analysis-title"
-        ></strong>
         <span
-          data-l10n-id="shopping-message-bar-warning-stale-analysis-message"
+          data-l10n-id="shopping-message-bar-warning-stale-analysis-message-2"
         ></span>
-        <a
-          id="message-bar-reanalysis-link"
-          data-l10n-id="shopping-message-bar-warning-stale-analysis-link"
-          @click=${this.onClickAnalysisLink}
-        ></a>
+        <button
+          id="message-bar-reanalysis-button"
+          class="small-button"
+          data-l10n-id="shopping-message-bar-warning-stale-analysis-button"
+          @click=${this.onClickAnalysisButton}
+        ></button>
       </article>
     </message-bar>`;
   }
 
   getGenericErrorTemplate() {
-    return html` <message-bar type="error">
+    return html`<message-bar>
       <article id="message-bar-container" aria-labelledby="header">
         <strong
           id="header"
@@ -91,7 +89,7 @@ class ShoppingMessageBar extends MozLitElement {
   }
 
   getNotEnoughReviewsTemplate() {
-    return html` <message-bar type="warning">
+    return html`<message-bar>
       <article id="message-bar-container" aria-labelledby="header">
         <strong
           id="header"
@@ -105,7 +103,7 @@ class ShoppingMessageBar extends MozLitElement {
   }
 
   getProductNotAvailableTemplate() {
-    return html`<message-bar type="warning">
+    return html`<message-bar>
       <article id="message-bar-container" aria-labelledby="header">
         <strong
           id="header"
@@ -139,7 +137,7 @@ class ShoppingMessageBar extends MozLitElement {
   }
 
   getProductNotAvailableReportedTemplate() {
-    return html`<message-bar type="warning">
+    return html`<message-bar>
       <article id="message-bar-container" aria-labelledby="header">
         <strong
           id="header"
@@ -199,11 +197,31 @@ class ShoppingMessageBar extends MozLitElement {
     </message-bar>`;
   }
 
+  thankYouForFeedbackTemplate() {
+    return html`<message-bar type="success" dismissable>
+      <article id="message-bar-container" aria-labelledby="header">
+        <strong
+          id="header"
+          data-l10n-id="shopping-survey-thanks-message"
+        ></strong>
+      </article>
+    </message-bar>`;
+  }
+
   render() {
     let messageBarTemplate = this.#MESSAGE_TYPES_RENDER_TEMPLATE_MAPPING.get(
       this.type
     )();
     if (messageBarTemplate) {
+      if (this.type == "stale") {
+        this.dispatchEvent(
+          new CustomEvent("ShoppingTelemetryEvent", {
+            bubbles: true,
+            composed: true,
+            detail: "staleAnalysisShown",
+          })
+        );
+      }
       return html`
         <link
           rel="stylesheet"

@@ -52,6 +52,7 @@
 #include "mozilla/dom/Element.h"
 #include "mozilla/dom/EventTarget.h"
 #include "mozilla/dom/Nullable.h"
+#include "mozilla/dom/RadioGroupContainer.h"
 #include "mozilla/dom/TreeOrderedArray.h"
 #include "mozilla/dom/ViewportMetaData.h"
 #include "mozilla/glean/GleanMetrics.h"
@@ -79,7 +80,6 @@
 #include "nsIParser.h"
 #include "nsIPrincipal.h"
 #include "nsIProgressEventSink.h"
-#include "nsIRadioGroupContainer.h"
 #include "nsIReferrerInfo.h"
 #include "nsIRequestObserver.h"
 #include "nsIScriptObjectPrincipal.h"
@@ -532,7 +532,6 @@ enum class SheetPreloadStatus : uint8_t {
 class Document : public nsINode,
                  public DocumentOrShadowRoot,
                  public nsSupportsWeakReference,
-                 public nsIRadioGroupContainer,
                  public nsIScriptObjectPrincipal,
                  public DispatcherTrait,
                  public SupportsWeakPtr {
@@ -562,7 +561,8 @@ class Document : public nsINode,
 
   NS_DECLARE_STATIC_IID_ACCESSOR(NS_IDOCUMENT_IID)
 
-  NS_DECL_CYCLE_COLLECTING_ISUPPORTS
+  NS_DECL_ISUPPORTS_INHERITED
+  NS_IMETHOD_(void) DeleteCycleCollectable() override;
 
   NS_DECL_ADDSIZEOFEXCLUDINGTHIS
 
@@ -582,49 +582,6 @@ class Document : public nsINode,
       presShell->func_ params_;                                               \
     }                                                                         \
   } while (0)
-
-  // nsIRadioGroupContainer
-  NS_IMETHOD WalkRadioGroup(const nsAString& aName,
-                            nsIRadioVisitor* aVisitor) final {
-    return DocumentOrShadowRoot::WalkRadioGroup(aName, aVisitor);
-  }
-
-  void SetCurrentRadioButton(const nsAString& aName,
-                             HTMLInputElement* aRadio) final {
-    DocumentOrShadowRoot::SetCurrentRadioButton(aName, aRadio);
-  }
-
-  HTMLInputElement* GetCurrentRadioButton(const nsAString& aName) final {
-    return DocumentOrShadowRoot::GetCurrentRadioButton(aName);
-  }
-
-  NS_IMETHOD
-  GetNextRadioButton(const nsAString& aName, const bool aPrevious,
-                     HTMLInputElement* aFocusedRadio,
-                     HTMLInputElement** aRadioOut) final {
-    return DocumentOrShadowRoot::GetNextRadioButton(aName, aPrevious,
-                                                    aFocusedRadio, aRadioOut);
-  }
-  void AddToRadioGroup(const nsAString& aName, HTMLInputElement* aRadio) final {
-    DocumentOrShadowRoot::AddToRadioGroup(aName, aRadio, nullptr);
-  }
-  void RemoveFromRadioGroup(const nsAString& aName,
-                            HTMLInputElement* aRadio) final {
-    DocumentOrShadowRoot::RemoveFromRadioGroup(aName, aRadio);
-  }
-  uint32_t GetRequiredRadioCount(const nsAString& aName) const final {
-    return DocumentOrShadowRoot::GetRequiredRadioCount(aName);
-  }
-  void RadioRequiredWillChange(const nsAString& aName,
-                               bool aRequiredAdded) final {
-    DocumentOrShadowRoot::RadioRequiredWillChange(aName, aRequiredAdded);
-  }
-  bool GetValueMissingState(const nsAString& aName) const final {
-    return DocumentOrShadowRoot::GetValueMissingState(aName);
-  }
-  void SetValueMissingState(const nsAString& aName, bool aValue) final {
-    return DocumentOrShadowRoot::SetValueMissingState(aName, aValue);
-  }
 
   nsIPrincipal* EffectiveCookiePrincipal() const;
 
@@ -1267,8 +1224,8 @@ class Document : public nsINode,
 
   StorageAccessAPIHelper::PerformPermissionGrant CreatePermissionGrantPromise(
       nsPIDOMWindowInner* aInnerWindow, nsIPrincipal* aPrincipal,
-      bool aHasUserInteraction, const Maybe<nsCString>& aTopLevelBaseDomain,
-      bool aFrameOnly);
+      bool aHasUserInteraction, bool aRequireUserInteraction,
+      const Maybe<nsCString>& aTopLevelBaseDomain, bool aFrameOnly);
 
   already_AddRefed<Promise> RequestStorageAccess(ErrorResult& aRv);
 
@@ -1646,7 +1603,11 @@ class Document : public nsINode,
 
   // Needs to be called any time the applicable style can has changed, in order
   // to schedule a style flush and setup all the relevant state.
-  void ApplicableStylesChanged();
+  //
+  // If we know the stylesheet change applies only to a shadow tree we can avoid
+  // some work (like updating the font-face-set / counter-styles / etc, as those
+  // are global).
+  void ApplicableStylesChanged(bool aKnownInShadowTree = false);
 
   // Whether we filled the style set with any style sheet. Only meant to be used
   // from DocumentOrShadowRoot::Traverse.
@@ -3458,12 +3419,8 @@ class Document : public nsINode,
   mozilla::dom::HTMLAllCollection* All();
 
   static bool DocumentSupportsL10n(JSContext* aCx, JSObject* aObject);
-  static bool IsWebAnimationsEnabled(JSContext* aCx, JSObject* aObject);
-  static bool IsWebAnimationsEnabled(CallerType aCallerType);
   static bool IsWebAnimationsGetAnimationsEnabled(JSContext* aCx,
                                                   JSObject* aObject);
-  static bool AreWebAnimationsImplicitKeyframesEnabled(JSContext* aCx,
-                                                       JSObject* aObject);
   static bool AreWebAnimationsTimelinesEnabled(JSContext* aCx,
                                                JSObject* aObject);
   // Checks that the caller is either chrome or some addon.
@@ -3472,16 +3429,7 @@ class Document : public nsINode,
   bool Hidden() const { return mVisibilityState != VisibilityState::Visible; }
   dom::VisibilityState VisibilityState() const { return mVisibilityState; }
 
- private:
-  int32_t mPictureInPictureChildElementCount = 0;
-
  public:
-  void EnableChildElementInPictureInPictureMode();
-  void DisableChildElementInPictureInPictureMode();
-
-  // True if any child element is being used in picture in picture mode.
-  bool HasPictureInPictureChildElement() const;
-
   void GetSelectedStyleSheetSet(nsAString& aSheetSet);
   void SetSelectedStyleSheetSet(const nsAString& aSheetSet);
   void GetLastStyleSheetSet(nsAString& aSheetSet) {
@@ -3688,6 +3636,9 @@ class Document : public nsINode,
   bool UserHasInteracted() { return mUserHasInteracted; }
   void ResetUserInteractionTimer();
 
+  // Whether we're cloning the contents of an SVG use element.
+  bool CloningForSVGUse() const { return mCloningForSVGUse; }
+
   // This should be called when this document receives events which are likely
   // to be user interaction with the document, rather than the byproduct of
   // interaction with the browser (i.e. a keypress to scroll the view port,
@@ -3813,6 +3764,8 @@ class Document : public nsINode,
   void AddResizeObserver(ResizeObserver&);
   void RemoveResizeObserver(ResizeObserver&);
   void ScheduleResizeObserversNotification() const;
+  bool HasResizeObservers() const;
+  MOZ_CAN_RUN_SCRIPT void NotifyResizeObservers();
 
   // Getter for PermissionDelegateHandler. Performs lazy initialization.
   PermissionDelegateHandler* GetPermissionDelegateHandler();
@@ -4872,6 +4825,9 @@ class Document : public nsINode,
   // Whether we should resist fingerprinting.
   bool mShouldResistFingerprinting : 1;
 
+  // Whether we're cloning the contents of an SVG use element.
+  bool mCloningForSVGUse : 1;
+
   uint8_t mXMLDeclarationBits;
 
   // NOTE(emilio): Technically, this should be a StyleColorSchemeFlags, but we
@@ -5353,6 +5309,8 @@ class Document : public nsINode,
   // Registry of custom highlight definitions associated with this document.
   RefPtr<class HighlightRegistry> mHighlightRegistry;
 
+  UniquePtr<RadioGroupContainer> mRadioGroupContainer;
+
  public:
   // Needs to be public because the bindings code pokes at it.
   JS::ExpandoAndGeneration mExpandoAndGeneration;
@@ -5368,6 +5326,8 @@ class Document : public nsINode,
   }
 
   void LoadEventFired();
+
+  RadioGroupContainer& OwnedRadioGroupContainer();
 };
 
 NS_DEFINE_STATIC_IID_ACCESSOR(Document, NS_IDOCUMENT_IID)
@@ -5479,6 +5439,8 @@ bool IsInFocusedTab(Document* aDoc);
 bool IsInActiveTab(Document* aDoc);
 
 }  // namespace mozilla::dom
+
+NON_VIRTUAL_ADDREF_RELEASE(mozilla::dom::Document)
 
 // XXX These belong somewhere else
 nsresult NS_NewHTMLDocument(mozilla::dom::Document** aInstancePtrResult,

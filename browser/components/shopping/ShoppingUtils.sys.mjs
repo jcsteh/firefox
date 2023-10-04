@@ -7,7 +7,9 @@ import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
 const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
+  isProductURL: "chrome://global/content/shopping/ShoppingProduct.mjs",
   NimbusFeatures: "resource://nimbus/ExperimentAPI.sys.mjs",
+  setTimeout: "resource://gre/modules/Timer.sys.mjs",
 });
 
 XPCOMUtils.defineLazyModuleGetters(lazy, {
@@ -21,13 +23,26 @@ const LAST_AUTO_ACTIVATE_PREF =
 const AUTO_ACTIVATE_COUNT_PREF =
   "browser.shopping.experience2023.autoActivateCount";
 
+const CFR_FEATURES_PREF =
+  "browser.newtabpage.activity-stream.asrouter.userprefs.cfr.features";
+
 export const ShoppingUtils = {
   initialized: false,
   registered: false,
   handledAutoActivate: false,
+  nimbusEnabled: false,
+  nimbusControl: false,
+
+  _updateNimbusVariables() {
+    this.nimbusEnabled =
+      lazy.NimbusFeatures.shopping2023.getVariable("enabled");
+    this.nimbusControl =
+      lazy.NimbusFeatures.shopping2023.getVariable("control");
+  },
 
   onNimbusUpdate() {
-    if (lazy.NimbusFeatures.shopping2023.getVariable("enabled")) {
+    this._updateNimbusVariables();
+    if (this.nimbusEnabled) {
       ShoppingUtils.init();
       Glean.shoppingSettings.nimbusDisabledShopping.set(false);
     } else {
@@ -43,13 +58,18 @@ export const ShoppingUtils = {
     if (this.initialized) {
       return;
     }
+    this.onNimbusUpdate = this.onNimbusUpdate.bind(this);
 
     if (!this.registered) {
-      lazy.NimbusFeatures.shopping2023.onUpdate(ShoppingUtils.onNimbusUpdate);
+      // Note (bug 1855545): we must set `this.registered` before calling
+      // `onUpdate`, as it will immediately invoke `this.onNimbusUpdate`,
+      // which in turn calls `ShoppingUtils.init`, creating an infinite loop.
       this.registered = true;
+      lazy.NimbusFeatures.shopping2023.onUpdate(this.onNimbusUpdate);
+      this._updateNimbusVariables();
     }
 
-    if (!lazy.NimbusFeatures.shopping2023.getVariable("enabled")) {
+    if (!this.nimbusEnabled) {
       return;
     }
 
@@ -75,6 +95,59 @@ export const ShoppingUtils = {
     this.initialized = false;
   },
 
+  isProductPageNavigation(aLocationURI, aFlags) {
+    if (!lazy.isProductURL(aLocationURI)) {
+      return false;
+    }
+
+    // Ignore same-document navigation, except in the case of Walmart
+    // as they use pushState to navigate between pages.
+    let isWalmart = aLocationURI.host.includes("walmart");
+    let isNewDocument = !aFlags;
+
+    let isSameDocument =
+      aFlags & Ci.nsIWebProgressListener.LOCATION_CHANGE_SAME_DOCUMENT;
+    let isReload = aFlags & Ci.nsIWebProgressListener.LOCATION_CHANGE_RELOAD;
+    let isSessionRestore =
+      aFlags & Ci.nsIWebProgressListener.LOCATION_CHANGE_SESSION_STORE;
+
+    // Unfortunately, Walmart sometimes double-fires history manipulation
+    // events when navigating between product pages. To dedupe, cache the
+    // last visited Walmart URL just for a few milliseconds, so we can avoid
+    // double-counting such navigations.
+    if (isWalmart) {
+      if (
+        this.lastWalmartURI &&
+        aLocationURI.equalsExceptRef(this.lastWalmartURI)
+      ) {
+        return false;
+      }
+      this.lastWalmartURI = aLocationURI;
+      lazy.setTimeout(() => {
+        this.lastWalmartURI = null;
+      }, 100);
+    }
+
+    return (
+      // On initial visit to a product page, even from another domain, both a page
+      // load and a pushState will be triggered by Walmart, so this will
+      // capture only a single displayed event.
+      (!isWalmart && (isNewDocument || isReload || isSessionRestore)) ||
+      (isWalmart && isSameDocument)
+    );
+  },
+
+  // For users in either the nimbus control or treatment groups, increment a
+  // counter when they visit supported product pages.
+  maybeRecordExposure(aLocationURI, aFlags) {
+    if (
+      (this.nimbusEnabled || this.nimbusControl) &&
+      ShoppingUtils.isProductPageNavigation(aLocationURI, aFlags)
+    ) {
+      Glean.shopping.productPageVisits.add(1);
+    }
+  },
+
   setOnUpdate(_pref, _prev, current) {
     Glean.shoppingSettings.componentOptedOut.set(current === 2);
     Glean.shoppingSettings.hasOnboarded.set(current > 0);
@@ -88,7 +161,7 @@ export const ShoppingUtils = {
    * 3. This method has not already been called (handledAutoActivate is false)
    */
   handleAutoActivateOnProduct() {
-    if (!this.handledAutoActivate && !this.optedIn) {
+    if (!this.handledAutoActivate && !this.optedIn && this.cfrFeatures) {
       let autoActivateCount = Services.prefs.getIntPref(
         AUTO_ACTIVATE_COUNT_PREF,
         0
@@ -142,4 +215,11 @@ XPCOMUtils.defineLazyPreferenceGetter(
   OPTED_IN_PREF,
   0,
   ShoppingUtils.setOnUpdate
+);
+
+XPCOMUtils.defineLazyPreferenceGetter(
+  ShoppingUtils,
+  "cfrFeatures",
+  CFR_FEATURES_PREF,
+  true
 );

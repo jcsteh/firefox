@@ -53,6 +53,7 @@
 #include "mozilla/dom/SVGViewportElement.h"
 #include "mozilla/dom/UIEvent.h"
 #include "mozilla/dom/VideoFrame.h"
+#include "mozilla/dom/VideoFrameBinding.h"
 #include "mozilla/intl/BidiEmbeddingLevel.h"
 #include "mozilla/EffectCompositor.h"
 #include "mozilla/EffectSet.h"
@@ -7261,10 +7262,23 @@ SurfaceFromElementResult nsLayoutUtils::SurfaceFromVideoFrame(
     result.mIntrinsicSize = displaySize;
   }
 
-  // TODO(aosmond): Presumably we can do better than assuming premultiplied.
-  // Depending on how the VideoFrame was created, we may have had more
-  // information about its transpancy status.
   result.mAlphaType = gfxAlphaType::Premult;
+  Nullable<VideoPixelFormat> format = aVideoFrame->GetFormat();
+  if (!format.IsNull()) {
+    switch (format.Value()) {
+      case VideoPixelFormat::I420:
+      case VideoPixelFormat::I422:
+      case VideoPixelFormat::I444:
+      case VideoPixelFormat::NV12:
+      case VideoPixelFormat::RGBX:
+      case VideoPixelFormat::BGRX:
+        result.mAlphaType = gfxAlphaType::Opaque;
+        break;
+      default:
+        break;
+    }
+  }
+
   result.mHasSize = true;
 
   // We shouldn't have a VideoFrame if either of these is true.
@@ -7393,16 +7407,25 @@ SurfaceFromElementResult nsLayoutUtils::SurfaceFromElement(
       res.ApplyXTo(imgWidth);
     } else if (aResizeWidth.isSome()) {
       imgWidth = *aResizeWidth;
-      rv = NS_OK;
+    } else {
+      // As stated in css-sizing-3 Intrinsic Sizes, the fallback size of
+      // 300 x 150 for the width and height as needed.
+      //
+      // See https://drafts.csswg.org/css-sizing-3/#intrinsic-sizes
+      imgWidth = kFallbackIntrinsicWidthInPixels;
     }
-    nsresult rv2 = imgContainer->GetHeight(&imgHeight);
-    if (NS_SUCCEEDED(rv2)) {
+    rv = imgContainer->GetHeight(&imgHeight);
+    if (NS_SUCCEEDED(rv)) {
       res.ApplyYTo(imgHeight);
     } else if (aResizeHeight.isSome()) {
       imgHeight = *aResizeHeight;
-      rv2 = NS_OK;
+    } else {
+      // As stated in css-sizing-3 Intrinsic Sizes, the fallback size of
+      // 300 x 150 for the width and height as needed.
+      //
+      // See https://drafts.csswg.org/css-sizing-3/#intrinsic-sizes
+      imgHeight = kFallbackIntrinsicHeightInPixels;
     }
-    if (NS_FAILED(rv) || NS_FAILED(rv2)) return result;
   }
   result.mSize = result.mIntrinsicSize = IntSize(imgWidth, imgHeight);
 

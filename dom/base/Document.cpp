@@ -1393,6 +1393,7 @@ Document::Document(const char* aContentType)
       mUserHasInteracted(false),
       mHasUserInteractionTimerScheduled(false),
       mShouldResistFingerprinting(false),
+      mCloningForSVGUse(false),
       mXMLDeclarationBits(0),
       mOnloadBlockCount(0),
       mWriteLevel(0),
@@ -2428,14 +2429,12 @@ NS_INTERFACE_TABLE_HEAD(Document)
     NS_INTERFACE_TABLE_ENTRY(Document, nsIScriptObjectPrincipal)
     NS_INTERFACE_TABLE_ENTRY(Document, EventTarget)
     NS_INTERFACE_TABLE_ENTRY(Document, nsISupportsWeakReference)
-    NS_INTERFACE_TABLE_ENTRY(Document, nsIRadioGroupContainer)
   NS_INTERFACE_TABLE_END
   NS_INTERFACE_TABLE_TO_MAP_SEGUE_CYCLE_COLLECTION(Document)
 NS_INTERFACE_MAP_END
 
-NS_IMPL_MAIN_THREAD_ONLY_CYCLE_COLLECTING_ADDREF(Document)
-NS_IMPL_MAIN_THREAD_ONLY_CYCLE_COLLECTING_RELEASE_WITH_LAST_RELEASE(
-    Document, LastRelease())
+NS_IMPL_CYCLE_COLLECTING_ADDREF(Document)
+NS_IMPL_CYCLE_COLLECTING_RELEASE_WITH_LAST_RELEASE(Document, LastRelease())
 
 NS_IMPL_CYCLE_COLLECTION_CAN_SKIP_BEGIN(Document)
   if (Element::CanSkip(tmp, aRemovingAllowed)) {
@@ -2503,6 +2502,10 @@ NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN_INTERNAL(Document)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mScriptLoader)
 
   DocumentOrShadowRoot::Traverse(tmp, cb);
+
+  if (tmp->mRadioGroupContainer) {
+    RadioGroupContainer::Traverse(tmp->mRadioGroupContainer.get(), cb);
+  }
 
   for (auto& sheets : tmp->mAdditionalSheets) {
     tmp->TraverseStyleSheets(sheets, "mAdditionalSheets[<origin>][i]", cb);
@@ -2702,6 +2705,8 @@ NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN(Document)
                      "first?");
 
   DocumentOrShadowRoot::Unlink(tmp);
+
+  tmp->mRadioGroupContainer = nullptr;
 
   // Document has a pretty complex destructor, so we're going to
   // assume that *most* cycles you actually want to break somewhere
@@ -4496,20 +4501,6 @@ bool Document::AllowsL10n() const {
   return allowed;
 }
 
-bool Document::IsWebAnimationsEnabled(JSContext* aCx, JSObject* /*unused*/) {
-  MOZ_ASSERT(NS_IsMainThread());
-
-  return nsContentUtils::IsSystemCaller(aCx) ||
-         StaticPrefs::dom_animations_api_core_enabled();
-}
-
-bool Document::IsWebAnimationsEnabled(CallerType aCallerType) {
-  MOZ_ASSERT(NS_IsMainThread());
-
-  return aCallerType == dom::CallerType::System ||
-         StaticPrefs::dom_animations_api_core_enabled();
-}
-
 bool Document::IsWebAnimationsGetAnimationsEnabled(JSContext* aCx,
                                                    JSObject* /*unused*/
 ) {
@@ -4517,15 +4508,6 @@ bool Document::IsWebAnimationsGetAnimationsEnabled(JSContext* aCx,
 
   return nsContentUtils::IsSystemCaller(aCx) ||
          StaticPrefs::dom_animations_api_getAnimations_enabled();
-}
-
-bool Document::AreWebAnimationsImplicitKeyframesEnabled(JSContext* aCx,
-                                                        JSObject* /*unused*/
-) {
-  MOZ_ASSERT(NS_IsMainThread());
-
-  return nsContentUtils::IsSystemCaller(aCx) ||
-         StaticPrefs::dom_animations_api_implicit_keyframes_enabled();
 }
 
 bool Document::AreWebAnimationsTimelinesEnabled(JSContext* aCx,
@@ -7366,17 +7348,18 @@ void Document::AddStyleSheetToStyleSets(StyleSheet& aSheet) {
 
 void Document::RecordShadowStyleChange(ShadowRoot& aShadowRoot) {
   mStyleSet->RecordShadowStyleChange(aShadowRoot);
-  ApplicableStylesChanged();
+  ApplicableStylesChanged(/* aKnownInShadowTree= */ true);
 }
 
-void Document::ApplicableStylesChanged() {
+void Document::ApplicableStylesChanged(bool aKnownInShadowTree) {
   // TODO(emilio): if we decide to resolve style in display: none iframes, then
   // we need to always track style changes and remove the mStyleSetFilled.
   if (!mStyleSetFilled) {
     return;
   }
-
-  MarkUserFontSetDirty();
+  if (!aKnownInShadowTree) {
+    MarkUserFontSetDirty();
+  }
   PresShell* ps = GetPresShell();
   if (!ps) {
     return;
@@ -7388,9 +7371,11 @@ void Document::ApplicableStylesChanged() {
     return;
   }
 
-  pc->MarkCounterStylesDirty();
-  pc->MarkFontFeatureValuesDirty();
-  pc->MarkFontPaletteValuesDirty();
+  if (!aKnownInShadowTree) {
+    pc->MarkCounterStylesDirty();
+    pc->MarkFontFeatureValuesDirty();
+    pc->MarkFontPaletteValuesDirty();
+  }
   pc->RestyleManager()->NextRestyleIsForCSSRuleChanges();
 }
 
@@ -12519,8 +12504,8 @@ void Document::MaybePreconnect(nsIURI* aOrigURI, mozilla::CORSMode aCORSMode) {
     return;
   }
 
-  nsCOMPtr<nsISpeculativeConnect> speculator(
-      do_QueryInterface(nsContentUtils::GetIOService()));
+  nsCOMPtr<nsISpeculativeConnect> speculator =
+      mozilla::components::IO::Service();
   if (!speculator) {
     return;
   }
@@ -13688,6 +13673,9 @@ void Document::ScheduleSVGUseElementShadowTreeUpdate(
 void Document::DoUpdateSVGUseElementShadowTrees() {
   MOZ_ASSERT(!mSVGUseElementsNeedingShadowTreeUpdate.IsEmpty());
 
+  MOZ_ASSERT(!mCloningForSVGUse);
+  mCloningForSVGUse = true;
+
   do {
     const auto useElementsToUpdate = ToTArray<nsTArray<RefPtr<SVGUseElement>>>(
         mSVGUseElementsNeedingShadowTreeUpdate);
@@ -13704,6 +13692,8 @@ void Document::DoUpdateSVGUseElementShadowTrees() {
       useElement->UpdateShadowTree();
     }
   } while (!mSVGUseElementsNeedingShadowTreeUpdate.IsEmpty());
+
+  mCloningForSVGUse = false;
 }
 
 void Document::NotifyMediaFeatureValuesChanged() {
@@ -14159,8 +14149,8 @@ void Document::MaybeWarnAboutZoom() {
   if (mHasWarnedAboutZoom) {
     return;
   }
-  const bool usedZoom = Servo_IsUnknownPropertyRecordedInUseCounter(
-      mStyleUseCounters.get(), CountedUnknownProperty::Zoom);
+  const bool usedZoom = Servo_IsPropertyIdRecordedInUseCounter(
+      mStyleUseCounters.get(), eCSSProperty_zoom);
   if (!usedZoom) {
     return;
   }
@@ -14433,16 +14423,15 @@ void Document::SetFullscreenRoot(Document* aRoot) {
 void Document::HandleEscKey() {
   for (const nsWeakPtr& weakPtr : Reversed(mTopLayer)) {
     nsCOMPtr<Element> element(do_QueryReferent(weakPtr));
-    if (auto* dialog = HTMLDialogElement::FromNodeOrNull(element)) {
-      dialog->QueueCancelDialog();
-      break;
-    }
-    if (RefPtr<nsGenericHTMLElement> popoverHTMLEl =
-            nsGenericHTMLElement::FromNodeOrNull(element)) {
+    if (RefPtr popoverHTMLEl = nsGenericHTMLElement::FromNodeOrNull(element)) {
       if (element->IsAutoPopover() && element->IsPopoverOpen()) {
         popoverHTMLEl->HidePopover(IgnoreErrors());
         break;
       }
+    }
+    if (auto* dialog = HTMLDialogElement::FromNodeOrNull(element)) {
+      dialog->QueueCancelDialog();
+      break;
     }
   }
 }
@@ -15834,6 +15823,12 @@ void Document::DocAddSizeOfExcludingThis(nsWindowSizes& aWindowSizes) const {
             aWindowSizes.mState.mMallocSizeOf);
   }
 
+  if (mRadioGroupContainer) {
+    aWindowSizes.mDOMSizes.mDOMOtherSize +=
+        mRadioGroupContainer->SizeOfIncludingThis(
+            aWindowSizes.mState.mMallocSizeOf);
+  }
+
   aWindowSizes.mDOMSizes.mDOMOtherSize +=
       mStyledLinks.ShallowSizeOfExcludingThis(
           aWindowSizes.mState.mMallocSizeOf);
@@ -17110,6 +17105,16 @@ void Document::ScheduleResizeObserversNotification() const {
   mResizeObserverController->ScheduleNotification();
 }
 
+void Document::NotifyResizeObservers() {
+  if (mResizeObserverController) {
+    mResizeObserverController->Notify();
+  }
+}
+
+bool Document::HasResizeObservers() const {
+  return mResizeObserverController && mResizeObserverController->IsScheduled();
+}
+
 void Document::ClearStaleServoData() {
   DocumentStyleRootIterator iter(this);
   while (Element* root = iter.GetNextStyleRoot()) {
@@ -17234,6 +17239,12 @@ already_AddRefed<mozilla::dom::Promise> Document::HasStorageAccess(
     return nullptr;
   }
 
+  if (!IsCurrentActiveDocument()) {
+    promise->MaybeRejectWithInvalidStateError(
+        "hasStorageAccess requires an active document");
+    return promise.forget();
+  }
+
   bool hasStorageAccess;
   nsresult rv = HasStorageAccessSync(hasStorageAccess);
   if (NS_FAILED(rv)) {
@@ -17269,16 +17280,16 @@ Document::GetContentBlockingEvents() {
 StorageAccessAPIHelper::PerformPermissionGrant
 Document::CreatePermissionGrantPromise(
     nsPIDOMWindowInner* aInnerWindow, nsIPrincipal* aPrincipal,
-    bool aHasUserInteraction, const Maybe<nsCString>& aTopLevelBaseDomain,
-    bool aFrameOnly) {
+    bool aHasUserInteraction, bool aRequireUserInteraction,
+    const Maybe<nsCString>& aTopLevelBaseDomain, bool aFrameOnly) {
   MOZ_ASSERT(aInnerWindow);
   MOZ_ASSERT(aPrincipal);
   RefPtr<Document> self(this);
   RefPtr<nsPIDOMWindowInner> inner(aInnerWindow);
   RefPtr<nsIPrincipal> principal(aPrincipal);
 
-  return [inner, self, principal, aHasUserInteraction, aTopLevelBaseDomain,
-          aFrameOnly]() {
+  return [inner, self, principal, aHasUserInteraction, aRequireUserInteraction,
+          aTopLevelBaseDomain, aFrameOnly]() {
     RefPtr<StorageAccessAPIHelper::StorageAccessPermissionGrantPromise::Private>
         p = new StorageAccessAPIHelper::StorageAccessPermissionGrantPromise::
             Private(__func__);
@@ -17294,10 +17305,28 @@ Document::CreatePermissionGrantPromise(
     MOZ_ASSERT(promise);
     promise->Then(
         GetCurrentSerialEventTarget(), __func__,
-        [self, p, inner, principal, aHasUserInteraction, aTopLevelBaseDomain,
+        [self, p, inner, principal, aHasUserInteraction,
+         aRequireUserInteraction, aTopLevelBaseDomain,
          aFrameOnly](bool aGranted) {
           if (aGranted) {
             p->Resolve(true, __func__);
+            return;
+          }
+
+          // We require user activation before conducting a permission request
+          // See
+          // https://privacycg.github.io/storage-access/#dom-document-requeststorageaccess
+          // where we "If has transient activation is false: ..." immediately
+          // before we "Let permissionState be the result of requesting
+          // permission to use "storage-access"" from in parallel.
+          if (!aHasUserInteraction && aRequireUserInteraction) {
+            // Report an error to the console for this case
+            nsContentUtils::ReportToConsole(
+                nsIScriptError::errorFlag,
+                nsLiteralCString("requestStorageAccess"), self,
+                nsContentUtils::eDOM_PROPERTIES,
+                "RequestStorageAccessUserGesture");
+            p->Reject(false, __func__);
             return;
           }
 
@@ -17414,17 +17443,9 @@ already_AddRefed<mozilla::dom::Promise> Document::RequestStorageAccess(
     return nullptr;
   }
 
-  // Step 0: Check that we have user activation before proceeding to prevent
-  // rapid calls to the API to leak information.
-  if (!HasValidTransientUserGestureActivation()) {
-    // Report an error to the console for this case
-    nsContentUtils::ReportToConsole(nsIScriptError::errorFlag,
-                                    nsLiteralCString("requestStorageAccess"),
-                                    this, nsContentUtils::eDOM_PROPERTIES,
-                                    "RequestStorageAccessUserGesture");
-    ConsumeTransientUserGestureActivation();
-    promise->MaybeRejectWithNotAllowedError(
-        "requestStorageAccess not allowed"_ns);
+  if (!IsCurrentActiveDocument()) {
+    promise->MaybeRejectWithInvalidStateError(
+        "requestStorageAccess requires an active document");
     return promise.forget();
   }
 
@@ -17536,7 +17557,8 @@ already_AddRefed<mozilla::dom::Promise> Document::RequestStorageAccess(
   // on work changing state to reflect the result of the API. If it resolves,
   // the request was granted. If it rejects it was denied.
   StorageAccessAPIHelper::RequestStorageAccessAsyncHelper(
-      this, inner, bc, NodePrincipal(), true, true,
+      this, inner, bc, NodePrincipal(),
+      self->HasValidTransientUserGestureActivation(), true, true,
       ContentBlockingNotifier::eStorageAccessAPI, true)
       ->Then(
           GetCurrentSerialEventTarget(), __func__,
@@ -17665,8 +17687,8 @@ already_AddRefed<mozilla::dom::Promise> Document::RequestStorageAccessForOrigin(
       GetBrowsingContext(), principal)
       ->Then(
           GetCurrentSerialEventTarget(), __func__,
-          [inner, thirdPartyURI, bc, principal, hasUserActivation, self,
-           promise](Maybe<bool> cookieResult) {
+          [inner, thirdPartyURI, bc, principal, hasUserActivation,
+           aRequireUserActivation, self, promise](Maybe<bool> cookieResult) {
             // Handle the result of the cookie permission check that took place
             // in the ContentParent.
             if (cookieResult.isSome()) {
@@ -17697,7 +17719,8 @@ already_AddRefed<mozilla::dom::Promise> Document::RequestStorageAccessForOrigin(
             // with a user-prompt. This is the part that is async in the
             // typical requestStorageAccess function.
             return StorageAccessAPIHelper::RequestStorageAccessAsyncHelper(
-                self, inner, bc, principal, hasUserActivation, false,
+                self, inner, bc, principal, hasUserActivation,
+                aRequireUserActivation, false,
                 ContentBlockingNotifier::ePrivilegeStorageAccessForOriginAPI,
                 true);
           },
@@ -17857,7 +17880,7 @@ already_AddRefed<Promise> Document::RequestStorageAccessUnderSite(
                       false, __func__);
             }
             return self->CreatePermissionGrantPromise(
-                self->GetInnerWindow(), self->NodePrincipal(), true,
+                self->GetInnerWindow(), self->NodePrincipal(), true, true,
                 Some(serializedSite), false)();
           },
           [](const ContentChild::TestStorageAccessPermissionPromise::
@@ -18030,7 +18053,7 @@ already_AddRefed<Promise> Document::CompleteStorageAccessRequestFromSite(
             // either by prompt doorhanger or autogrant takes place. We already
             // gathered an equivalent grant in requestStorageAccessUnderSite.
             return StorageAccessAPIHelper::RequestStorageAccessAsyncHelper(
-                self, inner, bc, principal, true, false,
+                self, inner, bc, principal, true, true, false,
                 ContentBlockingNotifier::eStorageAccessAPI, false);
           },
           // If the IPC rejects, we should reject our promise here which will
@@ -18343,14 +18366,12 @@ nsICookieJarSettings* Document::CookieJarSettings() {
 }
 
 bool Document::UsingStorageAccess() {
-  // The HasStoragePermission flag in LoadInfo remains fixed when
-  // it is set in the parent process, so we need to check the cache
-  // to see if the permission is granted afterwards.
-  nsPIDOMWindowInner* inner = GetInnerWindow();
-  if (inner && inner->UsingStorageAccess()) {
-    return true;
+  if (WindowContext* wc = GetWindowContext()) {
+    return wc->GetUsingStorageAccess();
   }
 
+  // If we don't yet have a window context, we have to use the decision
+  // from the Document's Channel's LoadInfo directly.
   if (!mChannel) {
     return false;
   }
@@ -18667,20 +18688,6 @@ void Document::GetConnectedShadowRoots(
   AppendToArray(aOut, mComposedShadowRoots);
 }
 
-bool Document::HasPictureInPictureChildElement() const {
-  return mPictureInPictureChildElementCount > 0;
-}
-
-void Document::EnableChildElementInPictureInPictureMode() {
-  mPictureInPictureChildElementCount++;
-  MOZ_ASSERT(mPictureInPictureChildElementCount >= 0);
-}
-
-void Document::DisableChildElementInPictureInPictureMode() {
-  mPictureInPictureChildElementCount--;
-  MOZ_ASSERT(mPictureInPictureChildElementCount >= 0);
-}
-
 void Document::AddMediaElementWithMSE() {
   if (mMediaElementWithMSECount++ == 0) {
     if (WindowGlobalChild* wgc = GetWindowGlobalChild()) {
@@ -18758,6 +18765,13 @@ HighlightRegistry& Document::HighlightRegistry() {
     mHighlightRegistry = MakeRefPtr<class HighlightRegistry>(this);
   }
   return *mHighlightRegistry;
+}
+
+RadioGroupContainer& Document::OwnedRadioGroupContainer() {
+  if (!mRadioGroupContainer) {
+    mRadioGroupContainer = MakeUnique<RadioGroupContainer>();
+  }
+  return *mRadioGroupContainer;
 }
 
 }  // namespace mozilla::dom

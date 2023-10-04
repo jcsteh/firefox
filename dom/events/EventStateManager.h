@@ -289,7 +289,10 @@ class EventStateManager : public nsSupportsWeakReference, public nsIObserver {
 
   NS_DECL_CYCLE_COLLECTION_CLASS_AMBIGUOUS(EventStateManager, nsIObserver)
 
-  static dom::Document* sMouseOverDocument;
+  // The manager in this process that is setting the cursor. In the parent
+  // process it might be null if a remote process is setting the cursor.
+  static EventStateManager* sCursorSettingManager;
+  static void ClearCursorSettingManager() { sCursorSettingManager = nullptr; }
 
   static EventStateManager* GetActiveEventStateManager() { return sActiveESM; }
 
@@ -1149,6 +1152,12 @@ class EventStateManager : public nsSupportsWeakReference, public nsIObserver {
   void NotifyTargetUserActivation(WidgetEvent* aEvent,
                                   nsIContent* aTargetContent);
 
+  /**
+   * https://html.spec.whatwg.org/multipage/popover.html#light-dismiss-open-popovers.
+   */
+  MOZ_CAN_RUN_SCRIPT void LightDismissOpenPopovers(WidgetEvent* aEvent,
+                                                   nsIContent* aTargetContent);
+
   already_AddRefed<EventStateManager> ESMFromContentOrThis(
       nsIContent* aContent);
 
@@ -1160,6 +1169,7 @@ class EventStateManager : public nsSupportsWeakReference, public nsIObserver {
 
   LastMouseDownInfo& GetLastMouseDownInfo(int16_t aButton);
 
+  // These variables are only relevant if we're the cursor-setting manager.
   StyleCursorKind mLockCursor;
   bool mLastFrameConsumedSetCursor = false;
   bool mHidingCursorWhileTyping = false;
@@ -1206,6 +1216,7 @@ class EventStateManager : public nsSupportsWeakReference, public nsIObserver {
   nsCOMPtr<nsIContent> mHoverContent;
   static nsCOMPtr<nsIContent> sDragOverContent;
   nsCOMPtr<nsIContent> mURLTargetContent;
+  nsCOMPtr<nsINode> mPopoverPointerDownTarget;
 
   nsPresContext* mPresContext;      // Not refcnted
   RefPtr<dom::Document> mDocument;  // Doesn't necessarily need to be owner
