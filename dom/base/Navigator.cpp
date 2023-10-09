@@ -54,6 +54,7 @@
 #include "mozilla/dom/StorageManager.h"
 #include "mozilla/dom/TCPSocket.h"
 #include "mozilla/dom/URLSearchParams.h"
+#include "mozilla/dom/UserActivation.h"
 #include "mozilla/dom/VRDisplay.h"
 #include "mozilla/dom/VRDisplayEvent.h"
 #include "mozilla/dom/VRServiceTest.h"
@@ -159,6 +160,7 @@ NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN(Navigator)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mAddonManager)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mWebGpu)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mLocks)
+  NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mUserActivation)
 
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mWindow)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mMediaKeySystemAccessManager)
@@ -244,6 +246,8 @@ void Navigator::Invalidate() {
     mLocks->Shutdown();
     mLocks = nullptr;
   }
+
+  mUserActivation = nullptr;
 
   mSharePromise = nullptr;
 }
@@ -561,7 +565,17 @@ bool Navigator::CookieEnabled() {
   return granted;
 }
 
-bool Navigator::OnLine() { return !NS_IsOffline(); }
+bool Navigator::OnLine() {
+  if (mWindow) {
+    // Check if this tab is set to be offline.
+    BrowsingContext* bc = mWindow->GetBrowsingContext();
+    if (bc && bc->Top()->GetForceOffline()) {
+      return false;
+    }
+  }
+  // Return the default browser value
+  return !NS_IsOffline();
+}
 
 void Navigator::GetBuildID(nsAString& aBuildID, CallerType aCallerType,
                            ErrorResult& aRv) const {
@@ -2276,6 +2290,13 @@ AutoplayPolicy Navigator::GetAutoplayPolicy(HTMLMediaElement& aElement) {
 
 AutoplayPolicy Navigator::GetAutoplayPolicy(AudioContext& aContext) {
   return media::AutoplayPolicy::GetAutoplayPolicy(aContext);
+}
+
+already_AddRefed<dom::UserActivation> Navigator::UserActivation() {
+  if (!mUserActivation) {
+    mUserActivation = new dom::UserActivation(GetWindow());
+  }
+  return do_AddRef(mUserActivation);
 }
 
 }  // namespace mozilla::dom

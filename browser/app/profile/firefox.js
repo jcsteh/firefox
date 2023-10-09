@@ -284,6 +284,12 @@ pref("browser.shell.setDefaultPDFHandler", true);
 // is a known browser, and not when existing handler is another PDF handler such
 // as Acrobat Reader or Nitro PDF.
 pref("browser.shell.setDefaultPDFHandler.onlyReplaceBrowsers", true);
+// Whether or not to we are allowed to prompt the user to set Firefox as their
+// default PDF handler.
+pref("browser.shell.checkDefaultPDF", true);
+// Will be set to `true` if the user indicates that they don't want to be asked
+// again about Firefox being their default PDF handler any more.
+pref("browser.shell.checkDefaultPDF.silencedByUser", false);
 // URL to navigate to when launching Firefox after accepting the Windows Default
 // Browser Agent "Set Firefox as default" call to action.
 pref("browser.shell.defaultBrowserAgent.thanksURL", "https://www.mozilla.org/%LOCALE%/firefox/set-as-default/thanks/");
@@ -316,14 +322,15 @@ pref("browser.startup.couldRestoreSession.count", 0);
 // users as it is not implemented anywhere else.
 #if defined(XP_WIN)
 pref("browser.startup.preXulSkeletonUI", true);
+
+// Whether the checkbox to enable Windows launch on login is shown
+pref("browser.startup.windowsLaunchOnLogin.enabled", false);
+// Whether to show the launch on login infobar notification
+pref("browser.startup.windowsLaunchOnLogin.disableLaunchOnLoginPrompt", false);
 #endif
 
 // Show an upgrade dialog on major upgrades.
 pref("browser.startup.upgradeDialog.enabled", false);
-
-// Don't create the hidden window during startup on
-// platforms that don't always need it (Win/Linux).
-pref("toolkit.lazyHiddenWindow", true);
 
 pref("browser.chrome.site_icons", true);
 // browser.warnOnQuit == false will override all other possible prompts when quitting or restarting
@@ -1789,10 +1796,6 @@ pref("security.mixed_content.block_active_content", true);
 pref("security.insecure_connection_text.enabled", false);
 pref("security.insecure_connection_text.pbmode.enabled", false);
 
-// 1 = allow MITM for certificate pinning checks.
-pref("security.cert_pinning.enforcement_level", 1);
-
-
 // If this turns true, Moz*Gesture events are not called stopPropagation()
 // before content.
 pref("dom.debug.propagate_gesture_events_through_content", false);
@@ -2150,11 +2153,6 @@ pref("browser.tabs.crashReporting.includeURL", false);
 // If true, unprivileged extensions may use experimental APIs on
 // nightly and developer edition.
 pref("extensions.experiments.enabled", false);
-
-#if defined(XP_LINUX) || defined(XP_WIN) || defined(XP_MACOSX)
-  // Allows us to adjust the priority of child processes at the OS level
-  pref("dom.ipc.processPriorityManager.enabled", true);
-#endif
 
 #if defined(XP_WIN)
   pref("dom.ipc.processPriorityManager.backgroundUsesEcoQoS", true);
@@ -2881,7 +2879,11 @@ pref("cookiebanners.ui.desktop.cfrVariant", 0);
 #endif
 
 // Reset Private Browsing Session feature
-pref("browser.privatebrowsing.resetPBM.enabled", false);
+#if defined(NIGHTLY_BUILD)
+  pref("browser.privatebrowsing.resetPBM.enabled", true);
+#else
+  pref("browser.privatebrowsing.resetPBM.enabled", false);
+#endif
 // Whether the reset private browsing panel should ask for confirmation before
 // performing the clear action.
 pref("browser.privatebrowsing.resetPBM.showConfirmationDialog", true);

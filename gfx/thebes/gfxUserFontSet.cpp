@@ -564,7 +564,7 @@ void gfxUserFontEntry::DoLoadNextSrc(bool aIsContinue) {
             // We dispatch with a rather high priority, since somebody actually
             // cares about this font.
             NS_DispatchToCurrentThreadQueue(runnable.forget(),
-                                            EventQueuePriority::Vsync);
+                                            EventQueuePriority::MediumHigh);
           }
           return;
         } else {
@@ -686,6 +686,7 @@ bool gfxUserFontEntry::LoadPlatformFont(uint32_t aSrcIndex,
   RefPtr<gfxUserFontSet> fontSet = GetUserFontSet();
   if (NS_WARN_IF(!fontSet)) {
     free((void*)aOriginalFontData);
+    free((void*)aSanitizedFontData);
     return false;
   }
 

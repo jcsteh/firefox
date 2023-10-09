@@ -158,6 +158,9 @@ const PRIVATE_BROWSING_BINARY = "private_browsing.exe";
 const PRIVATE_BROWSING_EXE_ICON_INDEX = 1;
 const PREF_PRIVATE_BROWSING_SHORTCUT_CREATED =
   "browser.privacySegmentation.createdShortcut";
+// Whether this launch was initiated by the OS.  A launch-on-login will contain
+// the "os-autostart" flag in the initial launch command line.
+let gThisInstanceIsLaunchOnLogin = false;
 
 /**
  * Fission-compatible JSProcess implementations.
@@ -386,10 +389,10 @@ let JSWINDOWACTORS = {
 
   AboutWelcomeShopping: {
     parent: {
-      moduleURI: "resource:///actors/AboutWelcomeParent.jsm",
+      esModuleURI: "resource:///actors/AboutWelcomeParent.sys.mjs",
     },
     child: {
-      moduleURI: "resource:///actors/AboutWelcomeChild.jsm",
+      esModuleURI: "resource:///actors/AboutWelcomeChild.sys.mjs",
       events: {
         Update: {},
       },
@@ -400,10 +403,10 @@ let JSWINDOWACTORS = {
 
   AboutWelcome: {
     parent: {
-      moduleURI: "resource:///actors/AboutWelcomeParent.jsm",
+      esModuleURI: "resource:///actors/AboutWelcomeParent.sys.mjs",
     },
     child: {
-      moduleURI: "resource:///actors/AboutWelcomeChild.jsm",
+      esModuleURI: "resource:///actors/AboutWelcomeChild.sys.mjs",
       events: {
         // This is added so the actor instantiates immediately and makes
         // methods available to the page js on load.
@@ -767,7 +770,6 @@ let JSWINDOWACTORS = {
         // This is added so the actor instantiates immediately and makes
         // methods available to the page js on load.
         DOMDocElementInserted: {},
-        ShoppingTelemetryEvent: { wantUntrusted: true },
         ReportProductAvailable: { wantUntrusted: true },
       },
     },
@@ -1232,6 +1234,10 @@ BrowserGlue.prototype = {
         break;
       case "app-startup":
         this._earlyBlankFirstPaint(subject);
+        gThisInstanceIsLaunchOnLogin = subject.handleFlag(
+          "os-autostart",
+          false
+        );
         break;
     }
   },
@@ -2578,7 +2584,9 @@ BrowserGlue.prototype = {
           }
 
           if (!classification) {
-            if (shortcut) {
+            if (gThisInstanceIsLaunchOnLogin) {
+              classification = "Autostart";
+            } else if (shortcut) {
               classification = "OtherShortcut";
             } else {
               classification = "Other";
@@ -3646,7 +3654,7 @@ BrowserGlue.prototype = {
   _migrateUI() {
     // Use an increasing number to keep track of the current migration state.
     // Completely unrelated to the current Firefox release number.
-    const UI_VERSION = 140;
+    const UI_VERSION = 141;
     const BROWSER_DOCURL = AppConstants.BROWSER_CHROME_URL;
 
     if (!Services.prefs.prefHasUserValue("browser.migration.version")) {
@@ -4226,6 +4234,13 @@ BrowserGlue.prototype = {
     if (currentUIVersion < 140) {
       // Remove browser.fixup.alternate.enabled pref in Bug 1850902.
       Services.prefs.clearUserPref("browser.fixup.alternate.enabled");
+    }
+
+    if (currentUIVersion < 141) {
+      for (const filename of ["signons.sqlite", "signons.sqlite.corrupt"]) {
+        const filePath = PathUtils.join(PathUtils.profileDir, filename);
+        IOUtils.remove(filePath, { ignoreAbsent: true }).catch(console.error);
+      }
     }
 
     // Update the migration version.

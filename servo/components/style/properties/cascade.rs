@@ -553,8 +553,15 @@ struct CascadeData<'a> {
 
 impl<'a> CascadeData<'a> {
     fn note_prioritary_property(&mut self, id: PrioritaryPropertyId) {
+        let new_index = self.longhand_declarations.len();
+        if new_index >= DeclarationIndex::MAX as usize {
+            // This prioritary property is past the amount of declarations we can track. Let's give
+            // up applying it to prevent getting confused.
+            return;
+        }
+
         self.has_prioritary_properties = true;
-        let new_index = self.longhand_declarations.len() as DeclarationIndex;
+        let new_index = new_index as DeclarationIndex;
         let position = &mut self.prioritary_positions[id as usize];
         if position.most_important == DeclarationIndex::MAX {
             // We still haven't seen this property, record the current position as the most
@@ -771,6 +778,9 @@ impl<'a, 'b: 'a> Cascade<'a, 'b> {
 
         self.apply_one_prioritary_property(data, PrioritaryPropertyId::ColorScheme);
         self.apply_one_prioritary_property(data, PrioritaryPropertyId::ForcedColorAdjust);
+
+        // Compute the line height.
+        self.apply_one_prioritary_property(data, PrioritaryPropertyId::LineHeight);
     }
 
     fn apply_non_prioritary_properties(
@@ -887,8 +897,11 @@ impl<'a, 'b: 'a> Cascade<'a, 'b> {
 
     fn compute_zoom(&mut self) {
         debug_assert!(matches!(self.cascade_mode, CascadeMode::Unvisited { .. }));
-        self.context.builder.effective_zoom =
-            self.context.builder.inherited_effective_zoom() * self.context.builder.specified_zoom();
+        self.context.builder.effective_zoom = self
+            .context
+            .builder
+            .inherited_effective_zoom()
+            .compute_effective(self.context.builder.specified_zoom());
     }
 
     fn compute_writing_mode(&mut self) {

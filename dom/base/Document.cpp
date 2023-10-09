@@ -166,6 +166,7 @@
 #include "mozilla/dom/DocumentTimeline.h"
 #include "mozilla/dom/DocumentType.h"
 #include "mozilla/dom/ElementBinding.h"
+#include "mozilla/dom/ErrorEvent.h"
 #include "mozilla/dom/Event.h"
 #include "mozilla/dom/EventListenerBinding.h"
 #include "mozilla/dom/FailedCertSecurityInfoBinding.h"
@@ -207,7 +208,7 @@
 #include "mozilla/dom/ProcessingInstruction.h"
 #include "mozilla/dom/Promise.h"
 #include "mozilla/dom/PromiseNativeHandler.h"
-#include "mozilla/dom/ResizeObserverController.h"
+#include "mozilla/dom/ResizeObserver.h"
 #include "mozilla/dom/RustTypes.h"
 #include "mozilla/dom/SVGElement.h"
 #include "mozilla/dom/SVGDocument.h"
@@ -7114,10 +7115,6 @@ void Document::DeletePresShell() {
   // no point on it.
   MarkUserFontSetDirty();
 
-  if (mResizeObserverController) {
-    mResizeObserverController->ShellDetachedFromDocument();
-  }
-
   if (IsEditingOn()) {
     TurnEditingOff();
   }
@@ -7423,8 +7420,7 @@ void Document::PostStyleSheetApplicableStateChangeEvent(StyleSheet& aSheet) {
   event->SetTrusted(true);
   event->SetTarget(this);
   RefPtr<AsyncEventDispatcher> asyncDispatcher =
-      new AsyncEventDispatcher(this, event);
-  asyncDispatcher->mOnlyChromeDispatch = ChromeOnlyDispatch::eYes;
+      new AsyncEventDispatcher(this, event.forget(), ChromeOnlyDispatch::eYes);
   asyncDispatcher->PostDOMEvent();
 }
 
@@ -7443,8 +7439,7 @@ void Document::PostStyleSheetRemovedEvent(StyleSheet& aSheet) {
   event->SetTrusted(true);
   event->SetTarget(this);
   RefPtr<AsyncEventDispatcher> asyncDispatcher =
-      new AsyncEventDispatcher(this, event);
-  asyncDispatcher->mOnlyChromeDispatch = ChromeOnlyDispatch::eYes;
+      new AsyncEventDispatcher(this, event.forget(), ChromeOnlyDispatch::eYes);
   asyncDispatcher->PostDOMEvent();
 }
 
@@ -15813,9 +15808,9 @@ void Document::DocAddSizeOfExcludingThis(nsWindowSizes& aWindowSizes) const {
         mCSSLoader->SizeOfIncludingThis(aWindowSizes.mState.mMallocSizeOf);
   }
 
-  if (mResizeObserverController) {
-    mResizeObserverController->AddSizeOfIncludingThis(aWindowSizes);
-  }
+  aWindowSizes.mDOMSizes.mDOMResizeObserverControllerSize +=
+      mResizeObservers.ShallowSizeOfExcludingThis(
+          aWindowSizes.mState.mMallocSizeOf);
 
   if (mAttributeStyles) {
     aWindowSizes.mDOMSizes.mDOMOtherSize +=
@@ -16739,36 +16734,46 @@ BrowsingContext* Document::GetBrowsingContext() const {
 }
 
 void Document::NotifyUserGestureActivation() {
-  if (RefPtr<BrowsingContext> bc = GetBrowsingContext()) {
-    bc->PreOrderWalk([&](BrowsingContext* aBC) {
-      WindowContext* windowContext = aBC->GetCurrentWindowContext();
-      if (!windowContext) {
-        return;
-      }
-
-      nsIDocShell* docShell = aBC->GetDocShell();
-      if (!docShell) {
-        return;
-      }
-
-      Document* document = docShell->GetDocument();
-      if (!document) {
-        return;
-      }
-
-      // XXXedgar we probably could just check `IsInProcess()` after fission
-      // enable.
-      if (NodePrincipal()->Equals(document->NodePrincipal())) {
-        windowContext->NotifyUserGestureActivation();
-      }
-    });
-
-    for (bc = bc->GetParent(); bc; bc = bc->GetParent()) {
-      if (WindowContext* windowContext = bc->GetCurrentWindowContext()) {
-        windowContext->NotifyUserGestureActivation();
-      }
-    }
+  // https://html.spec.whatwg.org/multipage/interaction.html#activation-notification
+  // 1. "Assert: document is fully active."
+  RefPtr<BrowsingContext> currentBC = GetBrowsingContext();
+  if (!currentBC) {
+    return;
   }
+
+  RefPtr<WindowContext> currentWC = GetWindowContext();
+  if (!currentWC) {
+    return;
+  }
+
+  // 2. "Let windows be « document's relevant global object"
+  // Instead of assembling a list, we just call notify for wanted windows as we
+  // find them
+  currentWC->NotifyUserGestureActivation();
+
+  // 3. "...windows with the active window of each of document's ancestor
+  // navigables."
+  for (WindowContext* wc = currentWC; wc; wc = wc->GetParentWindowContext()) {
+    wc->NotifyUserGestureActivation();
+  }
+
+  // 4. "windows with the active window of each of document's descendant
+  // navigables, filtered to include only those navigables whose active
+  // document's origin is same origin with document's origin"
+  currentBC->PreOrderWalk([&](BrowsingContext* bc) {
+    WindowContext* wc = bc->GetCurrentWindowContext();
+    if (!wc) {
+      return;
+    }
+
+    // Check same-origin as current document
+    WindowGlobalChild* wgc = wc->GetWindowGlobalChild();
+    if (!wgc || !wgc->IsSameOriginWith(currentWC)) {
+      return;
+    }
+
+    wc->NotifyUserGestureActivation();
+  });
 }
 
 bool Document::HasBeenUserGestureActivated() {
@@ -17070,24 +17075,24 @@ bool Document::IsExtensionPage() const {
 }
 
 void Document::AddResizeObserver(ResizeObserver& aObserver) {
-  if (!mResizeObserverController) {
-    mResizeObserverController = MakeUnique<ResizeObserverController>(this);
+  MOZ_ASSERT(!mResizeObservers.Contains(&aObserver));
+  // Insert internal ResizeObservers before scripted ones, since they may have
+  // observable side-effects and we don't want to expose the insertion time.
+  if (aObserver.HasNativeCallback()) {
+    mResizeObservers.InsertElementAt(0, &aObserver);
+  } else {
+    mResizeObservers.AppendElement(&aObserver);
   }
-  mResizeObserverController->AddResizeObserver(aObserver);
 }
 
 void Document::RemoveResizeObserver(ResizeObserver& aObserver) {
-  MOZ_DIAGNOSTIC_ASSERT(mResizeObserverController, "No controller?");
-  if (MOZ_UNLIKELY(!mResizeObserverController)) {
-    return;
-  }
-  mResizeObserverController->RemoveResizeObserver(aObserver);
+  MOZ_ASSERT(mResizeObservers.Contains(&aObserver));
+  mResizeObservers.RemoveElement(&aObserver);
 }
 
 PermissionDelegateHandler* Document::GetPermissionDelegateHandler() {
   if (!mPermissionDelegateHandler) {
-    mPermissionDelegateHandler =
-        mozilla::MakeAndAddRef<PermissionDelegateHandler>(this);
+    mPermissionDelegateHandler = MakeAndAddRef<PermissionDelegateHandler>(this);
   }
 
   if (!mPermissionDelegateHandler->Initialize()) {
@@ -17098,21 +17103,127 @@ PermissionDelegateHandler* Document::GetPermissionDelegateHandler() {
 }
 
 void Document::ScheduleResizeObserversNotification() const {
-  if (!mResizeObserverController) {
+  if (!mPresShell) {
     return;
   }
+  if (nsRefreshDriver* rd = mPresShell->GetRefreshDriver()) {
+    rd->EnsureResizeObserverUpdateHappens();
+  }
+}
 
-  mResizeObserverController->ScheduleNotification();
+static void FlushLayoutForWholeBrowsingContextTree(Document& aDoc) {
+  if (BrowsingContext* bc = aDoc.GetBrowsingContext()) {
+    RefPtr<BrowsingContext> top = bc->Top();
+    top->PreOrderWalk([](BrowsingContext* aCur) {
+      if (Document* doc = aCur->GetExtantDocument()) {
+        doc->FlushPendingNotifications(FlushType::Layout);
+      }
+    });
+  } else {
+    // If there is no browsing context, we just flush this document itself.
+    aDoc.FlushPendingNotifications(FlushType::Layout);
+  }
 }
 
 void Document::NotifyResizeObservers() {
-  if (mResizeObserverController) {
-    mResizeObserverController->Notify();
+  if (mResizeObservers.IsEmpty()) {
+    return;
+  }
+
+  uint32_t shallowestTargetDepth = 0;
+  while (true) {
+    // Flush layout, so that any callback functions' style changes / resizes
+    // get a chance to take effect. The callback functions may do changes in its
+    // sub-documents or ancestors, so flushing layout for the whole browsing
+    // context tree makes sure we don't miss anyone.
+    FlushLayoutForWholeBrowsingContextTree(*this);
+
+    // To avoid infinite resize loop, we only gather all active observations
+    // that have the depth of observed target element more than current
+    // shallowestTargetDepth.
+    GatherAllActiveResizeObservations(shallowestTargetDepth);
+
+    if (!HasAnyActiveResizeObservations()) {
+      break;
+    }
+
+    DebugOnly<uint32_t> oldShallowestTargetDepth = shallowestTargetDepth;
+    shallowestTargetDepth = BroadcastAllActiveResizeObservations();
+    NS_ASSERTION(oldShallowestTargetDepth < shallowestTargetDepth,
+                 "shallowestTargetDepth should be getting strictly deeper");
+  }
+
+  if (HasAnySkippedResizeObservations()) {
+    if (nsCOMPtr<nsPIDOMWindowInner> window = GetInnerWindow()) {
+      // Per spec, we deliver an error if the document has any skipped
+      // observations. Also, we re-register via ScheduleNotification().
+      RootedDictionary<ErrorEventInit> init(RootingCx());
+      init.mMessage.AssignLiteral(
+          "ResizeObserver loop completed with undelivered notifications.");
+      init.mBubbles = false;
+      init.mCancelable = false;
+
+      nsEventStatus status = nsEventStatus_eIgnore;
+      nsCOMPtr<nsIScriptGlobalObject> sgo = do_QueryInterface(window);
+      MOZ_ASSERT(sgo);
+      if (NS_WARN_IF(sgo->HandleScriptError(init, &status))) {
+        status = nsEventStatus_eIgnore;
+      }
+    } else {
+      // We don't fire error events at any global for non-window JS on the main
+      // thread.
+    }
+
+    // We need to deliver pending notifications in next cycle.
+    ScheduleResizeObserversNotification();
   }
 }
 
-bool Document::HasResizeObservers() const {
-  return mResizeObserverController && mResizeObserverController->IsScheduled();
+void Document::GatherAllActiveResizeObservations(uint32_t aDepth) {
+  for (ResizeObserver* observer : mResizeObservers) {
+    observer->GatherActiveObservations(aDepth);
+  }
+}
+
+uint32_t Document::BroadcastAllActiveResizeObservations() {
+  uint32_t shallowestTargetDepth = std::numeric_limits<uint32_t>::max();
+
+  // Copy the observers as this invokes the callbacks and could register and
+  // unregister observers at will.
+  const auto observers =
+      ToTArray<nsTArray<RefPtr<ResizeObserver>>>(mResizeObservers);
+  for (const auto& observer : observers) {
+    // MOZ_KnownLive because 'observers' is guaranteed to keep it
+    // alive.
+    //
+    // This can go away once
+    // https://bugzilla.mozilla.org/show_bug.cgi?id=1620312 is fixed.
+    uint32_t targetDepth =
+        MOZ_KnownLive(observer)->BroadcastActiveObservations();
+    if (targetDepth < shallowestTargetDepth) {
+      shallowestTargetDepth = targetDepth;
+    }
+  }
+
+  return shallowestTargetDepth;
+}
+
+bool Document::HasAnySkippedResizeObservations() const {
+  for (const auto& observer : mResizeObservers) {
+    if (observer->HasSkippedObservations()) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool Document::HasAnyActiveResizeObservations() const {
+  for (const auto& observer : mResizeObservers) {
+    if (observer->HasActiveObservations()) {
+      return true;
+    }
+  }
+  return false;
 }
 
 void Document::ClearStaleServoData() {

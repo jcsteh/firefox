@@ -3,6 +3,10 @@ tags = "search-telemetry"
 support-files = ["head.js"]
 
 ["browser_search_glean_serp_event_telemetry_categorization_enabled_by_nimbus_variable.js"]
+support-files = [
+  "domain_category_mappings.json",
+  "searchTelemetryDomainCategorizationReporting.html",
+]
 
 ["browser_search_glean_serp_event_telemetry_enabled_by_nimbus_variable.js"]
 support-files = ["searchTelemetryAd.html"]
@@ -107,9 +111,6 @@ support-files = [
 ["browser_search_telemetry_searchbar.js"]
 https_first_disabled = true
 support-files = [
-  "slow_loading_page_with_ads_on_load_event.html",
-  "slow_loading_page_with_ads.html",
-  "slow_loading_page_with_ads.sjs",
   "telemetrySearchSuggestions.sjs",
   "telemetrySearchSuggestions.xml",
 ]
@@ -118,25 +119,35 @@ support-files = [
 support-files = ["searchTelemetryAd_shopping.html"]
 
 ["browser_search_telemetry_sources.js"]
-support-files = [
-  "searchTelemetry.html",
-  "searchTelemetryAd.html",
-]
+support-files = ["searchTelemetry.html", "searchTelemetryAd.html"]
 
 ["browser_search_telemetry_sources_ads.js"]
 support-files = [
   "searchTelemetry.html",
   "searchTelemetryAd.html",
+]
+
+["browser_search_telemetry_sources_ads_clicks.js"]
+support-files = [
+  "searchTelemetryAd.html",
+]
+
+["browser_search_telemetry_sources_ads_data_attributes.js"]
+support-files = [
   "searchTelemetryAd_dataAttributes.html",
   "searchTelemetryAd_dataAttributes_href.html",
   "searchTelemetryAd_dataAttributes_none.html",
+]
+
+["browser_search_telemetry_sources_ads_load_events.js"]
+support-files = [
+  "slow_loading_page_with_ads_on_load_event.html",
+  "slow_loading_page_with_ads.html",
+  "slow_loading_page_with_ads.sjs",
 ]
 
 ["browser_search_telemetry_sources_in_content.js"]
 support-files = ["searchTelemetryAd_searchbox_with_content.html"]
 
 ["browser_search_telemetry_sources_navigation.js"]
-support-files = [
-  "searchTelemetry.html",
-  "searchTelemetryAd.html",
-]
+support-files = ["searchTelemetry.html", "searchTelemetryAd.html"]
