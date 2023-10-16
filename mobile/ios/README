@@ -18,9 +18,6 @@ being investigated.
 # Enable the iOS application target.
 ac_add_options --enable-application=mobile/ios
 
-# Disable building unit tests on iOS, as these are not working yet.
-ac_add_options --disable-tests
-
 # Specify the relevant target for the iOS simulator.
 # Note that runninng on an iOS device is more complex, see below.
 ac_add_options --target=aarch64-apple-ios-sim  # simulator (apple silicon)

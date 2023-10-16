@@ -15,7 +15,7 @@ using namespace mozilla::gtest;
 using namespace mozilla::media;
 
 // Spawning the death test child process aborts on Android.
-#if !defined(ANDROID)
+#if !defined(ANDROID) && !defined(XP_IOS)
 
 // Kept here for reference as it can be handy during development.
 #  define DISABLE_CRASH_REPORTING  \
