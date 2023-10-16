@@ -1,63 +1,53 @@
 # iOS Port Prototype
 
-Currently, the iOS port prototype cannot easily be built in the same way as we
-build and run applications for other platforms.
+The current iOS port prototype is built in 2 parts. The core libraries such as
+XUL are built as-normal, and then an xcode project is used to bundle these
+libraries into an iOS application, which can be deployed to a device or
+simulator.
 
-This project currently loads XUL through mozglue and then starts `XRE_main` like
-we do on desktop, handling full control over to XUL. This is the same as the
-original approach which was removed in
-https://phabricator.services.mozilla.com/D25800, and the code is heavily
-inspired by that old project.
+Currently there is no support for running automated iOS tests, though this is
+being investigated.
 
-## Building (minimal UI)
+## Simulator
 
-1. Update the .mozconfig to be as it is described below. Some things like the
-   OBJDIR are hard-coded in the xcode project file currently, so need to be
-   configured correctly.
+### Building
+
+1. Update your .mozconfig as described below:
+
+```
+# Enable the iOS application target.
+ac_add_options --enable-application=mobile/ios
+
+# Disable building unit tests on iOS, as these are not working yet.
+ac_add_options --disable-tests
+
+# Specify the relevant target for the iOS simulator.
+# Note that runninng on an iOS device is more complex, see below.
+ac_add_options --target=aarch64-apple-ios-sim  # simulator (apple silicon)
+```
 
 2. Build the main core of XUL with `./mach build` as normal.
 
-3. Once the build is finished, open the xcode project, and attempt to run the
-   project in the iOS simulator.
+### Running
 
-   The build script in the xcode project will copy the relevant files from the objdir into the final bundle's path
+Currently the in-tree wrapper for Gecko on iOS is the minimal "TestRunner"
+application. This can be run in one of the following ways:
 
-### .mozconfig
+1. If you have a simulator open or a device configured, you can use the
+   `./mach run` command to install `TestRunner` on the simulator, and launch
+   it. Note that to use `./mach run` with a real device, you will need to have
+   `ios-deploy` installed, and your signing team configured through the xcode
+   project.
 
-The following is a .mozconfig which can be used to build a debug iOS simulator
-version of the iOS prototype on an apple-silicon macbook.
+2. You can open the xcode project at
+   `mobile/ios/TestRunner/TestRunner.xcodeproj`, and run it from there.
 
-```
-# Enable this target application.
-# Note that this only actually builds the libraries (i.e.  XUL), and doesn't
-# actually build a full iOS application.
-ac_add_options --enable-application=mobile/ios
+## Real Device
 
-# Tests like c++ unit tests aren't working on iOS yet, so we need to disable
-# building them.
-ac_add_options --disable-tests
+### Building
 
-# The `DEBUG` status of XUL needs to match the debug status of the xcode
-# project. Given that you're probably running in the emulator in debug mode -
-# you'll need `--enable-debug`.
-# NOTE: You can add `#undef DEBUG` to `main.mm` (or `#define DEBUG`) to avoid
-# the JS header assertion, and the browser will generally work with mismatched
-# DEBUG statuses right now, but it's not ideal.
-ac_add_options --enable-debug
-
-# In order to target the iOS simulator, you need to explicitly specify an iOS
-# simulator target. This is the target to use on apple silicon, I haven't tried
-# building on an x86-64 macbook,
-ac_add_options --target=aarch64-apple-ios-sim
-
-# Unfortunately the OBJDIR is hard-coded in the xcode project file right now, so
-# you'll need to build with specifically this objdir path.
-mk_add_options MOZ_OBJDIR=@TOPSRCDIR@/obj-firefox
-```
-
-### Real Device Building
-
-If you want to build for a real iOS device, you'll need to specify some additional options:
+To build for a real device, you'll need to provide some extra options in the
+`.mozconfig`:
 
 ```
 # The target for a real iOS device is different than the simulator. This should
@@ -82,15 +72,7 @@ on the project is my apple developer account. You'll need to modify the signing
 team in xcode to your own apple developer account to get the signing to work,
 and then approve that developer through the phone's settings interface.
 
-### Building (desktop browser UI)
+### Running
 
-It is also currently possible to run the desktop browser UI (in a somewhat
-broken state) on iOS, which can be helpful for testing things which require
-browser features such as a URL bar.
-
-This will be built & run in a similar manner to the minimal UI, as above.
-You'll need to change the options to:
-
-```
-ac_add_options --enable-application=browser
-```
+Running on a device is similar to the simulator section, however you will need
+to have the `ios-deploy` tool installed to use `./mach run` with a real device.
