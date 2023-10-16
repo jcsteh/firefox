@@ -34,6 +34,7 @@
 #include "gfxImageSurface.h"
 #include "gfxContext.h"
 #include "nsObjCExceptions.h"
+#include "nsQueryObject.h"
 #include "nsRegion.h"
 #include "nsTArray.h"
 #include "TextInputHandler.h"
@@ -124,6 +125,8 @@ class nsAutoRetainUIKitObject {
 - (void)touchesCancelled:(NSSet<UITouch*>*)touches withEvent:(UIEvent*)event;
 - (void)touchesEnded:(NSSet<UITouch*>*)touches withEvent:(UIEvent*)event;
 - (void)touchesMoved:(NSSet<UITouch*>*)touches withEvent:(UIEvent*)event;
+// Reacts to the view being resized.
+- (void)layoutSubviews;
 
 - (void)markLayerForDisplay;
 - (CALayer*)rootCALayer;
@@ -327,6 +330,20 @@ class nsAutoRetainUIKitObject {
   [self sendTouchEvent:eTouchMove
                touches:[event allTouches]
                 widget:mGeckoChild];
+}
+
+- (void)layoutSubviews {
+  ALOG("[ChildView[%p] layoutSubviews", self);
+  if (!mGeckoChild ||
+      mGeckoChild->GetWindowType() != nsIWidget::WindowType::TopLevel) {
+    return;
+  }
+
+  CGFloat scaleFactor = [self contentScaleFactor];
+  mGeckoChild->Resize(self.frame.origin.x * scaleFactor,
+                      self.frame.origin.y * scaleFactor,
+                      self.frame.size.width * scaleFactor,
+                      self.frame.size.height * scaleFactor, false);
 }
 
 - (BOOL)canBecomeFirstResponder {
@@ -713,6 +730,8 @@ class nsAutoRetainUIKitObject {
 
 @end
 
+NS_IMPL_ISUPPORTS_INHERITED(nsWindow, nsBaseWidget, nsWindow);
+
 nsWindow::nsWindow()
     : mNativeView(nullptr),
       mVisible(false),
@@ -754,22 +773,7 @@ nsresult nsWindow::Create(nsIWidget* aParent, nsNativeWidget aNativeParent,
   if (parent == nullptr && nativeParent) parent = nativeParent->mGeckoChild;
   if (parent && nativeParent == nullptr) nativeParent = parent->mNativeView;
 
-  // for toplevel windows, bounds are fixed to full screen size
-  if (parent == nullptr) {
-    if (nsAppShell::gRootViewController == nil) {
-      RefPtr<widget::Screen> screen =
-          widget::ScreenManager::GetSingleton().GetPrimaryScreen();
-      mBounds = screen->GetRect();
-    } else {
-      CGRect cgRect = [nsAppShell::gRootViewController.view.window bounds];
-      mBounds.x = cgRect.origin.x;
-      mBounds.y = cgRect.origin.y;
-      mBounds.width = cgRect.size.width;
-      mBounds.height = cgRect.size.height;
-    }
-  } else {
-    mBounds = aRect;
-  }
+  mBounds = aRect;
 
   ALOG("nsWindow[%p]::Create bounds: %d %d %d %d", (void*)this, mBounds.x,
        mBounds.y, mBounds.width, mBounds.height);
@@ -778,7 +782,7 @@ nsresult nsWindow::Create(nsIWidget* aParent, nsNativeWidget aNativeParent,
   mWindowType = WindowType::TopLevel;
   mBorderStyle = BorderStyle::Default;
 
-  Inherited::BaseCreate(aParent, aInitData);
+  nsBaseWidget::BaseCreate(aParent, aInitData);
 
   NS_ASSERTION(IsTopLevel() || parent,
                "non top level window doesn't have a parent!");
@@ -795,12 +799,6 @@ nsresult nsWindow::Create(nsIWidget* aParent, nsNativeWidget aNativeParent,
 
   if (nativeParent) {
     [nativeParent addSubview:mNativeView];
-  } else if (aInitData->mWindowType != widget::WindowType::Invisible) {
-    MOZ_DIAGNOSTIC_ASSERT(!nsAppShell::gRootWindow, "multiple visible root windows?");
-    nsAppShell::gRootWindow = this;
-    if (nsAppShell::gRootViewController) {
-      [nsAppShell::gRootViewController.view addSubview:mNativeView];
-    }
   }
 
   CGFloat scaleFactor = [UIScreen mainScreen].scale;
@@ -815,10 +813,6 @@ nsresult nsWindow::Create(nsIWidget* aParent, nsNativeWidget aNativeParent,
 }
 
 void nsWindow::Destroy() {
-  if (nsAppShell::gRootWindow == this) {
-    nsAppShell::gRootWindow = nullptr;
-  }
-
   for (uint32_t i = 0; i < mChildren.Length(); ++i) {
     // why do we still have children?
     mChildren[i]->SetParent(nullptr);
@@ -846,9 +840,9 @@ void nsWindow::Show(bool aState) {
   if (aState != mVisible) {
     mNativeView.hidden = aState ? NO : YES;
     if (aState) {
-      UIView* parentView =
-          mParent ? mParent->mNativeView : nsAppShell::gRootViewController.view;
-      [parentView bringSubviewToFront:mNativeView];
+      if (mParent) {
+        [mParent->mNativeView bringSubviewToFront:mNativeView];
+      }
       [mNativeView setNeedsDisplay];
     }
     mVisible = aState;
@@ -864,7 +858,9 @@ void nsWindow::Move(double aX, double aY) {
   mBounds.x = aX;
   mBounds.y = aY;
 
-  mNativeView.frame = DevPixelsToUIKitPoints(mBounds, BackingScaleFactor());
+  if (mWindowType != WindowType::TopLevel) {
+    mNativeView.frame = DevPixelsToUIKitPoints(mBounds, BackingScaleFactor());
+  }
 
   if (mVisible) [mNativeView setNeedsDisplay];
 
@@ -886,7 +882,10 @@ void nsWindow::Resize(double aX, double aY, double aWidth, double aHeight,
     mBounds.height = aHeight;
   }
 
-  [mNativeView setFrame:DevPixelsToUIKitPoints(mBounds, BackingScaleFactor())];
+  if (mWindowType != WindowType::TopLevel) {
+    [mNativeView
+        setFrame:DevPixelsToUIKitPoints(mBounds, BackingScaleFactor())];
+  }
 
   if (mVisible && aRepaint) [mNativeView setNeedsDisplay];
 
@@ -902,7 +901,10 @@ void nsWindow::Resize(double aWidth, double aHeight, bool aRepaint) {
   mBounds.width = aWidth;
   mBounds.height = aHeight;
 
-  [mNativeView setFrame:DevPixelsToUIKitPoints(mBounds, BackingScaleFactor())];
+  if (mWindowType != WindowType::TopLevel) {
+    [mNativeView
+        setFrame:DevPixelsToUIKitPoints(mBounds, BackingScaleFactor())];
+  }
 
   if (mVisible && aRepaint) [mNativeView setNeedsDisplay];
 
@@ -914,11 +916,11 @@ void nsWindow::SetSizeMode(nsSizeMode aMode) {
     return;
   }
 
+  // FIXME: Delegate this to our embedder.
   mSizeMode = static_cast<nsSizeMode>(aMode);
   if (aMode == nsSizeMode_Maximized || aMode == nsSizeMode_Fullscreen) {
     // Resize to fill screen
-    // nsBaseWidget::InfallibleMakeFullScreen(true);
-    [mNativeView setFrame:mNativeView.window.screen.applicationFrame];
+    nsBaseWidget::InfallibleMakeFullScreen(true);
   }
   ReportSizeModeEvent(aMode);
 }
@@ -1219,5 +1221,18 @@ already_AddRefed<nsIWidget> nsIWidget::CreateTopLevelWindow() {
 
 already_AddRefed<nsIWidget> nsIWidget::CreateChildWindow() {
   nsCOMPtr<nsIWidget> window = new nsWindow();
+  return window.forget();
+}
+
+/* static */
+already_AddRefed<nsWindow> nsWindow::From(nsPIDOMWindowOuter* aDOMWindow) {
+  nsCOMPtr<nsIWidget> widget =
+      mozilla::widget::WidgetUtils::DOMWindowToWidget(aDOMWindow);
+  return From(widget);
+}
+
+/* static */
+already_AddRefed<nsWindow> nsWindow::From(nsIWidget* aWidget) {
+  RefPtr<nsWindow> window = do_QueryObject(aWidget);
   return window.forget();
 }

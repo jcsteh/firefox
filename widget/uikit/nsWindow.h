@@ -23,21 +23,29 @@ namespace mozilla::widget {
 class TextInputHandler;
 }
 
-class nsWindow final : public nsBaseWidget {
-  typedef nsBaseWidget Inherited;
+#define NS_WINDOW_IID                                \
+  {                                                  \
+    0x5e6fd559, 0xb3f9, 0x40c9, {                    \
+      0x92, 0xd1, 0xef, 0x80, 0xb4, 0xf9, 0x69, 0xe9 \
+    }                                                \
+  }
 
+class nsWindow final : public nsBaseWidget {
  public:
   nsWindow();
 
-  NS_INLINE_DECL_REFCOUNTING_INHERITED(nsWindow, Inherited)
+  NS_DECLARE_STATIC_IID_ACCESSOR(NS_WINDOW_IID)
+
+  NS_DECL_ISUPPORTS_INHERITED
 
   //
   // nsIWidget
   //
 
-  [[nodiscard]] virtual nsresult Create(nsIWidget* aParent, nsNativeWidget aNativeParent,
-                                        const LayoutDeviceIntRect& aRect,
-                                        mozilla::widget::InitData* aInitData = nullptr) override;
+  [[nodiscard]] virtual nsresult Create(
+      nsIWidget* aParent, nsNativeWidget aNativeParent,
+      const LayoutDeviceIntRect& aRect,
+      mozilla::widget::InitData* aInitData = nullptr) override;
   virtual void Destroy() override;
   virtual void Show(bool aState) override;
   virtual void Enable(bool aState) override {}
@@ -54,7 +62,8 @@ class nsWindow final : public nsBaseWidget {
   virtual void SetSizeMode(nsSizeMode aMode) override;
   void EnteredFullScreen(bool aFullScreen);
   virtual void Resize(double aWidth, double aHeight, bool aRepaint) override;
-  virtual void Resize(double aX, double aY, double aWidth, double aHeight, bool aRepaint) override;
+  virtual void Resize(double aX, double aY, double aWidth, double aHeight,
+                      bool aRepaint) override;
   virtual LayoutDeviceIntRect GetScreenBounds() override;
   void ReportMoveEvent();
   void ReportSizeEvent();
@@ -66,13 +75,16 @@ class nsWindow final : public nsBaseWidget {
     // XXX: terrible
     return 326.0f;
   }
-  virtual double GetDefaultScaleInternal() override { return BackingScaleFactor(); }
+  virtual double GetDefaultScaleInternal() override {
+    return BackingScaleFactor();
+  }
   virtual int32_t RoundsWidgetCoordinatesTo() override;
 
   virtual nsresult SetTitle(const nsAString& aTitle) override { return NS_OK; }
 
   virtual void Invalidate(const LayoutDeviceIntRect& aRect) override;
-  virtual nsresult DispatchEvent(mozilla::WidgetGUIEvent* aEvent, nsEventStatus& aStatus) override;
+  virtual nsresult DispatchEvent(mozilla::WidgetGUIEvent* aEvent,
+                                 nsEventStatus& aStatus) override;
 
   void WillPaintWindow();
   bool PaintWindow(LayoutDeviceIntRegion aRegion);
@@ -84,9 +96,12 @@ class nsWindow final : public nsBaseWidget {
   virtual void SetInputContext(const InputContext& aContext,
                                const InputContextAction& aAction) override;
   virtual InputContext GetInputContext() override;
-  virtual TextEventDispatcherListener* GetNativeTextEventDispatcherListener() override;
+  virtual TextEventDispatcherListener* GetNativeTextEventDispatcherListener()
+      override;
 
-  mozilla::widget::TextInputHandler* GetTextInputHandler() const { return mTextInputHandler; }
+  mozilla::widget::TextInputHandler* GetTextInputHandler() const {
+    return mTextInputHandler;
+  }
   bool IsVirtualKeyboardDisabled() const;
 
   /*
@@ -108,15 +123,18 @@ class nsWindow final : public nsBaseWidget {
   // not the main thread.
   void SuspendAsyncCATransactions();
 
-  // Called when we know that the current main thread paint will be completed once
-  // the main thread goes back to the event loop.
+  // Called when we know that the current main thread paint will be completed
+  // once the main thread goes back to the event loop.
   void MaybeScheduleUnsuspendAsyncCATransactions();
 
-  // Called from the runnable dispatched by MaybeScheduleUnsuspendAsyncCATransactions().
-  // At this point we know that the main thread is done handling the visual change
-  // (such as a window resize) and we can start modifying CALayers from the
-  // compositor thread again.
+  // Called from the runnable dispatched by
+  // MaybeScheduleUnsuspendAsyncCATransactions(). At this point we know that the
+  // main thread is done handling the visual change (such as a window resize)
+  // and we can start modifying CALayers from the compositor thread again.
   void UnsuspendAsyncCATransactions();
+
+  static already_AddRefed<nsWindow> From(nsPIDOMWindowOuter* aDOMWindow);
+  static already_AddRefed<nsWindow> From(nsIWidget* aWidget);
 
  protected:
   virtual ~nsWindow();
@@ -147,5 +165,7 @@ class nsWindow final : public nsBaseWidget {
   static void DumpWindows(const nsTArray<nsWindow*>& wins, int indent = 0);
   static void LogWindow(nsWindow* win, int index, int indent);
 };
+
+NS_DEFINE_STATIC_IID_ACCESSOR(nsWindow, NS_WINDOW_IID)
 
 #endif /* NSWINDOW_H_ */

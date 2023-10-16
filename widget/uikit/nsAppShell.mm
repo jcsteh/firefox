@@ -6,15 +6,16 @@
 #import <UIKit/UIApplication.h>
 #import <UIKit/UIScreen.h>
 #import <UIKit/UIWindow.h>
-#import <UIKit/UIViewController.h>
 
 #include "mozilla/AvailableMemoryWatcher.h"
+#include "mozilla/Components.h"
 #include "gfxPlatform.h"
 #include "nsAppShell.h"
 #include "nsCOMPtr.h"
 #include "nsDirectoryServiceDefs.h"
 #include "nsObjCExceptions.h"
 #include "nsString.h"
+#include "nsIAppStartup.h"
 #include "nsIRollupListener.h"
 #include "nsIWidget.h"
 #include "nsThreadUtils.h"
@@ -30,45 +31,10 @@ using namespace mozilla;
 using namespace mozilla::widget;
 
 nsAppShell* nsAppShell::gAppShell = NULL;
-UIViewController* nsAppShell::gRootViewController = nil;
-StaticRefPtr<nsWindow> nsAppShell::gRootWindow;
 
 #define ALOG(args...)    \
   fprintf(stderr, args); \
   fprintf(stderr, "\n")
-
-// ViewController
-@interface ViewController : UIViewController
-@end
-
-@implementation ViewController
-
-- (void)loadView {
-  nsAppShell::gRootViewController = self;
-  ALOG("[ViewController loadView]");
-  CGRect r = {{0, 0}, {100, 100}};
-  self.view = [[UIView alloc] initWithFrame:r];
-  [self.view setBackgroundColor:UIColor.systemBackgroundColor];
-
-  // If the root window was already created, add it to our view.
-  if (nsAppShell::gRootWindow) {
-    [self.view addSubview:(UIView*)nsAppShell::gRootWindow->GetNativeData(NS_NATIVE_WIDGET)];
-  }
-}
-
-- (void)viewWillLayoutSubviews {
-  // FIXME: This will forcibly resize `gRootWindow` to fill `applicationFrame`,
-  // and is temporary. We should remove this and use UIKit layout or similar
-  // once we get a proper embedding story.
-  auto appFrame = self.view.window.screen.applicationFrame;
-  if (nsAppShell::gRootWindow) {
-    auto scaleFactor = nsAppShell::gRootWindow->BackingScaleFactor();
-    nsAppShell::gRootWindow->Resize(
-        appFrame.origin.x * scaleFactor, appFrame.origin.y * scaleFactor,
-        appFrame.size.width * scaleFactor, appFrame.size.height * scaleFactor, false);
-  }
-}
-@end
 
 // AppShellDelegate
 //
@@ -179,7 +145,15 @@ nsresult nsAppShell::Init() {
     InitMemoryPressureObserver();
   }
 
-  return nsBaseAppShell::Init();
+  nsresult rv = nsBaseAppShell::Init();
+
+  nsCOMPtr<nsIObserverService> obsServ =
+      mozilla::services::GetObserverService();
+  if (obsServ) {
+    obsServ->AddObserver(this, "profile-after-change", false);
+  }
+
+  return rv;
 }
 
 void nsAppShell::InitMemoryPressureObserver() {
@@ -231,6 +205,34 @@ void nsAppShell::OnMemoryPressureChanged(
   RefPtr<mozilla::nsAvailableMemoryWatcherBase> watcher(
       nsAvailableMemoryWatcherBase::GetSingleton());
   watcher->OnMemoryPressureChanged(geckoPressureLevel);
+}
+
+NS_IMETHODIMP nsAppShell::Observe(nsISupports* aSubject, const char* aTopic,
+                                  const char16_t* aData) {
+  bool removeObserver = false;
+  if (!strcmp(aTopic, "profile-after-change")) {
+    // Gecko on Android follows the Android app model where it never
+    // stops until it is killed by the system or told explicitly to
+    // quit. Therefore, we should *not* exit Gecko when there is no
+    // window or the last window is closed. nsIAppStartup::Quit will
+    // still force Gecko to exit.
+    nsCOMPtr<nsIAppStartup> appStartup = components::AppStartup::Service();
+    if (appStartup) {
+      appStartup->EnterLastWindowClosingSurvivalArea();
+    }
+    removeObserver = true;
+  } else {
+    return nsBaseAppShell::Observe(aSubject, aTopic, aData);
+  }
+
+  if (removeObserver) {
+    nsCOMPtr<nsIObserverService> obsServ =
+        mozilla::services::GetObserverService();
+    if (obsServ) {
+      obsServ->RemoveObserver(this, aTopic);
+    }
+  }
+  return NS_OK;
 }
 
 // ProcessGeckoEvents

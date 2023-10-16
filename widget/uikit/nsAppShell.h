@@ -25,6 +25,8 @@ class nsWindow;
 
 class nsAppShell : public nsBaseAppShell {
  public:
+  NS_DECL_NSIOBSERVER
+
   NS_IMETHOD ResumeNative(void) override;
 
   nsAppShell();
@@ -36,11 +38,10 @@ class nsAppShell : public nsBaseAppShell {
   // Called by the application delegate
   void WillTerminate(void);
 
-  static void OnMemoryPressureChanged(dispatch_source_memorypressure_flags_t aPressureLevel);
+  static void OnMemoryPressureChanged(
+      dispatch_source_memorypressure_flags_t aPressureLevel);
 
   static nsAppShell* gAppShell;
-  static UIViewController* gRootViewController;
-  static mozilla::StaticRefPtr<nsWindow> gRootWindow;
 
  protected:
   virtual ~nsAppShell();
