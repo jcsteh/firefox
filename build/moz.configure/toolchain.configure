@@ -212,8 +212,17 @@ with only_when(target_is_ios):
 
 
 with only_when(target_is_ios):
-    # MacOS SDK
-    # =========
+    @depends(target)
+    def ios_is_simulator(target):
+        # FIXME: I worry this is incorrect for x86_64 simulators, but this
+        # matches existing checks.
+        if target.raw_os == "ios-sim":
+            return True
+
+    set_config("IPHONEOS_IS_SIMULATOR", ios_is_simulator)
+
+    # iOS SDK
+    # =======
     option(
         "--with-ios-sdk",
         env="IPHONEOS_SDK_DIR",
@@ -224,23 +233,23 @@ with only_when(target_is_ios):
     def ios_sdk_min_version():
         return "16.4"
 
-    @depends(target)
-    def ios_sdk_name(target):
+    @depends(ios_is_simulator)
+    def ios_sdk_name(ios_is_simulator):
         return "iPhone{}{}.sdk".format(
-            "Simulator" if target.raw_os == "ios-sim" else "OS",
+            "Simulator" if ios_is_simulator else "OS",
             ios_sdk_min_version(),
         )
 
     @depends(
         "--with-ios-sdk",
         host,
-        target,
+        ios_is_simulator,
         bootstrap_path(ios_sdk_name, when=depends("--with-ios-sdk")(lambda x: not x)),
     )
     @imports(_from="__builtin__", _import="Exception")
     @imports(_from="os.path", _import="isdir")
     @imports(_from="os", _import="listdir")
-    def ios_sdk(sdk, host, target, bootstrapped):
+    def ios_sdk(sdk, host, ios_is_simulator, bootstrapped):
         if bootstrapped:
             sdk = [bootstrapped]
         if sdk:
@@ -250,7 +259,7 @@ with only_when(target_is_ios):
             except Exception as e:
                 die(e)
         elif host.os == "OSX":
-            sdk_name = "iphonesimulator" if target.raw_os == "ios-sim" else "iphoneos"
+            sdk_name = "iphonesimulator" if ios_is_simulator else "iphoneos"
             sdk = check_cmd_output(
                 "xcrun", "--show-sdk-path", "--sdk", sdk_name, onerror=lambda: ""
             ).rstrip()

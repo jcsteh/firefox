@@ -1002,6 +1002,20 @@ class MachCommandConditions(object):
         return False
 
     @staticmethod
+    def is_ios(cls):
+        """Must have an iOS build."""
+        if hasattr(cls, "substs"):
+            return cls.substs.get("TARGET_OS") == "iOS"
+        return False
+
+    @staticmethod
+    def is_ios_simulator(cls):
+        """Must have an iOS simulator build."""
+        if hasattr(cls, "substs"):
+            return cls.substs.get("IPHONEOS_IS_SIMULATOR", False)
+        return False
+
+    @staticmethod
     def is_firefox_or_android(cls):
         """Must have a Firefox or Android build."""
         return MachCommandConditions.is_firefox(
@@ -1009,9 +1023,16 @@ class MachCommandConditions(object):
         ) or MachCommandConditions.is_android(cls)
 
     @staticmethod
+    def is_firefox_or_mobile(cls):
+        """Must have a Firefox, Android or iOS build."""
+        return MachCommandConditions.is_firefox_or_android(
+            cls
+        ) or MachCommandConditions.is_ios(cls)
+
+    @staticmethod
     def has_build(cls):
         """Must have a build."""
-        return MachCommandConditions.is_firefox_or_android(
+        return MachCommandConditions.is_firefox_or_mobile(
             cls
         ) or MachCommandConditions.is_thunderbird(cls)
 

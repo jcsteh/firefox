@@ -1208,6 +1208,25 @@ def install(command_context, **kwargs):
             verify_android_device(command_context, install=InstallIntent.YES, **kwargs)
             == 0
         )
+    elif conditions.is_ios(command_context):
+        # Path to the built test runner binary.
+        app_bundle = os.path.join(
+            command_context.topobjdir,
+            "dist",
+            "TestRunner.xcarchive",
+            "Products",
+            "Applications",
+            "TestRunner.app",
+        )
+
+        if conditions.is_ios_simulator(command_context):
+            subprocess.run(
+                ["xcrun", "simctl", "install", "booted", app_bundle], check=True
+            )
+            ret = 0
+        else:
+            subprocess.run(["ios-deploy", "--bundle", app_bundle], check=True)
+            ret = 0
     else:
         ret = command_context._run_make(
             directory=".", target="install", ensure_exit_code=False
@@ -1329,6 +1348,20 @@ def _get_android_run_parser():
         default=False,
         help="Select an existing process to debug.",
     )
+    return parser
+
+
+def _get_ios_run_parser():
+    parser = argparse.ArgumentParser()
+
+    group = parser.add_argument_group("debugging")
+    group.add_argument(
+        "--debug",
+        action="store_true",
+        help="Enable the debugger. Not specifying a --debugger option will result "
+        "in the default debugger being used.",
+    )
+
     return parser
 
 
@@ -1499,6 +1532,8 @@ def setup_run_parser():
     build = MozbuildObject.from_environment(cwd=here)
     if conditions.is_android(build):
         return _get_android_run_parser()
+    if conditions.is_ios(build):
+        return _get_ios_run_parser()
     if conditions.is_jsshell(build):
         return _get_jsshell_run_parser()
     return _get_desktop_run_parser()
@@ -1515,6 +1550,8 @@ def run(command_context, **kwargs):
     """Run the compiled program."""
     if conditions.is_android(command_context):
         return _run_android(command_context, **kwargs)
+    if conditions.is_ios(command_context):
+        return _run_ios(command_context, **kwargs)
     if conditions.is_jsshell(command_context):
         return _run_jsshell(command_context, **kwargs)
     return _run_desktop(command_context, **kwargs)
@@ -1869,6 +1906,30 @@ process attach {continue_flag}-p {pid!s}
         device.shell("pkill -f lldb-server", enable_run_as=True)
         if not use_existing_process:
             device.shell("am clear-debug-app")
+
+
+def _run_ios(command_context, debug):
+    # Path to the built test runner binary.
+    app_bundle = os.path.join(
+        command_context.topobjdir,
+        "dist",
+        "TestRunner.xcarchive",
+        "Products",
+        "Applications",
+        "TestRunner.app",
+    )
+
+    if conditions.is_ios_simulator(command_context):
+        subprocess.run(["xcrun", "simctl", "install", "booted", app_bundle], check=True)
+
+        # FIXME: set up debugging?
+        run_args = ["xcrun", "simctl", "launch", "booted", "org.mozilla.TestRunner"]
+        subprocess.run(run_args, check=True)
+    else:
+        deploy_args = ["ios-deploy", "--bundle", app_bundle, "--debug"]
+        if not debug:
+            deploy_args += ["--justlaunch"]
+        subprocess.run(deploy_args, check=True)
 
 
 def _run_jsshell(command_context, params, debug, debugger, debugger_args):
