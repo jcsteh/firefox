@@ -140,8 +140,8 @@ mobile/android/gradle/.gradle
 
 # XCode project cruft
 /*.xcodeproj/
-mobile/ios/example-browser/example-browser.xcodeproj/project.xcworkspace/xcuserdata
-mobile/ios/example-browser/example-browser.xcodeproj/xcuserdata
+mobile/ios/TestRunner/TestRunner.xcodeproj/project.xcworkspace/xcuserdata
+mobile/ios/TestRunner/TestRunner.xcodeproj/xcuserdata
 
 # Rust/Cargo output from running `cargo` directly
 /target/

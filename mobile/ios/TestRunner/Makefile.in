@@ -1,0 +1,30 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+dist_dest = $(DIST)/TestRunner.xcarchive
+
+# Check if we're targeting a simulator or a real device.
+ifeq ($(TARGET_CPU)-$(TARGET_RAW_OS),aarch64-ios)
+dest_flags = -destination generic/platform=iOS
+else
+ifeq ($(TARGET_CPU),aarch64)
+dest_flags = -arch arm64 -sdk iphonesimulator
+else
+dest_flags = -arch x86_64 -sdk iphonesimulator
+endif
+endif
+
+# Can only build the test runner on macOS.
+ifeq (Darwin,$(HOST_OS_ARCH))
+repackage::
+	$(RM) -r $(dist_dest)
+
+.PHONY: repackage
+tools repackage:: $(DIST)/bin/XUL
+	rm -rf $(dist_dest)
+
+	# Tell xcode to build and export our TestRunner application. For real iOS
+	# platforms, this will also attempt to sign the binary.
+	xcodebuild -project "$(srcdir)/TestRunner.xcodeproj" -scheme "TestRunner" $(dest_flags) -archivePath "$(dist_dest)" -derivedDataPath "$(CURDIR)" archive "TOPOBJDIR=$(topobjdir)"
+endif
