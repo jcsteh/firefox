@@ -2241,6 +2241,7 @@ STATIC_ATOMS = [
     Atom("_moz_scrollbar_end_forward", "-moz-scrollbar-end-forward"),
     Atom("_moz_overlay_scrollbars", "-moz-overlay-scrollbars"),
     Atom("_moz_windows_accent_color_in_titlebar", "-moz-windows-accent-color-in-titlebar"),
+    Atom("_moz_windows_accent_color_in_tabs", "-moz-windows-accent-color-in-tabs"),
     Atom("_moz_mac_big_sur_theme", "-moz-mac-big-sur-theme"),
     Atom("_moz_mac_rtl", "-moz-mac-rtl"),
     Atom("_moz_platform", "-moz-platform"),
@@ -2396,6 +2397,7 @@ STATIC_ATOMS = [
     Atom("_moz_popover_enabled", "-moz-popover-enabled"),
     # media query for MathML Core's implementation of mi
     Atom("_moz_mathml_core_mi", "-moz-mathml-core-mi"),
+    Atom("_moz_always_underline_links", "-moz-always-underline-links"),
     # Contextual Identity / Containers
     Atom("usercontextid", "usercontextid"),
     Atom("geckoViewSessionContextId", "geckoViewSessionContextId"),

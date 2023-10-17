@@ -633,8 +633,11 @@ CTFontDescriptorRef gfxCoreTextShaper::GetFeaturesDescriptor(
 
 CTFontRef gfxCoreTextShaper::CreateCTFontWithFeatures(
     CGFloat aSize, CTFontDescriptorRef aDescriptor) {
+  const gfxFontEntry* fe = mFont->GetFontEntry();
+  bool isInstalledFont = !fe->IsUserFont() || fe->IsLocalUserFont();
   CGFontRef cgFont = static_cast<gfxMacFont*>(mFont)->GetCGFontRef();
-  return CreateCTFontFromCGFontWithVariations(cgFont, aSize, aDescriptor);
+  return CreateCTFontFromCGFontWithVariations(cgFont, aSize, isInstalledFont,
+                                              aDescriptor);
 }
 
 void gfxCoreTextShaper::Shutdown()  // [static]

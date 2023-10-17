@@ -1228,33 +1228,6 @@
   value: true
   mirror: always
 
-- name: browser.display.focus_ring_on_anything
-  type: bool
-  value: false
-  mirror: always
-
-- name: browser.display.focus_ring_width
-  type: uint32_t
-  value: 1
-  mirror: always
-
-- name: browser.display.focus_background_color
-  type: String
-  value: "#117722"
-  mirror: never
-
-# Focus ring border style.
-# 0 = solid border, 1 = dotted border
-- name: browser.display.focus_ring_style
-  type: uint32_t
-  value: 1
-  mirror: always
-
-- name: browser.display.focus_text_color
-  type: String
-  value: "#ffffff"
-  mirror: never
-
 - name: browser.display.foreground_color
   type: String
   value: "#000000"
@@ -1334,11 +1307,6 @@
     Material Symbols Rounded,
     Material Symbols Sharp
   mirror: never
-
-- name: browser.display.use_focus_colors
-  type: bool
-  value: false
-  mirror: always
 
 - name: browser.display.use_system_colors
   type: RelaxedAtomicBool
@@ -1526,17 +1494,11 @@
 
 # Communicates the toolbar color to platform (for e.g., prefers-color-scheme).
 #
-# Returns whether the toolbar is dark (0), light (1), or system (2).
-#
-# Default to "light" on macOS / Windows, and "system" elsewhere. The theming
-# code sets it appropriately.
+# Returns whether the toolbar is dark (0), light (1), or system (2). The
+# theming code overrides it if appropriate.
 - name: browser.theme.toolbar-theme
   type: RelaxedAtomicUint32
-#if defined(XP_WIN) || defined(XP_MACOSX)
-  value: 1
-#else
   value: 2
-#endif
   mirror: always
 
 # Communicates the preferred content theme color to platform (for e.g.,
@@ -1548,6 +1510,14 @@
 - name: browser.theme.content-theme
   type: RelaxedAtomicUint32
   value: 2
+  mirror: always
+  rust: true
+
+# Whether the firefox titlebar respects the
+# -moz-windows-accent-color-in-titlebar setting on the tab strip.
+- name: browser.theme.windows.accent-color-in-tabs.enabled
+  type: RelaxedAtomicBool
+  value: false
   mirror: always
   rust: true
 
@@ -2249,6 +2219,11 @@
 # (bug 1570566).
 - name: dom.block_reload_from_resize_event_handler
   type: bool
+  value: false
+  mirror: always
+
+- name: dom.cache.privateBrowsing.enabled
+  type: RelaxedAtomicBool
   value: false
   mirror: always
 
@@ -3720,6 +3695,14 @@
   value: true
   mirror: always
 
+# If true, top-level requests that are initiated from the address
+# bar and with an empty scheme get upgraded to HTTPS
+# with a fallback
+- name: dom.security.https_first_schemeless
+  type: RelaxedAtomicBool
+  value: false
+  mirror: always
+
 - name: dom.security.unexpected_system_load_telemetry_enabled
   type: bool
   value: true
@@ -4465,6 +4448,11 @@
   value: true
   mirror: always
 
+- name: dom.w3c_pointer_events.getcoalescedevents_only_in_securecontext
+  type: bool
+  value: @IS_NIGHTLY_BUILD@
+  mirror: always
+
 # In case Touch API is enabled, this pref controls whether to support
 # ontouch* event handlers, document.createTouch, document.createTouchList and
 # document.createEvent("TouchEvent").
@@ -4508,6 +4496,12 @@
 - name: dom.webgpu.enabled
   type: RelaxedAtomicBool
   value: @IS_NIGHTLY_BUILD@
+  mirror: always
+
+# Is support for the Web GPU API enabled on DOM workers?
+- name: dom.webgpu.workers.enabled
+  type: RelaxedAtomicBool
+  value: false
   mirror: always
 
 # Are WebGPU indirect draws/dispatches enabled?
@@ -6499,7 +6493,7 @@
     mirror: once
 -   name: gfx.video.convert-yuv-to-nv12.image-host-win
     type: RelaxedAtomicBool
-    value: @IS_EARLY_BETA_OR_EARLIER@
+    value: true
     mirror: always
 #endif
 
@@ -8098,6 +8092,13 @@
   value: -1
   mirror: always
 
+# Whether to always underline links.
+- name: layout.css.always_underline_links
+  type: RelaxedAtomicBool
+  value: false
+  mirror: always
+  rust: true
+
 # Whether Container Queries are enabled
 - name: layout.css.container-queries.enabled
   type: RelaxedAtomicBool
@@ -9398,12 +9399,6 @@
   type: RelaxedAtomicUint32
   mirror: always
   value: 0
-
-# ClockDrift desired buffering in milliseconds
-- name: media.clockdrift.buffering
-  type: RelaxedAtomicUint32
-  mirror: always
-  value: 50
 
 # If a resource is known to be smaller than this size (in kilobytes), a
 # memory-backed MediaCache may be used; otherwise the (single shared global)
@@ -11449,15 +11444,6 @@
   value: true
   mirror: always
 
-# Set this pref to an integer like 99 to override the User-Agent string's
-# 'rv' bit. The value 0 means use the default Firefox version. We introduced
-# this for Firefox 110 because it turned out websites used user agent parsing
-# for "rv:11" to detect IE11.
-- name: network.http.useragent.forceRVOnly
-  type: uint32_t
-  value: 109
-  mirror: always
-
 # Whether or not we use Windows for SSO to Microsoft sites.
 - name: network.http.windows-sso.enabled
   type: RelaxedAtomicBool
@@ -11649,7 +11635,7 @@
 # Enable `Link: rel=preconnect` in 103 Early Hint response.
 - name: network.early-hints.preconnect.enabled
   type: RelaxedAtomicBool
-  value: @IS_EARLY_BETA_OR_EARLIER@
+  value: true
   mirror: always
 
 # The max number of speculative connections we allow for `Link: rel=preconnect`.
@@ -12191,6 +12177,11 @@
 
   # If true, will be more strict with status code parsing
 - name: network.url.strict_data_url_base64_placement
+  type: RelaxedAtomicBool
+  value: true
+  mirror: always
+
+- name: network.url.strict_protocol_setter
   type: RelaxedAtomicBool
   value: true
   mirror: always
@@ -13767,7 +13758,7 @@
 # (OS) mapping when loaded via the file:// protocol.
 - name: security.block_fileuri_script_with_wrong_mime
   type: bool
-  value: @IS_EARLY_BETA_OR_EARLIER@
+  value: false
   mirror: always
 
 # Cancel outgoing requests from SystemPrincipal:
@@ -14322,26 +14313,6 @@
   value: false
   mirror: always
 
-- name: test.events.async.key.enabled
-  type: RelaxedAtomicBool
-  value: true
-  mirror: always
-
-- name: test.events.async.mouse.enabled
-  type: RelaxedAtomicBool
-  value: true
-  mirror: always
-
-- name: test.events.async.touch.enabled
-  type: RelaxedAtomicBool
-  value: true
-  mirror: always
-
-- name: test.events.async.wheel.enabled
-  type: RelaxedAtomicBool
-  value: true
-  mirror: always
-
 - name: test.mousescroll
   type: RelaxedAtomicBool
   value: false
@@ -14745,6 +14716,20 @@
 - name: ui.mouse.radius.inputSource.touchOnly
   type: bool
   value: true
+  mirror: always
+
+# When true, selection is not collapased at the right click point if there is a
+# non-collapsed selection.
+- name: ui.mouse.right_click.collapse_selection.stop_if_non_collapsed_selection
+  type: bool
+  value: true
+  mirror: always
+
+# When true, selection is not collapsed at the right click point if the clicked
+# node is not editable.
+- name: ui.mouse.right_click.collapse_selection.stop_if_non_editable_node
+  type: bool
+  value: false
   mirror: always
 
 #---------------------------------------------------------------------------
@@ -15534,13 +15519,6 @@
 # false for now since it can cause some contrast-with-background issues
 # specially with grey accents, see bug 1776588.
 - name: widget.windows.uwp-system-colors.highlight-accent
-  type: bool
-  value: false
-  mirror: always
-
-# Whether to use the accent color for the titlebar, if the relevant Windows
-# setting says so. See bug 1851155.
-- name: widget.windows.titlebar-accent.enabled
   type: bool
   value: false
   mirror: always

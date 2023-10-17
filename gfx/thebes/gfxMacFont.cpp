@@ -447,7 +447,10 @@ int32_t gfxMacFont::GetGlyphWidth(uint16_t aGID) {
   }
 
   if (!mCTFont) {
-    mCTFont = CreateCTFontFromCGFontWithVariations(mCGFont, mAdjustedSize);
+    bool isInstalledFont =
+        !mFontEntry->IsUserFont() || mFontEntry->IsLocalUserFont();
+    mCTFont = CreateCTFontFromCGFontWithVariations(mCGFont, mAdjustedSize,
+                                                   isInstalledFont);
     if (!mCTFont) {  // shouldn't happen, but let's be safe
       NS_WARNING("failed to create CTFontRef to measure glyph width");
       return 0;

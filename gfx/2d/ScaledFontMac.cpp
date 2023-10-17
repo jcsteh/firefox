@@ -7,6 +7,7 @@
 #include "ScaledFontMac.h"
 #include "UnscaledFontMac.h"
 #include "mozilla/webrender/WebRenderTypes.h"
+#include "nsCocoaFeatures.h"
 #include "PathSkia.h"
 #include "skia/include/core/SkPaint.h"
 #include "skia/include/core/SkPath.h"
@@ -55,7 +56,7 @@ class AutoRelease final {
     return *this;
   }
 
-  operator T() const { return mObject; }
+  operator T() { return mObject; }
 
   T forget() {
     T obj = mObject;
@@ -68,23 +69,56 @@ class AutoRelease final {
 };
 
 // Helper to create a CTFont from a CGFont, copying any variations that were
-// set on the original CGFont, and applying additional attributes from aDesc
-// (which may be NULL).
+// set on the CGFont, and applying attributes from (optional) aFontDesc.
 CTFontRef CreateCTFontFromCGFontWithVariations(CGFontRef aCGFont, CGFloat aSize,
-                                               CTFontDescriptorRef aDesc) {
-  CTFontRef ctFont =
-      CTFontCreateWithGraphicsFont(aCGFont, aSize, nullptr, aDesc);
-
-  AutoRelease<CFDictionaryRef> vars(CGFontCopyVariations(aCGFont));
-  if (vars) {
-    AutoRelease<CFDictionaryRef> attrs(CFDictionaryCreate(
-        nullptr, (const void**)&kCTFontVariationAttribute, (const void**)&vars,
-        1, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks));
-    AutoRelease<CTFontDescriptorRef> desc(CTFontCopyFontDescriptor(ctFont));
-    desc = CTFontDescriptorCreateCopyWithAttributes(desc, attrs);
-    ctFont = CTFontCreateCopyWithAttributes(ctFont, 0.0, nullptr, desc);
+                                               bool aInstalledFont,
+                                               CTFontDescriptorRef aFontDesc) {
+  // New implementation (see bug 1856035) for macOS 13+.
+  if (nsCocoaFeatures::OnVenturaOrLater()) {
+    // Create CTFont, applying any descriptor that was passed (used by
+    // gfxCoreTextShaper to set features).
+    AutoRelease<CTFontRef> ctFont(
+        CTFontCreateWithGraphicsFont(aCGFont, aSize, nullptr, aFontDesc));
+    AutoRelease<CFDictionaryRef> vars(CGFontCopyVariations(aCGFont));
+    if (vars) {
+      // Create an attribute dictionary containing the variations.
+      AutoRelease<CFDictionaryRef> attrs(CFDictionaryCreate(
+          nullptr, (const void**)&kCTFontVariationAttribute,
+          (const void**)&vars, 1, &kCFTypeDictionaryKeyCallBacks,
+          &kCFTypeDictionaryValueCallBacks));
+      // Get the original descriptor from the CTFont, then add the variations
+      // attribute to it.
+      AutoRelease<CTFontDescriptorRef> desc(CTFontCopyFontDescriptor(ctFont));
+      desc = CTFontDescriptorCreateCopyWithAttributes(desc, attrs);
+      // Return a copy of the font that has the variations added.
+      return CTFontCreateCopyWithAttributes(ctFont, 0.0, nullptr, desc);
+    }
+    // No variations to set, just return the default CTFont.
+    return ctFont.forget();
   }
 
+  // Older implementation used up to macOS 12.
+  CTFontRef ctFont;
+  if (aInstalledFont) {
+    AutoRelease<CFDictionaryRef> vars(CGFontCopyVariations(aCGFont));
+    if (vars) {
+      AutoRelease<CFDictionaryRef> varAttr(CFDictionaryCreate(
+          nullptr, (const void**)&kCTFontVariationAttribute,
+          (const void**)&vars, 1, &kCFTypeDictionaryKeyCallBacks,
+          &kCFTypeDictionaryValueCallBacks));
+
+      AutoRelease<CTFontDescriptorRef> varDesc(
+          aFontDesc
+              ? ::CTFontDescriptorCreateCopyWithAttributes(aFontDesc, varAttr)
+              : ::CTFontDescriptorCreateWithAttributes(varAttr));
+
+      ctFont = CTFontCreateWithGraphicsFont(aCGFont, aSize, nullptr, varDesc);
+    } else {
+      ctFont = CTFontCreateWithGraphicsFont(aCGFont, aSize, nullptr, nullptr);
+    }
+  } else {
+    ctFont = CTFontCreateWithGraphicsFont(aCGFont, aSize, nullptr, nullptr);
+  }
   return ctFont;
 }
 
@@ -105,7 +139,9 @@ ScaledFontMac::ScaledFontMac(CGFontRef aFont,
     CGFontRetain(aFont);
   }
 
-  mCTFont = CreateCTFontFromCGFontWithVariations(aFont, aSize);
+  auto unscaledMac = static_cast<UnscaledFontMac*>(aUnscaledFont.get());
+  bool dataFont = unscaledMac->IsDataFont();
+  mCTFont = CreateCTFontFromCGFontWithVariations(aFont, aSize, !dataFont);
 }
 
 ScaledFontMac::ScaledFontMac(CTFontRef aFont,

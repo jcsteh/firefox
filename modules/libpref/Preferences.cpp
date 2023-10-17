@@ -2293,10 +2293,7 @@ class nsPrefLocalizedString final : public nsIPrefLocalizedString {
 //----------------------------------------------------------------------------
 
 nsPrefBranch::nsPrefBranch(const char* aPrefRoot, PrefValueKind aKind)
-    : mPrefRoot(aPrefRoot),
-      mKind(aKind),
-      mFreeingObserverList(false),
-      mObservers() {
+    : mPrefRoot(aPrefRoot), mKind(aKind), mFreeingObserverList(false) {
   nsCOMPtr<nsIObserverService> observerService = services::GetObserverService();
   if (observerService) {
     ++mRefCnt;  // must be > 0 when we call this, or we'll get deleted!
@@ -3335,15 +3332,13 @@ class PWRunnable : public Runnable {
         // ref counted pointer off main thread.
         nsresult rvCopy = rv;
         nsCOMPtr<nsIFile> fileCopy(mFile);
-        SchedulerGroup::Dispatch(
-            TaskCategory::Other,
-            NS_NewRunnableFunction("Preferences::WriterRunnable",
-                                   [fileCopy, rvCopy] {
-                                     MOZ_RELEASE_ASSERT(NS_IsMainThread());
-                                     if (NS_FAILED(rvCopy)) {
-                                       Preferences::HandleDirty();
-                                     }
-                                   }));
+        SchedulerGroup::Dispatch(NS_NewRunnableFunction(
+            "Preferences::WriterRunnable", [fileCopy, rvCopy] {
+              MOZ_RELEASE_ASSERT(NS_IsMainThread());
+              if (NS_FAILED(rvCopy)) {
+                Preferences::HandleDirty();
+              }
+            }));
       }
     }
     // We've completed the write to the best of our abilities, whether
@@ -3378,7 +3373,7 @@ void Preferences::AddSizeOfIncludingThis(MallocSizeOf aMallocSizeOf,
 }
 
 class PreferenceServiceReporter final : public nsIMemoryReporter {
-  ~PreferenceServiceReporter() {}
+  ~PreferenceServiceReporter() = default;
 
  public:
   NS_DECL_ISUPPORTS

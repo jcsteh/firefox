@@ -119,7 +119,6 @@ Preferences.addAll([
   },
 
   // Location Bar
-  { id: "browser.urlbar.suggest.bestmatch", type: "bool" },
   { id: "browser.urlbar.suggest.bookmark", type: "bool" },
   { id: "browser.urlbar.suggest.clipboard", type: "bool" },
   { id: "browser.urlbar.suggest.history", type: "bool" },
@@ -231,8 +230,7 @@ Preferences.addAll([
 
   // Cookie Banner Handling
   { id: "cookiebanners.ui.desktop.enabled", type: "bool" },
-  { id: "cookiebanners.service.mode", type: "int" },
-  { id: "cookiebanners.service.detectOnly", type: "bool" },
+  { id: "cookiebanners.service.mode.privateBrowsing", type: "int" },
 
   // DoH
   { id: "network.trr.mode", type: "int" },
@@ -2510,15 +2508,12 @@ var gPrivacyPane = {
   },
 
   /**
-   * Reads the cookiebanners.service.mode and detectOnly preference value and
-   * updates the cookie banner handling checkbox accordingly.
+   * Reads the cookiebanners.service.mode.privateBrowsing pref,
+   * interpreting the multiple modes as a true/false value
    */
   readCookieBannerMode() {
-    if (Preferences.get("cookiebanners.service.detectOnly").value) {
-      return false;
-    }
     return (
-      Preferences.get("cookiebanners.service.mode").value !=
+      Preferences.get("cookiebanners.service.mode.privateBrowsing").value !=
       Ci.nsICookieBannerService.MODE_DISABLED
     );
   },
@@ -2529,27 +2524,16 @@ var gPrivacyPane = {
    */
   writeCookieBannerMode() {
     let checkbox = document.getElementById("handleCookieBanners");
-    let mode;
-    if (checkbox.checked) {
-      mode = Ci.nsICookieBannerService.MODE_REJECT;
-
-      // Also unset the detect-only mode pref, just in case the user enabled
-      // the feature via about:preferences, not the onboarding doorhanger.
-      Services.prefs.setBoolPref("cookiebanners.service.detectOnly", false);
-    } else {
-      mode = Ci.nsICookieBannerService.MODE_DISABLED;
+    if (!checkbox.checked) {
+      /* because we removed UI control for the non-PBM pref, disabling it here
+         provides an off-ramp for profiles where it had previously been enabled from the UI */
+      Services.prefs.setIntPref(
+        "cookiebanners.service.mode",
+        Ci.nsICookieBannerService.MODE_DISABLED
+      );
+      return Ci.nsICookieBannerService.MODE_DISABLED;
     }
-
-    /**
-     * There is a second service.mode pref for private browsing,
-     * but for now we want it always be the same as service.mode
-     * more info: https://bugzilla.mozilla.org/show_bug.cgi?id=1817201
-     */
-    Services.prefs.setIntPref(
-      "cookiebanners.service.mode.privateBrowsing",
-      mode
-    );
-    return mode;
+    return Ci.nsICookieBannerService.MODE_REJECT;
   },
 
   /**
@@ -2595,6 +2579,10 @@ var gPrivacyPane = {
       );
     }
 
+    document.getElementById("clipboardSuggestion").hidden = !UrlbarPrefs.get(
+      "clipboard.featureGate"
+    );
+
     this._updateFirefoxSuggestSection(true);
     this._initQuickActionsSection();
   },
@@ -2607,14 +2595,6 @@ var gPrivacyPane = {
    *   Pass true when calling this when initializing the pane.
    */
   _updateFirefoxSuggestSection(onInit = false) {
-    // Show the best match checkbox container as appropriate.
-    document.getElementById("firefoxSuggestBestMatchContainer").hidden =
-      !UrlbarPrefs.get("bestMatchEnabled");
-
-    document.getElementById("clipboardSuggestion").hidden = !UrlbarPrefs.get(
-      "clipboard.featureGate"
-    );
-
     let container = document.getElementById("firefoxSuggestContainer");
 
     if (UrlbarPrefs.get("quickSuggestEnabled")) {

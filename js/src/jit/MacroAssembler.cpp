@@ -4688,7 +4688,8 @@ static void MoveDataBlock(MacroAssembler& masm, Register base, int32_t from,
 #  elif defined(JS_CODEGEN_ARM) || defined(JS_CODEGEN_X86)
   static constexpr Register scratch = ABINonArgReg0;
   masm.push(scratch);
-#  elif defined(JS_CODEGEN_LOONG64) || defined(JS_CODEGEN_MIPS64)
+#  elif defined(JS_CODEGEN_LOONG64) || defined(JS_CODEGEN_MIPS64) || \
+      defined(JS_CODEGEN_RISCV64)
   ScratchRegisterScope scratch(masm);
 #  elif !defined(JS_CODEGEN_NONE)
   const Register scratch = ScratchReg;
@@ -4818,7 +4819,8 @@ static void CollapseWasmFrameFast(MacroAssembler& masm,
   static constexpr Register tempForFP = ABINonArgReg3;
 
 #  ifdef JS_USE_LINK_REGISTER
-#    if defined(JS_CODEGEN_LOONG64) || defined(JS_CODEGEN_MIPS64)
+#    if defined(JS_CODEGEN_LOONG64) || defined(JS_CODEGEN_MIPS64) || \
+        defined(JS_CODEGEN_RISCV64)
   static constexpr Register tempForRA = ra;
 #    else
   static constexpr Register tempForRA = lr;
@@ -4938,7 +4940,8 @@ static void CollapseWasmFrameSlow(MacroAssembler& masm,
   masm.reserveStack(reserved);
 
 #  ifdef JS_USE_LINK_REGISTER
-#    if defined(JS_CODEGEN_LOONG64) || defined(JS_CODEGEN_MIPS64)
+#    if defined(JS_CODEGEN_LOONG64) || defined(JS_CODEGEN_MIPS64) || \
+        defined(JS_CODEGEN_RISCV64)
   static constexpr Register tempForRA = ra;
 #    else
   static constexpr Register tempForRA = lr;
@@ -5561,6 +5564,9 @@ void MacroAssembler::wasmCallRef(const wasm::CallSiteDesc& desc,
   loadPtr(Address(calleeFnObj, uncheckedEntrySlotOffset), calleeScratch);
 
   *slowCallOffset = call(desc, calleeScratch);
+#ifdef ENABLE_WASM_TAIL_CALLS
+  wasmMarkSlowCall();
+#endif
 
   // Restore registers and realm and back to this caller's.
   loadPtr(Address(getStackPointer(), WasmCallerInstanceOffsetBeforeCall),

@@ -673,18 +673,20 @@ class VsyncRefreshDriverTimer : public RefreshDriverTimer {
           // If pages aren't loading and there aren't other tasks to run,
           // trigger the pending vsync notification.
           static bool sHasPendingLowPrioTask = false;
+          static VsyncEvent sMostRecentSkippedVsync;
+          sMostRecentSkippedVsync = aVsyncEvent;
           if (!sHasPendingLowPrioTask) {
             sHasPendingLowPrioTask = true;
             NS_DispatchToMainThreadQueue(
                 NS_NewRunnableFunction(
                     "NotifyVsyncOnMainThread[low priority]",
-                    [self = RefPtr{this}, event = aVsyncEvent]() {
+                    [self = RefPtr{this}]() {
                       sHasPendingLowPrioTask = false;
-                      if (self->mRecentVsync == event.mTime &&
-                          self->mRecentVsyncId == event.mId &&
+                      if (self->mRecentVsync == sMostRecentSkippedVsync.mTime &&
+                          self->mRecentVsyncId == sMostRecentSkippedVsync.mId &&
                           !self->ShouldGiveNonVsyncTasksMoreTime()) {
                         self->mSuspendVsyncPriorityTicksUntil = TimeStamp();
-                        self->NotifyVsyncOnMainThread(event);
+                        self->NotifyVsyncOnMainThread(sMostRecentSkippedVsync);
                       }
                     }),
                 EventQueuePriority::Low);
@@ -828,8 +830,6 @@ class VsyncRefreshDriverTimer : public RefreshDriverTimer {
     MOZ_ASSERT(aVsyncTimestamp <= tickStart);
 #endif
 
-    bool shouldGiveNonVSyncTasksMoreTime = ShouldGiveNonVsyncTasksMoreTime();
-
     // Set these variables before calling RunRefreshDrivers so that they are
     // visible to any nested ticks.
     mLastTickStart = tickStart;
@@ -859,28 +859,24 @@ class VsyncRefreshDriverTimer : public RefreshDriverTimer {
     // period).
     TimeDuration gracePeriod = rate / int64_t(100);
 
-    if (shouldGiveNonVSyncTasksMoreTime) {
-      if (!mLastTickEnd.IsNull() && XRE_IsContentProcess() &&
-          // For RefreshDriver scheduling during page load there is currently
-          // idle priority based setup.
-          // XXX Consider to remove the page load specific code paths.
-          !IsAnyToplevelContentPageLoading()) {
-        // In case normal tasks are doing lots of work, we still want to paint
-        // every now and then, so only at maximum 4 * rate of work is counted
-        // here.
-        // If we're giving extra time for tasks outside a tick, try to
-        // ensure the next vsync after that period is handled, so subtract
-        // a grace period.
-        TimeDuration timeForOutsideTick = clamped(
-            tickStart - mLastTickEnd - gracePeriod, TimeDuration(), rate * 4);
-        mSuspendVsyncPriorityTicksUntil = aVsyncTimestamp + timeForOutsideTick +
-                                          (tickEnd - mostRecentTickStart);
-      } else {
-        mSuspendVsyncPriorityTicksUntil =
-            aVsyncTimestamp + gracePeriod + (tickEnd - mostRecentTickStart);
-      }
+    if (!mLastTickEnd.IsNull() && XRE_IsContentProcess() &&
+        // For RefreshDriver scheduling during page load there is currently
+        // idle priority based setup.
+        // XXX Consider to remove the page load specific code paths.
+        !IsAnyToplevelContentPageLoading()) {
+      // In case normal tasks are doing lots of work, we still want to paint
+      // every now and then, so only at maximum 4 * rate of work is counted
+      // here.
+      // If we're giving extra time for tasks outside a tick, try to
+      // ensure the next vsync after that period is handled, so subtract
+      // a grace period.
+      TimeDuration timeForOutsideTick = clamped(
+          tickStart - mLastTickEnd - gracePeriod, TimeDuration(), rate * 4);
+      mSuspendVsyncPriorityTicksUntil = aVsyncTimestamp + timeForOutsideTick +
+                                        (tickEnd - mostRecentTickStart);
     } else {
-      mSuspendVsyncPriorityTicksUntil = aVsyncTimestamp + gracePeriod;
+      mSuspendVsyncPriorityTicksUntil =
+          aVsyncTimestamp + gracePeriod + (tickEnd - mostRecentTickStart);
     }
 
     mLastIdleTaskCount =
@@ -1980,6 +1976,10 @@ auto nsRefreshDriver::GetReasonsToTick() const -> TickReasons {
   if (!mVisualViewportScrollEvents.IsEmpty()) {
     reasons |= TickReasons::eHasVisualViewportScrollEvents;
   }
+  if (mPresContext && mPresContext->IsRoot() &&
+      mPresContext->NeedsMoreTicksForUserInput()) {
+    reasons |= TickReasons::eRootNeedsMoreTicksForUserInput;
+  }
   return reasons;
 }
 
@@ -2018,6 +2018,9 @@ void nsRefreshDriver::AppendTickReasonsToString(TickReasons aReasons,
   }
   if (aReasons & TickReasons::eHasVisualViewportScrollEvents) {
     aStr.AppendLiteral(" HasVisualViewportScrollEvents");
+  }
+  if (aReasons & TickReasons::eRootNeedsMoreTicksForUserInput) {
+    aStr.AppendLiteral(" RootNeedsMoreTicksForUserInput");
   }
 }
 
@@ -2212,10 +2215,6 @@ void nsRefreshDriver::RunFullscreenSteps() {
 
 void nsRefreshDriver::UpdateIntersectionObservations(TimeStamp aNowTime) {
   AUTO_PROFILER_LABEL_RELEVANT_FOR_JS("Compute intersections", LAYOUT);
-
-  if (MOZ_UNLIKELY(!mPresContext)) {
-    return;
-  }
 
   AutoTArray<RefPtr<Document>, 32> documents;
 
@@ -2749,9 +2748,14 @@ void nsRefreshDriver::Tick(VsyncId aId, TimeStamp aNowTime,
     pm->UpdatePopupPositions(this);
   }
 
-  // Notify resize obsrevers if any, see
+  // Notify resize observers if any, see
   // https://html.spec.whatwg.org/#update-the-rendering step 14.
   NotifyResizeObservers();
+  if (MOZ_UNLIKELY(!mPresContext || !mPresContext->GetPresShell())) {
+    // A resize observer callback apparently destroyed our PresContext.
+    StopTimer();
+    return;
+  }
 
   // Update the relevancy of the content of any `content-visibility: auto`
   // elements. The specification says: "Specifically, such changes will
@@ -2974,7 +2978,7 @@ void nsRefreshDriver::Thaw() {
           "nsRefreshDriver::DoRefresh", this, &nsRefreshDriver::DoRefresh);
       nsPresContext* pc = GetPresContext();
       if (pc) {
-        pc->Document()->Dispatch(TaskCategory::Other, event.forget());
+        pc->Document()->Dispatch(event.forget());
         EnsureTimerStarted();
       } else {
         NS_ERROR("Thawing while document is being destroyed");
@@ -2984,19 +2988,6 @@ void nsRefreshDriver::Thaw() {
 }
 
 void nsRefreshDriver::FinishedWaitingForTransaction() {
-  if (mSkippedPaints && !IsInRefresh() &&
-      (HasObservers() || HasImageRequests()) && CanDoCatchUpTick()) {
-    NS_DispatchToCurrentThreadQueue(
-        NS_NewRunnableFunction(
-            "nsRefreshDriver::FinishedWaitingForTransaction",
-            [self = RefPtr{this}]() {
-              if (self->CanDoCatchUpTick()) {
-                self->Tick(self->mActiveTimer->MostRecentRefreshVsyncId(),
-                           self->mActiveTimer->MostRecentRefresh());
-              }
-            }),
-        EventQueuePriority::Vsync);
-  }
   mWaitingForTransaction = false;
   mSkippedPaints = false;
 }

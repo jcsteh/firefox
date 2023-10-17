@@ -3470,6 +3470,11 @@ void MacroAssembler::PopStackPtr() {
   loadPtr(Address(StackPointer, 0), StackPointer);
   adjustFrame(-int32_t(sizeof(intptr_t)));
 }
+void MacroAssembler::freeStackTo(uint32_t framePushed) {
+  MOZ_ASSERT(framePushed <= framePushed_);
+  ma_sub64(StackPointer, FramePointer, Imm32(framePushed));
+  framePushed_ = framePushed;
+}
 void MacroAssembler::PushBoxed(FloatRegister reg) {
   subFromStackPtr(Imm32(sizeof(double)));
   boxDouble(reg, Address(getStackPointer(), 0));
@@ -4280,6 +4285,18 @@ void MacroAssembler::widenInt32(Register r) {
   move32To64SignExtend(r, Register64(r));
 }
 
+#ifdef ENABLE_WASM_TAIL_CALLS
+void MacroAssembler::wasmMarkSlowCall() { mv(ra, ra); }
+
+const int32_t SlowCallMarker = 0x3c93;  // addi ra, ra, 0
+
+void MacroAssembler::wasmCheckSlowCallsite(Register ra_, Label* notSlow,
+                                           Register temp1, Register temp2) {
+  MOZ_ASSERT(ra_ != temp2);
+  load32(Address(ra_, 0), temp2);
+  branch32(Assembler::NotEqual, temp2, Imm32(SlowCallMarker), notSlow);
+}
+#endif  // ENABLE_WASM_TAIL_CALLS
 //}}} check_macroassembler_style
 
 // This method generates lui, dsll and ori instruction block that can be

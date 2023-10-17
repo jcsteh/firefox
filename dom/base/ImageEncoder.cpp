@@ -84,7 +84,6 @@ class EncodingCompleteEvent final : public DiscardableRunnable {
       EncodeCompleteCallback* aEncodeCompleteCallback)
       : DiscardableRunnable("EncodingCompleteEvent"),
         mImgSize(0),
-        mType(),
         mImgData(nullptr),
         mEncodeCompleteCallback(aEncodeCompleteCallback),
         mFailed(false) {
@@ -341,8 +340,9 @@ nsresult ImageEncoder::ExtractDataInternal(
       if (!data->Map(gfx::DataSourceSurface::MapType::READ, &map)) {
         return NS_ERROR_INVALID_ARG;
       }
-      rv = aEncoder->InitFromData(map.mData, aSize.width * aSize.height * 4,
-                                  aSize.width, aSize.height, aSize.width * 4,
+      auto size = data->GetSize();
+      rv = aEncoder->InitFromData(map.mData, size.width * size.height * 4,
+                                  size.width, size.height, size.width * 4,
                                   imgIEncoder::INPUT_FORMAT_HOSTARGB, aOptions);
       data->Unmap();
     }
@@ -386,8 +386,9 @@ nsresult ImageEncoder::ExtractDataInternal(
       if (!dataSurface->Map(gfx::DataSourceSurface::MapType::READ, &map)) {
         return NS_ERROR_INVALID_ARG;
       }
-      rv = aEncoder->InitFromData(map.mData, aSize.width * aSize.height * 4,
-                                  aSize.width, aSize.height, aSize.width * 4,
+      auto size = dataSurface->GetSize();
+      rv = aEncoder->InitFromData(map.mData, size.width * size.height * 4,
+                                  size.width, size.height, size.width * 4,
                                   imgIEncoder::INPUT_FORMAT_HOSTARGB, aOptions);
       dataSurface->Unmap();
     }

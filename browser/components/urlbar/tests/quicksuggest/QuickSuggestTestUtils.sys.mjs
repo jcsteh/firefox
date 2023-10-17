@@ -18,6 +18,7 @@ ChromeUtils.defineESModuleGetters(lazy, {
   RemoteSettings: "resource://services-settings/remote-settings.sys.mjs",
   SearchUtils: "resource://gre/modules/SearchUtils.sys.mjs",
   Suggestion: "resource://gre/modules/RustSuggest.sys.mjs",
+  SuggestionProvider: "resource://gre/modules/RustSuggest.sys.mjs",
   SuggestStore: "resource://gre/modules/RustSuggest.sys.mjs",
   TelemetryTestUtils: "resource://testing-common/TelemetryTestUtils.sys.mjs",
   TestUtils: "resource://testing-common/TestUtils.sys.mjs",
@@ -77,13 +78,6 @@ Object.defineProperty(lazy, "MerinoTestUtils", {
 });
 
 const DEFAULT_CONFIG = {};
-
-const BEST_MATCH_CONFIG = {
-  best_match: {
-    blocked_suggestion_ids: [],
-    min_search_string_length: 4,
-  },
-};
 
 const DEFAULT_PING_PAYLOADS = {
   [CONTEXTUAL_SERVICES_PING_TYPES.QS_BLOCK]: {
@@ -235,7 +229,7 @@ class MockRemoteSettings {
  * @param {Array} options.data
  *   Mock remote settings records.
  */
-class MockRustSuggest {
+export class MockRustSuggest {
   constructor({ data = [] }) {
     this.#data = data;
 
@@ -262,6 +256,10 @@ class MockRustSuggest {
   // `RustSuggest` methods below.
 
   ingest() {
+    // Unlike the real Rust component, ingest isn't necessary here since our
+    // `query()` implementation has immediate access to the mock data. This
+    // makes it easier for tests because they don't need to wait for ingest
+    // every time they change the data.
     return Promise.resolve();
   }
 
@@ -281,22 +279,27 @@ class MockRustSuggest {
       let isSponsored = suggestion.hasOwnProperty("is_sponsored")
         ? suggestion.is_sponsored
         : suggestion.iab_category == "22 - Shopping";
+      // TODO: Generalize this and support the other providers.
       if (
-        (isSponsored && query.includeSponsored) ||
-        (!isSponsored && query.includeNonSponsored)
+        (isSponsored &&
+          query.providers.includes(lazy.SuggestionProvider.AMP)) ||
+        (!isSponsored &&
+          query.providers.includes(lazy.SuggestionProvider.WIKIPEDIA))
       ) {
         matchedSuggestions.push(
           isSponsored
             ? new lazy.Suggestion.Amp(
                 suggestion.title,
                 suggestion.url,
+                suggestion.url, // rawUrl
                 [], // icon
                 query.keyword, // fullKeyword
                 suggestion.id, // blockId
                 suggestion.advertiser,
                 suggestion.iab_category,
                 suggestion.impression_url,
-                suggestion.click_url
+                suggestion.click_url,
+                suggestion.click_url // rawClickUrl
               )
             : new lazy.Suggestion.Wikipedia(
                 suggestion.title,
@@ -359,11 +362,6 @@ class _QuickSuggestTestUtils {
     return Cu.cloneInto(DEFAULT_CONFIG, this);
   }
 
-  get BEST_MATCH_CONFIG() {
-    // Return a clone so callers can modify it.
-    return Cu.cloneInto(BEST_MATCH_CONFIG, this);
-  }
-
   /**
    * Waits for quick suggest initialization to finish, ensures its data will not
    * be updated again during the test, and also optionally sets it up with mock
@@ -411,17 +409,11 @@ class _QuickSuggestTestUtils {
     this.info?.("ensureQuickSuggestInit calling QuickSuggest.init()");
     lazy.QuickSuggest.init();
 
-    // Set the Rust pref and wait for the backend to become enabled/disabled.
-    // This must happen after setting up `MockRustSuggest`. Otherwise the real
-    // Rust component will be used and the Rust remote settings client will try
-    // to access the real remote settings server on ingestion.
-    this.info?.(
-      "ensureQuickSuggestInit setting rustEnabled and awaiting enablePromise"
-    );
+    // Set the Rust pref. This must happen after setting up `MockRustSuggest`.
+    // Otherwise the real Rust component will be used and the Rust remote
+    // settings client will try to access the real remote settings server on
+    // ingestion.
     lazy.UrlbarPrefs.set("quicksuggest.rustEnabled", rustEnabled);
-    await lazy.QuickSuggest.rustBackend.enablePromise;
-    this.info?.("ensureQuickSuggestInit done awaiting enablePromise");
-
     if (!rustEnabled) {
       // Sync with current data.
       this.info?.("ensureQuickSuggestInit syncing MockRemoteSettings");
@@ -453,20 +445,12 @@ class _QuickSuggestTestUtils {
   async #uninitQuickSuggest(clearDataCollectionEnabled) {
     this.info?.("uninitQuickSuggest started");
 
-    // We need to reset the Rust enabled status. If the status changes, it will
-    // either trigger the Rust backend to enable itself and ingest from remote
-    // settings (if Rust was disabled) or trigger the JS backend to enable
-    // itself and re-sync all features (if Rust was enabled). Wait for each to
-    // finish *before* cleaning up MockRustSuggest and MockRemoteSettings. This
-    // will ensure that all activity has stopped before this function returns.
+    // Reset the Rust enabled status. If the JS backend becomes enabled now, it
+    // will re-sync all features. Wait for that to finish *before* cleaning up
+    // MockRemoteSettings. This will ensure that all activity has stopped before
+    // this function returns.
     let rustEnabled = lazy.UrlbarPrefs.get("quicksuggest.rustEnabled");
     lazy.UrlbarPrefs.clear("quicksuggest.rustEnabled");
-    this.info?.(
-      "uninitQuickSuggest setting rustEnabled and awaiting enablePromise"
-    );
-    await lazy.QuickSuggest.rustBackend.enablePromise;
-    this.info?.("uninitQuickSuggest done awaiting enablePromise");
-
     if (rustEnabled && !lazy.UrlbarPrefs.get("quicksuggest.rustEnabled")) {
       this.info?.("uninitQuickSuggest syncing MockRemoteSettings");
       await this.#mockRemoteSettings.sync();
@@ -657,30 +641,10 @@ class _QuickSuggestTestUtils {
       "Result helpURL"
     );
 
-    if (lazy.UrlbarPrefs.get("resultMenu")) {
-      this.Assert.ok(
-        row._buttons.get("menu"),
-        "The menu button should be present"
-      );
-    } else {
-      let helpButton = row._buttons.get("help");
-      this.Assert.ok(helpButton, "The help button should be present");
-
-      let blockButton = row._buttons.get("block");
-      if (!isBestMatch) {
-        this.Assert.equal(
-          !!blockButton,
-          lazy.UrlbarPrefs.get("quickSuggestBlockingEnabled"),
-          "The block button is present iff quick suggest blocking is enabled"
-        );
-      } else {
-        this.Assert.equal(
-          !!blockButton,
-          lazy.UrlbarPrefs.get("bestMatchBlockingEnabled"),
-          "The block button is present iff best match blocking is enabled"
-        );
-      }
-    }
+    this.Assert.ok(
+      row._buttons.get("menu"),
+      "The menu button should be present"
+    );
 
     return details;
   }

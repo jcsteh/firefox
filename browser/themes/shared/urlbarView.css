@@ -9,6 +9,7 @@
 :root {
   --autocomplete-popup-highlight-background: SelectedItem;
   --autocomplete-popup-highlight-color: SelectedItemText;
+  --urlbar-popup-action-color: LinkText;
 
   --urlbarView-secondary-text-color: color-mix(in srgb, currentColor 73%, transparent);
 
@@ -216,6 +217,16 @@
   }
 }
 
+/* Display userContext icon instead of text, when window is too narrow. */
+.urlbarView-results[wrap] > .urlbarView-row[type=switchtab] {
+  .urlbarView-userContext-label {
+    display: none;
+  }
+  .urlbarView-userContext-icons {
+    display: inline-block;
+  }
+}
+
 .urlbarView-overflowable,
 .urlbarView-url {
   overflow: hidden;
@@ -326,14 +337,6 @@
   & + & {
     margin-inline-start: 0;
   }
-}
-
-.urlbarView-button-block {
-  background-image: url("chrome://browser/skin/thumb-down.svg");
-}
-
-.urlbarView-button-help {
-  background-image: url("chrome://global/skin/icons/help.svg");
 }
 
 /* Result menu button */
@@ -486,7 +489,7 @@
     pointer-events: none;
   }
 
-  :root[lwt-toolbar-field-focus-brighttext] &::before {
+  :root[lwt-toolbar-field-focus="dark"] &::before {
     /* Same as `.search-panel-header > label` in searchbar.css */
     opacity: 1;
   }
@@ -523,6 +526,28 @@
      fallback fonts with extreme metrics. */
   line-height: 1.4;
 }
+
+/* user context box */
+.urlbarView-userContext-indicator {
+  align-items: center;
+}
+
+.urlbarView-userContext-label {
+  color: var(--identity-tab-color);
+}
+
+.urlbarView-userContext-icons {
+  height: var(--urlbarView-favicon-width);
+  vertical-align: middle;
+  background-image: var(--identity-icon);
+  -moz-context-properties: fill;
+  fill: var(--identity-icon-color);
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center center;
+  display: none;
+}
+
 
 /* Tail suggestions */
 
@@ -608,8 +633,8 @@
   }
 }
 
-/* Switch-to-tab action text is styled as a chiclet. */
-.urlbarView-row:is([type=switchtab], [type=remotetab]) {
+/* Switch-to-tab and Clipboard action text is styled as a chiclet. */
+.urlbarView-row:is([type=switchtab], [type=remotetab], [type=clipboard]) {
   > .urlbarView-row-inner > .urlbarView-no-wrap > .urlbarView-action {
     color: var(--urlbar-box-text-color);
     background-color: var(--urlbar-box-focus-bgcolor);
@@ -630,8 +655,9 @@
   }
 }
 
+.urlbarView:not([action-override]) .urlbarView-row[type=switchtab],
 .urlbarView-row[type=remotetab]:not([selected], :hover),
-.urlbarView:not([action-override]) .urlbarView-row[type=switchtab] {
+.urlbarView-row[type=clipboard] {
   > .urlbarView-row-inner > .urlbarView-no-wrap > .urlbarView-title-separator::before {
     /* We make the title separator transparent so it stays in the accessibility
        tree. We want screen readers to pause between the result title and the

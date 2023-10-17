@@ -246,7 +246,6 @@ nsHTMLScrollFrame::nsHTMLScrollFrame(ComputedStyle* aStyle,
       mLastPos(-1, -1),
       mApzScrollPos(0, 0),
       mLastUpdateFramesPos(-1, -1),
-      mDisplayPortAtLastFrameUpdate(),
       mScrollParentID(mozilla::layers::ScrollableLayerGuid::NULL_SCROLL_ID),
       mAnchor(this),
       mCurrentAPZScrollAnimationType(APZScrollAnimationType::No),
@@ -1766,17 +1765,19 @@ void nsHTMLScrollFrame::SetHasOutOfFlowContentInsideFilter() {
 
 bool nsHTMLScrollFrame::WantAsyncScroll() const {
   ScrollStyles styles = GetScrollStyles();
+
+  // First, as an optimization because getting the scrollrange is
+  // relatively slow, check overflow hidden and not a zoomed scroll frame.
+  if (styles.mHorizontal == StyleOverflow::Hidden &&
+      styles.mVertical == StyleOverflow::Hidden) {
+    if (!mIsRoot || GetVisualViewportSize() == mScrollPort.Size()) {
+      return false;
+    }
+  }
+
   nscoord oneDevPixel =
       GetScrolledFrame()->PresContext()->AppUnitsPerDevPixel();
   nsRect scrollRange = GetLayoutScrollRange();
-
-  // If the page has a visual viewport size that's different from
-  // the layout viewport size at the current zoom level, we need to be
-  // able to scroll the visual viewport inside the layout viewport
-  // even if the page is not zoomable.
-  if (!GetVisualScrollRange().IsEqualInterior(scrollRange)) {
-    return true;
-  }
 
   bool isVScrollable = (scrollRange.height >= oneDevPixel) &&
                        (styles.mVertical != StyleOverflow::Hidden);
@@ -1797,7 +1798,16 @@ bool nsHTMLScrollFrame::WantAsyncScroll() const {
       isVScrollable && (mVScrollbarBox || canScrollWithoutScrollbars);
   bool isHAsyncScrollable =
       isHScrollable && (mHScrollbarBox || canScrollWithoutScrollbars);
-  return isVAsyncScrollable || isHAsyncScrollable;
+  if (isVAsyncScrollable || isHAsyncScrollable) {
+    return true;
+  }
+
+  // If the page has a visual viewport size that's different from
+  // the layout viewport size at the current zoom level, we need to be
+  // able to scroll the visual viewport inside the layout viewport
+  // even if the page is not zoomable.
+  return mIsRoot && GetVisualViewportSize() != mScrollPort.Size() &&
+         !GetVisualScrollRange().IsEqualInterior(scrollRange);
 }
 
 static nsRect GetOnePixelRangeAroundPoint(const nsPoint& aPoint,
@@ -2899,8 +2909,7 @@ void nsHTMLScrollFrame::ScrollActivityCallback(nsITimer* aTimer,
 
 void nsHTMLScrollFrame::ScheduleSyntheticMouseMove() {
   if (!mScrollActivityTimer) {
-    mScrollActivityTimer = NS_NewTimer(
-        PresContext()->Document()->EventTargetFor(TaskCategory::Other));
+    mScrollActivityTimer = NS_NewTimer(GetMainThreadSerialEventTarget());
     if (!mScrollActivityTimer) {
       return;
     }
@@ -4467,10 +4476,9 @@ bool nsHTMLScrollFrame::DecideScrollableLayer(
   // minimal display port for every scroll frame that could be active. (We only
   // do this when aSetBase is true because we only want to do this the first
   // time this function is called for the same scroll frame.)
-  if (ShouldActivateAllScrollFrames() && !hasDisplayPort &&
-      !DisplayPortUtils::HasDisplayPort(content) &&
-      nsLayoutUtils::AsyncPanZoomEnabled(this) && WantAsyncScroll() &&
-      aBuilder->IsPaintingToWindow() && aSetBase) {
+  if (aSetBase && !hasDisplayPort && aBuilder->IsPaintingToWindow() &&
+      ShouldActivateAllScrollFrames() &&
+      nsLayoutUtils::AsyncPanZoomEnabled(this) && WantAsyncScroll()) {
     // SetDisplayPortMargins calls TriggerDisplayPortExpiration which starts a
     // display port expiry timer for display ports that do expire. However
     // minimal display ports do not expire, so the display port has to be
@@ -4491,11 +4499,11 @@ bool nsHTMLScrollFrame::DecideScrollableLayer(
       nsRect displayportBase = *aVisibleRect;
       nsPresContext* pc = PresContext();
 
-      bool isContentRootDoc = pc->IsRootContentDocumentCrossProcess();
       bool isChromeRootDoc =
           !pc->Document()->IsContentDocument() && !pc->GetParentPresContext();
 
-      if (mIsRoot && (isContentRootDoc || isChromeRootDoc)) {
+      if (mIsRoot &&
+          (pc->IsRootContentDocumentCrossProcess() || isChromeRootDoc)) {
         displayportBase =
             nsRect(nsPoint(0, 0),
                    nsLayoutUtils::CalculateCompositionSizeForFrame(this));

@@ -6,7 +6,7 @@ shopping-page-title = { -brand-product-name } Shopping
 
 # Title for page showing where a user can check the
 # review quality of online shopping product reviews
-shopping-main-container-title = Review checker
+shopping-main-container-title = Review Checker
 shopping-beta-marker = Beta
 # This string is for ensuring that screen reader technology
 # can read out the "Beta" part of the shopping sidebar header.
@@ -93,8 +93,8 @@ shopping-settings-label =
   .label = Settings
 shopping-settings-recommendations-toggle =
   .label = Show ads in review checker
-shopping-settings-recommendations-learn-more =
-  You’ll see occasional ads for relevant products. All ads must meet our review quality standards. <a data-l10n-name="review-quality-url">Learn more</a>
+shopping-settings-recommendations-learn-more2 =
+  You’ll see occasional ads for relevant products. We only advertise products with reliable reviews. <a data-l10n-name="review-quality-url">Learn more</a>
 shopping-settings-opt-out-button = Turn off review checker
 powered-by-fakespot = Review checker is powered by <a data-l10n-name="fakespot-link">{ -fakespot-brand-full-name }</a>.
 

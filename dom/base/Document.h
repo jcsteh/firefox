@@ -40,14 +40,12 @@
 #include "mozilla/Result.h"
 #include "mozilla/SegmentedVector.h"
 #include "mozilla/StorageAccessAPIHelper.h"
-#include "mozilla/TaskCategory.h"
 #include "mozilla/TimeStamp.h"
 #include "mozilla/UniquePtr.h"
 #include "mozilla/UseCounter.h"
 #include "mozilla/WeakPtr.h"
 #include "mozilla/css/StylePreloadKind.h"
 #include "mozilla/dom/AnimationFrameProvider.h"
-#include "mozilla/dom/DispatcherTrait.h"
 #include "mozilla/dom/DocumentOrShadowRoot.h"
 #include "mozilla/dom/Element.h"
 #include "mozilla/dom/EventTarget.h"
@@ -533,7 +531,6 @@ class Document : public nsINode,
                  public DocumentOrShadowRoot,
                  public nsSupportsWeakReference,
                  public nsIScriptObjectPrincipal,
-                 public DispatcherTrait,
                  public SupportsWeakPtr {
   friend class DocumentOrShadowRoot;
 
@@ -964,11 +961,11 @@ class Document : public nsINode,
   void SetContentType(const nsACString& aContentType);
 
   /**
-   * Return the language of this document.
+   * Return the language of this document, or null if not set.
    */
-  void GetContentLanguage(nsAString& aContentLanguage) const {
-    CopyASCIItoUTF16(mContentLanguage, aContentLanguage);
-  }
+  nsAtom* GetContentLanguage() const { return mContentLanguage.get(); }
+
+  void GetContentLanguageForBindings(DOMString&) const;
 
   // The states BidiEnabled and MathMLEnabled should persist across multiple
   // views (screen, print) of the same document.
@@ -1767,7 +1764,9 @@ class Document : public nsINode,
     return GetInnerWindow() ? GetInnerWindow()->GetWindowContext() : nullptr;
   }
 
-  bool IsTopLevelWindowInactive() const;
+  bool IsTopLevelWindowInactive() const {
+    return mState.HasState(DocumentState::WINDOW_INACTIVE);
+  }
 
   /**
    * Get the script loader for this document
@@ -2000,7 +1999,7 @@ class Document : public nsINode,
 
   // Update a set of document states that may have changed.
   // This should only be called by callers whose state is also reflected in the
-  // implementation of Document::GetDocumentState.
+  // implementation of Document::State.
   //
   // aNotify controls whether we notify our DocumentStatesChanged observers.
   void UpdateDocumentStates(DocumentState aMaybeChangedStates, bool aNotify);
@@ -3007,7 +3006,7 @@ class Document : public nsINode,
     return MediaDocumentKind::NotMedia;
   }
 
-  DocumentState GetDocumentState() const { return mDocumentState; }
+  DocumentState State() const { return mState; }
 
   nsISupports* GetCurrentContentSink();
 
@@ -3745,12 +3744,7 @@ class Document : public nsINode,
   void UnobserveForLastRememberedSize(Element&);
 
   // Dispatch a runnable related to the document.
-  nsresult Dispatch(TaskCategory aCategory,
-                    already_AddRefed<nsIRunnable>&& aRunnable) final;
-
-  nsISerialEventTarget* EventTargetFor(TaskCategory) const override;
-
-  AbstractThread* AbstractMainThreadFor(TaskCategory) override;
+  nsresult Dispatch(already_AddRefed<nsIRunnable>&& aRunnable) const;
 
   // The URLs passed to this function should match what
   // JS::DescribeScriptedCaller() returns, since this API is used to
@@ -3936,8 +3930,8 @@ class Document : public nsINode,
 
   void SetSHEntryHasUserInteraction(bool aHasInteraction);
 
-  already_AddRefed<nsAtom> GetContentLanguageAsAtomForStyle() const;
-  already_AddRefed<nsAtom> GetLanguageForStyle() const;
+  nsAtom* GetContentLanguageAsAtomForStyle() const;
+  nsAtom* GetLanguageForStyle() const;
 
   /**
    * Fetch the user's font preferences for the given aLanguage's
@@ -4532,7 +4526,7 @@ class Document : public nsINode,
   // Last time we found any scroll linked effect in this document.
   TimeStamp mLastScrollLinkedEffectDetectionTime;
 
-  DocumentState mDocumentState{DocumentState::LTR_LOCALE};
+  DocumentState mState{DocumentState::LTR_LOCALE};
 
   RefPtr<Promise> mReadyForIdle;
 
@@ -4921,7 +4915,7 @@ class Document : public nsINode,
   // our opener if this is the initial about:blank document.
   Maybe<nsILoadInfo::CrossOriginEmbedderPolicy> mEmbedderPolicy;
 
-  nsCString mContentLanguage;
+  RefPtr<nsAtom> mContentLanguage;
 
   // The channel that got passed to Document::StartDocumentLoad(), if any.
   nsCOMPtr<nsIChannel> mChannel;
