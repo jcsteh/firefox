@@ -172,12 +172,6 @@ nsresult nsLookAndFeel::NativeGetColor(ColorID aID, ColorScheme aScheme,
     case ColorID::MozMacFocusring:
       aResult = NS_RGB(0x3F, 0x98, 0xDD);
       break;
-    case ColorID::MozMacMenutextdisable:
-      aResult = NS_RGB(0x88, 0x88, 0x88);
-      break;
-    case ColorID::MozMacMenutextselect:
-      aResult = NS_RGB(0xaa, 0xaa, 0xaa);
-      break;
     case ColorID::MozMacDisabledtoolbartext:
       aResult = NS_RGB(0x3F, 0x3F, 0x3F);
       break;
