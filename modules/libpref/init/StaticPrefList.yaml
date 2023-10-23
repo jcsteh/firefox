@@ -4750,6 +4750,12 @@
   value: false
   mirror: always
 
+# <iframe loading="lazy">
+- name: dom.iframe_lazy_loading.enabled
+  type: RelaxedAtomicBool
+  value: @IS_NIGHTLY_BUILD@
+  mirror: always
+
 #---------------------------------------------------------------------------
 # Prefs starting with "editor"
 #---------------------------------------------------------------------------
@@ -8651,7 +8657,7 @@
 # Is support for -moz-prefixed transform properties enabled?
 - name: layout.css.prefixes.transforms
   type: bool
-  value: true
+  value: @IS_NOT_NIGHTLY_BUILD@
   mirror: always
 
 # Is support for -moz-prefixed transition properties enabled?
@@ -8812,7 +8818,7 @@
 # Support for the css Zoom property.
 - name: layout.css.zoom.enabled
   type: RelaxedAtomicBool
-  value: false
+  value: @IS_NIGHTLY_BUILD@
   mirror: always
   rust: true
 
@@ -12282,6 +12288,11 @@
   value: false
   mirror: always
 
+- name: network.http.http2.move_to_pending_list_after_network_change
+  type: RelaxedAtomicBool
+  value: false
+  mirror: always
+
 # Enable HTTP/3
 - name: network.http.http3.enable
   type: RelaxedAtomicBool
@@ -12980,6 +12991,13 @@
 # true - Send the header with a value of 1 to indicate opting-out
 # false - Do not send header to indicate opting-in
 - name: privacy.globalprivacycontrol.enabled
+  type: RelaxedAtomicBool
+  value: false
+  mirror: always
+
+# Controls whether or not GPC signals are sent in private browsing mode.
+# This can be overridden by `privacy.globalprivacycontrol.enabled` as true.
+- name: privacy.globalprivacycontrol.pbmode.enabled
   type: RelaxedAtomicBool
   value: false
   mirror: always

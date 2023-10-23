@@ -3721,13 +3721,8 @@ class Document : public nsINode,
   void ScheduleIntersectionObserverNotification();
   MOZ_CAN_RUN_SCRIPT void NotifyIntersectionObservers();
 
-  DOMIntersectionObserver* GetLazyLoadImageObserver() {
-    return mLazyLoadImageObserver;
-  }
-  DOMIntersectionObserver* GetLazyLoadImageObserverViewport() {
-    return mLazyLoadImageObserverViewport;
-  }
-  DOMIntersectionObserver& EnsureLazyLoadImageObserver();
+  DOMIntersectionObserver* GetLazyLoadObserver() { return mLazyLoadObserver; }
+  DOMIntersectionObserver& EnsureLazyLoadObserver();
 
   DOMIntersectionObserver* GetContentVisibilityObserver() const {
     return mContentVisibilityObserver;
@@ -4025,9 +4020,10 @@ class Document : public nsINode,
 
   nsIPermissionDelegateHandler* PermDelegateHandler();
 
-  // Returns whether this is a top-level about:blank page without an opener
-  // (and thus not accessible by content).
-  bool IsContentInaccessibleAboutBlank() const;
+  // Returns whether this is a top-level about:blank page without an opener (and
+  // thus likely not accessible by content). Likely because it shouldn't be used
+  // for security checks for example, see bug 1860098.
+  bool IsLikelyContentInaccessibleTopLevelAboutBlank() const;
 
   // CSS prefers-color-scheme media feature for this document.
   enum class IgnoreRFP { No, Yes };
@@ -4093,6 +4089,10 @@ class Document : public nsINode,
   class HighlightRegistry& HighlightRegistry();
 
   bool ShouldResistFingerprinting(RFPTarget aTarget) const;
+
+  const Maybe<RFPTarget>& GetOverriddenFingerprintingSettings() const {
+    return mOverriddenFingerprintingSettings;
+  }
 
   // Recompute the current resist fingerprinting state. Returns true when
   // the state was changed.
@@ -4843,6 +4843,13 @@ class Document : public nsINode,
   // Whether we're cloning the contents of an SVG use element.
   bool mCloningForSVGUse : 1;
 
+  // The fingerprinting protections overrides for this document. The value will
+  // override the default enabled fingerprinting protections for this document.
+  // This will only get populated if these is one that comes from the local
+  // fingerprinting protection override pref or WebCompat. Otherwise, a value of
+  // Nothing() indicates no overrides are present for this document.
+  Maybe<RFPTarget> mOverriddenFingerprintingSettings;
+
   uint8_t mXMLDeclarationBits;
 
   // NOTE(emilio): Technically, this should be a StyleColorSchemeFlags, but we
@@ -5125,9 +5132,7 @@ class Document : public nsINode,
   // Array of resize observers
   nsTArray<ResizeObserver*> mResizeObservers;
 
-  RefPtr<DOMIntersectionObserver> mLazyLoadImageObserver;
-  // Used to measure how effective the lazyload thresholds are.
-  RefPtr<DOMIntersectionObserver> mLazyLoadImageObserverViewport;
+  RefPtr<DOMIntersectionObserver> mLazyLoadObserver;
 
   // Used for detecting when `content-visibility: auto` elements are near
   // or far from the viewport.
