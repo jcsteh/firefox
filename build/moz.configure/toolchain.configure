@@ -214,9 +214,7 @@ with only_when(target_is_ios):
 with only_when(target_is_ios):
     @depends(target)
     def ios_is_simulator(target):
-        # FIXME: I worry this is incorrect for x86_64 simulators, but this
-        # matches existing checks.
-        if target.raw_os == "ios-sim":
+        if target.cpu == "x86_64" or target.raw_os == "ios-sim":
             return True
 
     set_config("IPHONEOS_IS_SIMULATOR", ios_is_simulator)
