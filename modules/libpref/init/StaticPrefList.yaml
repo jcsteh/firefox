@@ -2358,6 +2358,19 @@
   mirror: always
   rust: true
 
+# Whether CustomStateSet is enabled
+- name: dom.element.customstateset.enabled
+  type: RelaxedAtomicBool
+  value: false
+  mirror: always
+  rust: true
+
+# Whether the invoketarget attribute implementation is enabled
+- name: dom.element.invokers.enabled
+  type: bool
+  value: false
+  mirror: always
+
 - name: dom.mouse_capture.enabled
   type: bool
   value: true
@@ -12438,6 +12451,14 @@
 # 0 => NewReno
 # 1 => Cubic
 - name: network.http.http3.cc_algorithm
+  type: RelaxedAtomicUint32
+  value: 1
+  mirror: always
+  rust: true
+
+# It represents the maximum duration that we used to accumulate
+# callback timeouts before we set a timer and break out of the loop.
+- name: network.http.http3.max_accumlated_time_ms
   type: RelaxedAtomicUint32
   value: 1
   mirror: always

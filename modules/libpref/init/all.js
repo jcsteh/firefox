@@ -1841,11 +1841,14 @@ pref("services.settings.poll_interval", 86400); // 24H
 // other channels always report events.
 pref("services.common.uptake.sampleRate", 1);   // 1%
 
-pref("extensions.abuseReport.enabled", true);
-// Allow AMO to handoff reports to the Firefox integrated dialog.
-pref("extensions.abuseReport.amWebAPI.enabled", true);
+pref("extensions.abuseReport.enabled", false);
+// Whether abuse report originated from AMO should use the Firefox integrated dialog.
+pref("extensions.abuseReport.amWebAPI.enabled", false);
 pref("extensions.abuseReport.url", "https://services.addons.mozilla.org/api/v4/abuse/report/addon/");
 pref("extensions.abuseReport.amoDetailsURL", "https://services.addons.mozilla.org/api/v4/addons/addon/");
+// Whether Firefox integrated abuse reporting feature should be opening the new abuse report form hosted on AMO.
+pref("extensions.abuseReport.amoFormEnabled", false);
+pref("extensions.abuseReport.amoFormURL", "https://addons.mozilla.org/%LOCALE%/%APP%/feedback/addon/%addonID%/");
 
 // Blocklist preferences
 pref("extensions.blocklist.enabled", true);
@@ -3597,7 +3600,6 @@ pref("browser.sanitizer.loglevel", "Warn");
 // engine https://browser.mt/. See Bug 971044. Note that this pref can be turned
 // on in different apps like Firefox Desktop, even if it's disabled by default here.
 pref("browser.translations.enable", false);
-
 // Set to "All" to see all logs, which are useful for debugging. Set to "Info" to see
 // the application logic logs, and not all of the translated messages, which can be
 // slow and overwhelming.
@@ -3613,10 +3615,6 @@ pref("browser.translations.neverTranslateLanguages", "");
 // and the full page translations uses HTML. Set this pref to true to use the HTML
 // translation behavior on about:translations. Requires a page refresh.
 pref("browser.translations.useHTML", false);
-// Normally there is a UI to ask the user to translate a page, this pref makes it
-// so that the page automatically performs a translation if one is detected as being
-// required.
-pref("browser.translations.autoTranslate", false);
 // Automatically popup an offer to translate on sites.
 pref("browser.translations.automaticallyPopup", true);
 // Simulate the behavior of using a device that does not support the translations engine.

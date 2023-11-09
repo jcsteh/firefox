@@ -114,6 +114,8 @@ struct ColumnNumberWithOrigin {
   friend struct TaggedColumnNumberWithOrigin;
 
  public:
+  static constexpr uint32_t OriginValue = Origin;
+
   constexpr ColumnNumberWithOrigin() = default;
   ColumnNumberWithOrigin(const ColumnNumberWithOrigin& other) = default;
   ColumnNumberWithOrigin& operator=(const ColumnNumberWithOrigin& other) =
@@ -151,8 +153,7 @@ struct ColumnNumberWithOrigin {
   ColumnNumberOffset operator-(
       const ColumnNumberWithOrigin<Origin, LimitValue>& other) const {
     MOZ_ASSERT(valid());
-    return ColumnNumberOffset(int32_t(value_) -
-                              int32_t(other.zeroOriginValue()));
+    return ColumnNumberOffset(int32_t(value_) - int32_t(other.value_));
   }
 
   ColumnNumberWithOrigin<Origin, LimitValue>& operator+=(
@@ -223,6 +224,8 @@ struct ColumnNumberWithOrigin {
     if constexpr (LimitValue == 0) {
       return true;
     }
+
+    MOZ_ASSERT_IF(Origin == 1, value_ != 0);
 
     return value_ <= LimitValue;
   }
@@ -410,7 +413,7 @@ struct TaggedColumnNumberWithOrigin {
   static_assert((LimitedColumnNumberT::Limit & WasmFunctionTag) == 0);
 
  protected:
-  uint32_t value_ = 0;
+  uint32_t value_ = LimitedColumnNumberT::OriginValue;
 
   explicit TaggedColumnNumberWithOrigin(uint32_t value) : value_(value) {}
 
@@ -521,7 +524,7 @@ class TaggedColumnNumberOneOrigin : public detail::TaggedColumnNumberWithOrigin<
                                          : other.oneOriginValue()) {}
 
   static TaggedColumnNumberOneOrigin forDifferentialTesting() {
-    return TaggedColumnNumberOneOrigin(LimitedColumnNumberOneOrigin(0));
+    return TaggedColumnNumberOneOrigin(LimitedColumnNumberOneOrigin());
   }
 };
 
