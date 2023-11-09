@@ -3,7 +3,7 @@
  * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 
 import React, { Component } from "react";
-import { div } from "react-dom-factories";
+import { div, main } from "react-dom-factories";
 import PropTypes from "prop-types";
 import { connect } from "../utils/connect";
 import { prefs } from "../utils/prefs";
@@ -33,7 +33,6 @@ import "./variables.css";
 import "./App.css";
 import "./shared/menu.css";
 
-import A11yIntention from "./A11yIntention";
 import { ShortcutsModal } from "./ShortcutsModal";
 import PrimaryPanes from "./PrimaryPanes";
 import Editor from "./Editor";
@@ -208,7 +207,7 @@ class App extends Component {
     const { startPanelCollapsed, endPanelCollapsed } = this.props;
     const { endPanelSize, startPanelSize } = this.state;
     const horizontal = this.isHorizontal();
-    return div(
+    return main(
       {
         className: "editor-pane",
       },
@@ -279,6 +278,7 @@ class App extends Component {
         splitterSize: 1,
         onResizeEnd: num => {
           prefs.startPanelSize = num;
+          this.triggerEditorPaneResize();
         },
         startPanelCollapsed: startPanelCollapsed,
         startPanel: React.createElement(PrimaryPanes, {
@@ -306,20 +306,16 @@ class App extends Component {
           componentName: "Debugger",
           panel: L10N.getStr("ToolboxDebugger.label"),
         },
-        React.createElement(
-          A11yIntention,
-          {},
-          this.renderLayout(),
-          quickOpenEnabled === true &&
-            React.createElement(QuickOpenModal, {
-              shortcutsModalEnabled: this.state.shortcutsModalEnabled,
-              toggleShortcutsModal: () => this.toggleShortcutsModal(),
-            }),
-          React.createElement(ShortcutsModal, {
-            enabled: this.state.shortcutsModalEnabled,
-            handleClose: () => this.toggleShortcutsModal(),
-          })
-        )
+        this.renderLayout(),
+        quickOpenEnabled === true &&
+          React.createElement(QuickOpenModal, {
+            shortcutsModalEnabled: this.state.shortcutsModalEnabled,
+            toggleShortcutsModal: () => this.toggleShortcutsModal(),
+          }),
+        React.createElement(ShortcutsModal, {
+          enabled: this.state.shortcutsModalEnabled,
+          handleClose: () => this.toggleShortcutsModal(),
+        })
       )
     );
   }

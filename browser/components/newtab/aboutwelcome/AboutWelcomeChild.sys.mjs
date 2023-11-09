@@ -188,8 +188,6 @@ export class AboutWelcomeChild extends JSWindowActorChild {
     );
 
     let featureConfig = lazy.NimbusFeatures.aboutwelcome.getAllVariables();
-    featureConfig.needDefault = await this.sendQuery("AWPage:NEED_DEFAULT");
-    featureConfig.needPin = await this.sendQuery("AWPage:DOES_APP_NEED_PIN");
     if (featureConfig.languageMismatchEnabled) {
       featureConfig.appAndSystemLocaleInfo = await this.sendQuery(
         "AWPage:GET_APP_AND_SYSTEM_LOCALE_INFO"
@@ -370,7 +368,7 @@ const OPTIN_DEFAULT = {
             type: "text",
             text: {
               string_id:
-                "shopping-onboarding-opt-in-privacy-policy-and-terms-of-use",
+                "shopping-onboarding-opt-in-privacy-policy-and-terms-of-use2",
             },
             link_keys: ["privacy_policy", "terms_of_use"],
             font_styles: "legal",

@@ -207,6 +207,8 @@ class StackTrace : public phc::StackTrace {
 void StackTrace::Fill() {
   mLength = 0;
 
+// These ifdefs should be kept in sync with the conditions in
+// phc_implies_frame_pointers in build/moz.configure/memory.configure
 #if defined(XP_WIN) && defined(_M_IX86)
   // This avoids MozStackWalk(), which causes unusably slow startup on Win32
   // when it is called during static initialization (see bug 1241684).
@@ -221,7 +223,7 @@ void StackTrace::Fill() {
   PNT_TIB pTib = reinterpret_cast<PNT_TIB>(NtCurrentTeb());
   void* stackEnd = static_cast<void*>(pTib->StackBase);
   FramePointerStackWalk(StackWalkCallback, kMaxFrames, this, fp, stackEnd);
-#elif defined(XP_MACOSX)
+#elif defined(XP_DARWIN)
   // This avoids MozStackWalk(), which has become unusably slow on Mac due to
   // changes in libunwind.
   //
@@ -291,7 +293,7 @@ using Delay = uint32_t;  // A time duration.
 // on ARM processors. For the latter we make an exception because the minimum
 // page size supported is 16KiB so there's no way to go below that.
 static const size_t kPageSize =
-#if defined(XP_MACOSX) && defined(__aarch64__)
+#if defined(XP_DARWIN) && defined(__aarch64__)
     16384
 #else
     4096
@@ -313,7 +315,13 @@ static_assert((kPhcAlign % kPageSize) == 0);
 //
 // These page kinds are interleaved; each allocation page has a guard page on
 // either side.
+#ifdef EARLY_BETA_OR_EARLIER
 static const size_t kNumAllocPages = kPageSize == 4096 ? 4096 : 1024;
+#else
+// This will use between 82KiB and 1.1MiB per process (depending on how many
+// objects are currently allocated).  We will tune this in the future.
+static const size_t kNumAllocPages = kPageSize == 4096 ? 256 : 64;
+#endif
 static const size_t kNumAllPages = kNumAllocPages * 2 + 1;
 
 // The total size of the allocation pages and guard pages.
@@ -833,23 +841,20 @@ class GMut {
   void IncPageAllocMisses(GMutLock) {}
 #endif
 
-#if PHC_LOGGING
-  struct PageStats {
-    size_t mNumAlloced = 0;
-    size_t mNumFreed = 0;
-  };
-
-  PageStats GetPageStats(GMutLock) {
-    PageStats stats;
+  phc::PHCStats GetPageStats(GMutLock) {
+    phc::PHCStats stats;
 
     for (const auto& page : mAllocPages) {
-      stats.mNumAlloced += page.mState == AllocPageState::InUse ? 1 : 0;
-      stats.mNumFreed += page.mState == AllocPageState::Freed ? 1 : 0;
+      stats.mSlotsAllocated += page.mState == AllocPageState::InUse ? 1 : 0;
+      stats.mSlotsFreed += page.mState == AllocPageState::Freed ? 1 : 0;
     }
+    stats.mSlotsUnused =
+        kNumAllocPages - stats.mSlotsAllocated - stats.mSlotsFreed;
 
     return stats;
   }
 
+#if PHC_LOGGING
   size_t PageAllocHits(GMutLock) { return mPageAllocHits; }
   size_t PageAllocAttempts(GMutLock) {
     return mPageAllocHits + mPageAllocMisses;
@@ -1236,12 +1241,12 @@ static void* MaybePageAlloc(const Maybe<arena_id_t>& aArenaId, size_t aReqSize,
 
     gMut->IncPageAllocHits(lock);
 #if PHC_LOGGING
-    GMut::PageStats stats = gMut->GetPageStats(lock);
+    phc::PHCStats stats = gMut->GetPageStats(lock);
 #endif
     LOG("PageAlloc(%zu, %zu) -> %p[%zu]/%p (%zu) (z%zu), sAllocDelay <- %zu, "
         "fullness %zu/%zu/%zu, hits %zu/%zu (%zu%%), lifetime %zu\n",
         aReqSize, aAlignment, pagePtr, i, ptr, usableSize, size_t(aZero),
-        size_t(newAllocDelay), stats.mNumAlloced, stats.mNumFreed,
+        size_t(newAllocDelay), stats.mSlotsAllocated, stats.mSlotsFreed,
         kNumAllocPages, gMut->PageAllocHits(lock),
         gMut->PageAllocAttempts(lock), gMut->PageAllocHitRate(lock), lifetime);
     break;
@@ -1251,12 +1256,12 @@ static void* MaybePageAlloc(const Maybe<arena_id_t>& aArenaId, size_t aReqSize,
     // No pages are available, or VirtualAlloc/mprotect failed.
     gMut->IncPageAllocMisses(lock);
 #if PHC_LOGGING
-    GMut::PageStats stats = gMut->GetPageStats(lock);
+    phc::PHCStats stats = gMut->GetPageStats(lock);
 #endif
     LOG("No PageAlloc(%zu, %zu), sAllocDelay <- %zu, fullness %zu/%zu/%zu, "
         "hits %zu/%zu (%zu%%)\n",
-        aReqSize, aAlignment, size_t(newAllocDelay), stats.mNumAlloced,
-        stats.mNumFreed, kNumAllocPages, gMut->PageAllocHits(lock),
+        aReqSize, aAlignment, size_t(newAllocDelay), stats.mSlotsAllocated,
+        stats.mSlotsFreed, kNumAllocPages, gMut->PageAllocHits(lock),
         gMut->PageAllocAttempts(lock), gMut->PageAllocHitRate(lock));
   }
 
@@ -1501,11 +1506,11 @@ MOZ_ALWAYS_INLINE static bool MaybePageFree(const Maybe<arena_id_t>& aArenaId,
   FreePage(lock, index, aArenaId, freeStack, reuseDelay);
 
 #if PHC_LOGGING
-  GMut::PageStats stats = gMut->GetPageStats(lock);
+  phc::PHCStats stats = gMut->GetPageStats(lock);
 #endif
   LOG("PageFree(%p[%zu]), %zu delay, reuse at ~%zu, fullness %zu/%zu/%zu\n",
       aPtr, index, size_t(reuseDelay), size_t(GAtomic::Now()) + reuseDelay,
-      stats.mNumAlloced, stats.mNumFreed, kNumAllocPages);
+      stats.mSlotsAllocated, stats.mSlotsFreed, kNumAllocPages);
 
   return true;
 }
@@ -1761,6 +1766,14 @@ void PHCMemoryUsage(MemoryUsage& aMemoryUsage) {
     aMemoryUsage.mFragmentationBytes = gMut->FragmentationBytes();
   } else {
     aMemoryUsage.mFragmentationBytes = 0;
+  }
+}
+
+void GetPHCStats(PHCStats& aStats) {
+  if (gMut) {
+    MutexAutoLock lock(GMut::sMutex);
+
+    aStats = gMut->GetPageStats(lock);
   }
 }
 

@@ -21,6 +21,7 @@
 #include "mozilla/MemoryChecking.h"
 #include "mozilla/Poison.h"
 #include "mozilla/Preferences.h"
+#include "mozilla/PreferenceSheet.h"
 #include "mozilla/Printf.h"
 #include "mozilla/ProcessType.h"
 #include "mozilla/ResultExtensions.h"
@@ -323,6 +324,8 @@ bool gIsGtest = false;
 
 bool gKioskMode = false;
 int gKioskMonitor = -1;
+
+bool gAllowContentAnalysis = false;
 
 nsString gAbsoluteArgv0Path;
 
@@ -1596,15 +1599,15 @@ nsXULAppInfo::GetRestartedByOS(bool* aResult) {
 
 NS_IMETHODIMP
 nsXULAppInfo::GetChromeColorSchemeIsDark(bool* aResult) {
-  LookAndFeel::EnsureColorSchemesInitialized();
-  *aResult = LookAndFeel::ColorSchemeForChrome() == ColorScheme::Dark;
+  PreferenceSheet::EnsureInitialized();
+  *aResult = PreferenceSheet::ColorSchemeForChrome() == ColorScheme::Dark;
   return NS_OK;
 }
 
 NS_IMETHODIMP
 nsXULAppInfo::GetContentThemeDerivedColorSchemeIsDark(bool* aResult) {
   *aResult =
-      LookAndFeel::ThemeDerivedColorSchemeForContent() == ColorScheme::Dark;
+      PreferenceSheet::ThemeDerivedColorSchemeForContent() == ColorScheme::Dark;
   return NS_OK;
 }
 
@@ -4005,6 +4008,9 @@ int XREMain::XRE_mainInit(bool* aExitFlag) {
     gKioskMonitor = atoi(kioskMonitorNumber);
   }
 
+  gAllowContentAnalysis = CheckArg("allow-content-analysis", nullptr,
+                                   CheckArgFlag::RemoveArg) == ARG_FOUND;
+
   nsresult rv;
   ArgResult ar;
 
@@ -6053,9 +6059,12 @@ bool XRE_UseNativeEventProcessing() {
 #  if defined(XP_WIN)
       auto upc = mozilla::ipc::UtilityProcessChild::Get();
       MOZ_ASSERT(upc);
-      // WindowsUtils is for Windows APIs, which typically require a Windows
-      // native event loop.
-      return upc->mSandbox == mozilla::ipc::SandboxingKind::WINDOWS_UTILS;
+
+      using SboxKind = mozilla::ipc::SandboxingKind;
+      // These processes are used as external hosts for accessing Windows
+      // APIs which (may) require a Windows native event loop.
+      return upc->mSandbox == SboxKind::WINDOWS_UTILS ||
+             upc->mSandbox == SboxKind::WINDOWS_FILE_DIALOG;
 #  else
       return false;
 #  endif  // defined(XP_WIN)

@@ -90,8 +90,6 @@ pub enum Disalignment {
 pub enum TypeError {
     #[error("Capability {0:?} is required")]
     MissingCapability(Capabilities),
-    #[error("The {0:?} scalar width {1} is not supported")]
-    InvalidWidth(crate::ScalarKind, crate::Bytes),
     #[error("The {0:?} scalar width {1} is not supported for an atomic")]
     InvalidAtomicWidth(crate::ScalarKind, crate::Bytes),
     #[error("Invalid type for pointer target {0:?}")]
@@ -126,6 +124,23 @@ pub enum TypeError {
     },
     #[error("Structure types must have at least one member")]
     EmptyStruct,
+    #[error(transparent)]
+    WidthError(#[from] WidthError),
+}
+
+#[derive(Clone, Debug, thiserror::Error)]
+#[cfg_attr(test, derive(PartialEq))]
+pub enum WidthError {
+    #[error("The {0:?} scalar width {1} is not supported")]
+    Invalid(crate::ScalarKind, crate::Bytes),
+    #[error("Using `{name}` values requires the `naga::valid::Capabilities::{flag}` flag")]
+    MissingCapability {
+        name: &'static str,
+        flag: &'static str,
+    },
+
+    #[error("64-bit integers are not yet supported")]
+    Unsupported64Bit,
 }
 
 // Only makes sense if `flags.contains(HOST_SHAREABLE)`
@@ -164,12 +179,14 @@ fn check_member_layout(
 /// `TypeFlags::empty()`.
 ///
 /// Pointers passed as arguments to user-defined functions must be in the
-/// `Function`, `Private`, or `Workgroup` storage space.
+/// `Function` or `Private` address space.
 const fn ptr_space_argument_flag(space: crate::AddressSpace) -> TypeFlags {
     use crate::AddressSpace as As;
     match space {
-        As::Function | As::Private | As::WorkGroup => TypeFlags::ARGUMENT,
-        As::Uniform | As::Storage { .. } | As::Handle | As::PushConstant => TypeFlags::empty(),
+        As::Function | As::Private => TypeFlags::ARGUMENT,
+        As::Uniform | As::Storage { .. } | As::Handle | As::PushConstant | As::WorkGroup => {
+            TypeFlags::empty()
+        }
     }
 }
 
@@ -207,16 +224,21 @@ impl super::Validator {
         }
     }
 
-    pub(super) fn check_width(
+    pub(super) const fn check_width(
         &self,
         kind: crate::ScalarKind,
         width: crate::Bytes,
-    ) -> Result<(), TypeError> {
+    ) -> Result<(), WidthError> {
         let good = match kind {
             crate::ScalarKind::Bool => width == crate::BOOL_WIDTH,
             crate::ScalarKind::Float => {
                 if width == 8 {
-                    self.require_type_capability(Capabilities::FLOAT64)?;
+                    if !self.capabilities.contains(Capabilities::FLOAT64) {
+                        return Err(WidthError::MissingCapability {
+                            name: "f64",
+                            flag: "FLOAT64",
+                        });
+                    }
                     true
                 } else {
                     width == 4
@@ -227,7 +249,7 @@ impl super::Validator {
         if good {
             Ok(())
         } else {
-            Err(TypeError::InvalidWidth(kind, width))
+            Err(WidthError::Invalid(kind, width))
         }
     }
 
@@ -316,7 +338,7 @@ impl super::Validator {
                     return Err(TypeError::InvalidPointerBase(base));
                 }
 
-                // Runtime-sized values can only live in the `Storage` storage
+                // Runtime-sized values can only live in the `Storage` address
                 // space, so it's useless to have a pointer to such a type in
                 // any other space.
                 //
@@ -336,7 +358,7 @@ impl super::Validator {
                     }
                 }
 
-                // `Validator::validate_function` actually checks the storage
+                // `Validator::validate_function` actually checks the address
                 // space of pointer arguments explicitly before checking the
                 // `ARGUMENT` flag, to give better error messages. But it seems
                 // best to set `ARGUMENT` accurately anyway.
@@ -364,7 +386,7 @@ impl super::Validator {
                 // `InvalidPointerBase` or `InvalidPointerToUnsized`.
                 self.check_width(kind, width)?;
 
-                // `Validator::validate_function` actually checks the storage
+                // `Validator::validate_function` actually checks the address
                 // space of pointer arguments explicitly before checking the
                 // `ARGUMENT` flag, to give better error messages. But it seems
                 // best to set `ARGUMENT` accurately anyway.
@@ -557,9 +579,17 @@ impl super::Validator {
 
                 ti
             }
-            Ti::Image { .. } | Ti::Sampler { .. } => {
+            Ti::Image {
+                dim,
+                arrayed,
+                class: _,
+            } => {
+                if arrayed && matches!(dim, crate::ImageDimension::Cube) {
+                    self.require_type_capability(Capabilities::CUBE_ARRAY_TEXTURES)?;
+                }
                 TypeInfo::new(TypeFlags::ARGUMENT, Alignment::ONE)
             }
+            Ti::Sampler { .. } => TypeInfo::new(TypeFlags::ARGUMENT, Alignment::ONE),
             Ti::AccelerationStructure => {
                 self.require_type_capability(Capabilities::RAY_QUERY)?;
                 TypeInfo::new(TypeFlags::ARGUMENT, Alignment::ONE)

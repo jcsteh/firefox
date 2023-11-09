@@ -64,6 +64,7 @@ support-files = [
   "test-console-stacktrace-mapped.html",
   "test-console-table.html",
   "test-console-workers.html",
+  "test-console-worklet.html",
   "test-console.html",
   "test-data.json",
   "test-data.json^headers^",
@@ -660,6 +661,7 @@ skip-if = [
   "win10_2004", # Bug 1723573
   "http3", # Bug 1829298
   "http2",
+  "a11y_checks", # Bugs 1858041, 1849028 and 1849179 for causing crashes
 ]
 
 ["browser_webconsole_responsive_design_mode.js"]
@@ -825,5 +827,7 @@ skip-if = ["true"] # Bug 1765369
 ["browser_webconsole_worker_evaluate.js"]
 
 ["browser_webconsole_worker_promise_error.js"]
+
+["browser_webconsole_worklet_console.js"]
 
 ["browser_webconsole_worklet_error.js"]

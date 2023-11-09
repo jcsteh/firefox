@@ -150,6 +150,8 @@ pref("browser.tabs.remote.autostart", true);
 // Bug 1809922 to enable translations
 #ifdef NIGHTLY_BUILD
   pref("browser.translations.enable", true);
+  // Used for mocking data for GeckoView Translations tests, should use in addition with an automation check.
+  pref("browser.translations.geckoview.enableAllTestMocks", false);
 #endif
 
 // SSL error page behaviour (bug 437372)
@@ -268,6 +270,12 @@ pref("formhelper.autozoom", true);
 // Optionally send web console output to logcat (bug 1415318)
 pref("geckoview.console.enabled", false);
 
+#ifdef NIGHTLY_BUILD
+  // Testing flag for geckoview shopping product. When true, sendAttributionEvent
+  // will return "TEST_AID_RESPONSE" for products with "TEST_AID" id.
+  pref("geckoview.shopping.test_response", false);
+#endif
+
 pref("image.cache.size", 1048576); // bytes
 
 // Inherit locale from the OS, used for multi-locale builds
@@ -311,7 +319,7 @@ pref("media.geckoview.autoplay.request", true);
 // Disable future downloads of OpenH264 on Android (bug 1548679)
 pref("media.gmp-gmpopenh264.autoupdate", false);
 
-// Make OpenH264 visible by default on mobile (bug 1532578)
+// Keep OpenH264 if already installed before. (bug 1532578)
 pref("media.gmp-gmpopenh264.enabled", true);
 pref("media.gmp-gmpopenh264.visible", true);
 

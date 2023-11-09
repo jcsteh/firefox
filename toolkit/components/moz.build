@@ -28,6 +28,7 @@ DIRS += [
     "clearsitedata",
     "cookiebanners",
     "commandlines",
+    "contentanalysis",
     "contentprefs",
     "contextualidentity",
     "crashes",
@@ -122,6 +123,9 @@ if CONFIG["TARGET_OS"] not in ("Android", "iOS"):
     XPCOM_MANIFESTS += [
         "components.conf",
     ]
+
+if CONFIG["MOZ_WIDGET_TOOLKIT"] not in ("android", "windows"):
+    DIRS += ["aboutwebauthn"]
 
 if CONFIG["MOZ_BUILD_APP"] == "browser":
     DIRS += ["normandy", "messaging-system"]

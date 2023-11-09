@@ -192,12 +192,12 @@
               data-l10n-id="bookmark-panel"
               data-l10n-attrs="style">
           <button id="editBookmarkPanelDoneButton"
-                  class="panel-footer-button"
+                  class="footer-button"
                   data-l10n-id="bookmark-panel-save-button"
                   default="true"
                   oncommand="StarUI.panel.hidePopup();"/>
           <button id="editBookmarkPanelRemoveButton"
-                  class="panel-footer-button"
+                  class="footer-button"
                   oncommand="StarUI.removeBookmarkButtonCommand();"/>
         </html:moz-button-group>
       </vbox>
@@ -599,7 +599,7 @@
     </panel>
   </html:template>
 
-  #include ../../../toolkit/components/pictureinpicture/content/pictureInPicturePanel.xhtml
+  #include ../../../toolkit/components/pictureinpicture/content/pictureInPicturePanel.inc.xhtml
 
   <menupopup id="unified-extensions-context-menu"
              onpopupshowing="gUnifiedExtensions.updateContextMenu(this, event)"

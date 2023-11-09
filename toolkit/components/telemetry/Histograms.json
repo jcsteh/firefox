@@ -455,8 +455,8 @@
     "record_in_processes": ["content"],
     "products": ["firefox"],
     "alert_emails": ["pbz@mozilla.com", "tihuang@mozilla.com"],
-    "expires_in_version": "122",
-    "bug_numbers": [1797078, 1804259, 1827765, 1850874],
+    "expires_in_version": "128",
+    "bug_numbers": [1797078, 1804259, 1827765, 1850874, 1861317],
     "kind": "exponential",
     "high": 600000,
     "n_buckets": 100,
@@ -1260,6 +1260,18 @@
     "bug_numbers": [1580227],
     "description": "GC 'effectiveness', the amount of memory freed divided by main-thread collection time (MB/s)"
   },
+  "GC_PARALLEL_MARK": {
+    "record_in_processes": ["main", "content"],
+    "products": ["firefox"],
+    "alert_emails": [
+      "dev-telemetry-gc-alerts@mozilla.org",
+      "jcoppeard@mozilla.com"
+    ],
+    "expires_in_version": "never",
+    "kind": "boolean",
+    "bug_numbers": [1861942],
+    "description": "Whether parallel marking was used for this collection"
+  },
   "GC_PARALLEL_MARK_SPEEDUP": {
     "record_in_processes": ["main", "content"],
     "products": ["firefox"],
@@ -1723,6 +1735,53 @@
     "description": "Hard page faults (since last telemetry ping)",
     "operating_systems": ["unix"]
   },
+  "MEMORY_PHC_SLOP": {
+    "record_in_processes": ["main", "content"],
+    "products": ["firefox"],
+    "alert_emails": [
+      "memshrink-telemetry-alerts@mozilla.com",
+      "pbone@mozilla.com"
+    ],
+    "bug_numbers": [1829127],
+    "expires_in_version": "128",
+    "kind": "exponential",
+    "low": 4096,
+    "high": 8388608,
+    "n_buckets": 48,
+    "description": "Over-allocation due to PHC's rounding (aka internal fragmentation).  Measured in bytes.",
+    "releaseChannelCollection": "opt-out"
+  },
+  "MEMORY_PHC_SLOTS_ALLOCATED": {
+    "record_in_processes": ["main", "content"],
+    "products": ["firefox"],
+    "alert_emails": [
+      "memshrink-telemetry-alerts@mozilla.com",
+      "pbone@mozilla.com"
+    ],
+    "bug_numbers": [1829127],
+    "expires_in_version": "128",
+    "kind": "exponential",
+    "high": 16384,
+    "n_buckets": 64,
+    "description": "Number of PHC slots currently allocated",
+    "releaseChannelCollection": "opt-out"
+  },
+  "MEMORY_PHC_SLOTS_FREED": {
+    "record_in_processes": ["main", "content"],
+    "products": ["firefox"],
+    "alert_emails": [
+      "memshrink-telemetry-alerts@mozilla.com",
+      "pbone@mozilla.com"
+    ],
+    "bug_numbers": [1829127],
+    "expires_in_version": "128",
+    "kind": "exponential",
+    "high": 16384,
+    "n_buckets": 64,
+    "description": "Number of PHC slots allocated-then-freed",
+    "releaseChannelCollection": "opt-out"
+  },
+
   "FONTLIST_INITOTHERFAMILYNAMES": {
     "record_in_processes": ["main", "content"],
     "products": ["firefox", "fennec"],
@@ -8670,17 +8729,6 @@
     "kind": "boolean",
     "description": "THUMBNAILS: Thumbnail found"
   },
-  "FX_MIGRATION_ENTRY_POINT": {
-    "record_in_processes": ["main"],
-    "products": ["firefox"],
-    "bug_numbers": [731025, 1584261, 1643431, 1665442, 1678204],
-    "alert_emails": ["gijs@mozilla.com", "mak@mozilla.com"],
-    "expires_in_version": "never",
-    "kind": "enumerated",
-    "n_values": 10,
-    "releaseChannelCollection": "opt-out",
-    "description": "Where the migration wizard was entered from. 0=Other/catch-all, 1=first-run, 2=refresh-firefox, 3=Places window, 4=Password manager, 5=New tab, 6=File menu, 7=Help menu, 8=Bookmarks toolbar"
-  },
   "FX_MIGRATION_ENTRY_POINT_CATEGORICAL": {
     "record_in_processes": ["main"],
     "products": ["firefox"],
@@ -8915,52 +8963,6 @@
     "labels": ["added", "modified", "error", "no_change"],
     "releaseChannelCollection": "opt-out",
     "description": "Results of login import from a CSV/TSV file, by category"
-  },
-  "FX_STARTUP_MIGRATION_BROWSER_COUNT": {
-    "record_in_processes": ["main"],
-    "products": ["firefox"],
-    "bug_numbers": [1275114],
-    "alert_emails": ["gijs@mozilla.com"],
-    "expires_in_version": "65",
-    "kind": "enumerated",
-    "n_values": 15,
-    "releaseChannelCollection": "opt-out",
-    "description": "Number of browsers from which the user could migrate on initial profile migration. Only available on release builds during firstrun."
-  },
-  "FX_STARTUP_MIGRATION_EXISTING_DEFAULT_BROWSER": {
-    "record_in_processes": ["main"],
-    "products": ["firefox"],
-    "bug_numbers": [1275114],
-    "alert_emails": ["gijs@mozilla.com"],
-    "expires_in_version": "65",
-    "kind": "enumerated",
-    "n_values": 15,
-    "releaseChannelCollection": "opt-out",
-    "description": "The browser that was the default on the initial profile migration. The values correspond to the internal browser ID (see MigrationUtils.jsm)"
-  },
-  "FX_STARTUP_MIGRATION_DATA_RECENCY": {
-    "record_in_processes": ["main"],
-    "products": ["firefox"],
-    "bug_numbers": [1276694],
-    "alert_emails": ["gijs@mozilla.com"],
-    "expires_in_version": "65",
-    "keyed": true,
-    "kind": "exponential",
-    "n_buckets": 50,
-    "high": 8760,
-    "releaseChannelCollection": "opt-out",
-    "description": "The 'last modified' time of the data we imported on the initial profile migration (time delta with 'now' at the time of migration, in hours). Collected for all browsers for which migration data is available, and stored keyed by browser identifier (e.g. 'ie', 'edge', 'safari', etc.)."
-  },
-  "FX_STARTUP_MIGRATION_USED_RECENT_BROWSER": {
-    "record_in_processes": ["main"],
-    "products": ["firefox"],
-    "bug_numbers": [1276694],
-    "alert_emails": ["gijs@mozilla.com"],
-    "expires_in_version": "65",
-    "keyed": true,
-    "kind": "boolean",
-    "releaseChannelCollection": "opt-out",
-    "description": "Whether the browser we migrated from was the browser with the most recent data. Keyed by that browser's identifier (e.g. 'ie', 'edge', 'safari', etc.)."
   },
   "FX_ABOUTHOME_CACHE_CONSTRUCTION": {
     "record_in_processes": ["content"],
@@ -10845,18 +10847,6 @@
     ],
     "description": "Records search counts for search access points. The format is: <engine-name>.<search-access-point>. For the urlbar when in search mode, the format is <engine name>.urlbar-searchmode. For the urlbar when an internal @engine shortcut is used, the format is: <engine-name>.alias.",
     "record_into_store": ["main", "account-ecosystem"]
-  },
-  "SEARCH_SERVICE_INIT_MS": {
-    "record_in_processes": ["main"],
-    "products": ["firefox", "fennec"],
-    "alert_emails": ["fx-search-telemetry@mozilla.com"],
-    "expires_in_version": "122",
-    "releaseChannelCollection": "opt-out",
-    "kind": "exponential",
-    "high": 1000,
-    "n_buckets": 15,
-    "bug_numbers": [1489524, 1832509],
-    "description": "Time (ms) it takes to initialize the search service"
   },
   "SEARCH_SERVICE_INIT2_MS": {
     "record_in_processes": ["main"],
@@ -16260,6 +16250,30 @@
     "bug_numbers": [1671729],
     "description": "The time between responseStart and the first contentful paint of a foreground http or https root content document, in milliseconds. The contentful paint timestamp is taken during display list building and does not include rasterization or compositing of that paint."
   },
+  "PERF_LARGEST_CONTENTFUL_PAINT_MS": {
+    "record_in_processes": ["content"],
+    "products": ["firefox"],
+    "alert_emails": ["perf-telemetry-alerts@mozilla.com"],
+    "expires_in_version": "never",
+    "releaseChannelCollection": "opt-out",
+    "kind": "exponential",
+    "high": 50000,
+    "n_buckets": 100,
+    "bug_numbers": [1862939],
+    "description": "The time between navigationStart and the largest contentful paint of a foreground http or https root content document, in milliseconds. The contentful paint timestamp is taken during display list building and does not include rasterization or compositing of that paint."
+  },
+  "PERF_LARGEST_CONTENTFUL_PAINT_FROM_RESPONSE_START_MS": {
+    "record_in_processes": ["content"],
+    "products": ["firefox"],
+    "alert_emails": ["perf-telemetry-alerts@mozilla.com"],
+    "expires_in_version": "never",
+    "releaseChannelCollection": "opt-out",
+    "kind": "exponential",
+    "high": 50000,
+    "n_buckets": 100,
+    "bug_numbers": [1862939],
+    "description": "The time between responseStart and the largest contentful paint of a foreground http or https root content document, in milliseconds. The contentful paint timestamp is taken during display list building and does not include rasterization or compositing of that paint."
+  },
   "PERF_REQUEST_ANIMATION_CALLBACK_NON_PAGELOAD_MS": {
     "record_in_processes": ["content"],
     "products": ["firefox", "geckoview_streaming"],
@@ -16372,11 +16386,7 @@
   "WEBEXT_BACKGROUND_PAGE_LOAD_MS": {
     "record_in_processes": ["main"],
     "products": ["firefox", "fennec"],
-    "alert_emails": [
-      "addons-dev-internal@mozilla.com",
-      "ddurst@mozilla.com",
-      "ckarlof@mozilla.com"
-    ],
+    "alert_emails": ["addons-dev-internal@mozilla.com", "lgreco@mozilla.com"],
     "bug_numbers": [1353172, 1489524],
     "expires_in_version": "never",
     "kind": "exponential",
@@ -16391,9 +16401,9 @@
     "alert_emails": ["addons-dev-internal@mozilla.com", "lgreco@mozilla.com"],
     "bug_numbers": [
       1483002, 1513556, 1578225, 1623315, 1666980, 1706839, 1745271, 1777402,
-      1811155
+      1811155, 1861303
     ],
-    "expires_in_version": "122",
+    "expires_in_version": "132",
     "kind": "exponential",
     "releaseChannelCollection": "opt-out",
     "high": 60000,
@@ -16407,9 +16417,9 @@
     "alert_emails": ["addons-dev-internal@mozilla.com", "lgreco@mozilla.com"],
     "bug_numbers": [
       1297167, 1513556, 1578225, 1623315, 1666980, 1706839, 1745271, 1777402,
-      1811155
+      1811155, 1861303
     ],
-    "expires_in_version": "122",
+    "expires_in_version": "132",
     "kind": "exponential",
     "releaseChannelCollection": "opt-out",
     "high": 50000,
@@ -16422,9 +16432,9 @@
     "alert_emails": ["addons-dev-internal@mozilla.com", "lgreco@mozilla.com"],
     "bug_numbers": [
       1483002, 1513556, 1578225, 1623315, 1666980, 1706839, 1745271, 1777402,
-      1811155
+      1811155, 1861303
     ],
-    "expires_in_version": "122",
+    "expires_in_version": "132",
     "kind": "exponential",
     "releaseChannelCollection": "opt-out",
     "high": 50000,
@@ -16438,9 +16448,9 @@
     "alert_emails": ["addons-dev-internal@mozilla.com", "lgreco@mozilla.com"],
     "bug_numbers": [
       1297167, 1513556, 1578225, 1623315, 1666980, 1706839, 1745271, 1777402,
-      1811155
+      1811155, 1861303
     ],
-    "expires_in_version": "122",
+    "expires_in_version": "132",
     "kind": "categorical",
     "labels": ["popupShown", "clearAfterHover", "clearAfterMousedown"],
     "releaseChannelCollection": "opt-out",
@@ -16452,9 +16462,9 @@
     "alert_emails": ["addons-dev-internal@mozilla.com", "lgreco@mozilla.com"],
     "bug_numbers": [
       1483002, 1513556, 1578225, 1623315, 1666980, 1706839, 1745271, 1777402,
-      1811155
+      1811155, 1861303
     ],
-    "expires_in_version": "122",
+    "expires_in_version": "132",
     "kind": "categorical",
     "labels": ["popupShown", "clearAfterHover", "clearAfterMousedown"],
     "releaseChannelCollection": "opt-out",
@@ -16547,8 +16557,8 @@
     "record_in_processes": ["main"],
     "products": ["firefox"],
     "alert_emails": ["addons-dev-internal@mozilla.com", "lgreco@mozilla.com"],
-    "bug_numbers": [1787940, 1817103],
-    "expires_in_version": "122",
+    "bug_numbers": [1787940, 1817103, 1861303],
+    "expires_in_version": "132",
     "kind": "exponential",
     "keyed": true,
     "releaseChannelCollection": "opt-out",
@@ -16560,8 +16570,8 @@
     "record_in_processes": ["main"],
     "products": ["firefox"],
     "alert_emails": ["addons-dev-internal@mozilla.com", "lgreco@mozilla.com"],
-    "bug_numbers": [1787940, 1817103],
-    "expires_in_version": "122",
+    "bug_numbers": [1787940, 1817103, 1861303],
+    "expires_in_version": "132",
     "kind": "categorical",
     "labels": [
       "suspend",
@@ -16578,8 +16588,8 @@
     "record_in_processes": ["main"],
     "products": ["firefox"],
     "alert_emails": ["addons-dev-internal@mozilla.com", "lgreco@mozilla.com"],
-    "bug_numbers": [1787940, 1817103],
-    "expires_in_version": "122",
+    "bug_numbers": [1787940, 1817103, 1861303],
+    "expires_in_version": "132",
     "kind": "categorical",
     "labels": [
       "suspend",
@@ -16611,9 +16621,9 @@
     "alert_emails": ["addons-dev-internal@mozilla.com", "lgreco@mozilla.com"],
     "bug_numbers": [
       1483002, 1513556, 1578225, 1623315, 1666980, 1706839, 1745271, 1777402,
-      1811155
+      1811155, 1861303
     ],
-    "expires_in_version": "122",
+    "expires_in_version": "132",
     "kind": "exponential",
     "releaseChannelCollection": "opt-out",
     "high": 50000,
@@ -16639,9 +16649,9 @@
     "alert_emails": ["addons-dev-internal@mozilla.com", "lgreco@mozilla.com"],
     "bug_numbers": [
       1483002, 1513556, 1578225, 1623315, 1666980, 1706839, 1745271, 1777402,
-      1811155
+      1811155, 1861303
     ],
-    "expires_in_version": "122",
+    "expires_in_version": "132",
     "kind": "exponential",
     "releaseChannelCollection": "opt-out",
     "high": 50000,
@@ -16655,9 +16665,9 @@
     "alert_emails": ["addons-dev-internal@mozilla.com", "lgreco@mozilla.com"],
     "bug_numbers": [
       1297167, 1513556, 1578225, 1623315, 1666980, 1706839, 1745271, 1777402,
-      1811155
+      1811155, 1861303
     ],
-    "expires_in_version": "122",
+    "expires_in_version": "132",
     "kind": "exponential",
     "releaseChannelCollection": "opt-out",
     "high": 50000,
@@ -16670,9 +16680,9 @@
     "alert_emails": ["addons-dev-internal@mozilla.com", "lgreco@mozilla.com"],
     "bug_numbers": [
       1483002, 1513556, 1578225, 1623315, 1666980, 1706839, 1745271, 1777402,
-      1811155
+      1811155, 1861303
     ],
-    "expires_in_version": "122",
+    "expires_in_version": "132",
     "kind": "exponential",
     "releaseChannelCollection": "opt-out",
     "high": 50000,
@@ -16686,9 +16696,9 @@
     "alert_emails": ["addons-dev-internal@mozilla.com", "lgreco@mozilla.com"],
     "bug_numbers": [
       1371398, 1513556, 1578225, 1623315, 1666980, 1706839, 1745271, 1777402,
-      1811155
+      1811155, 1861303
     ],
-    "expires_in_version": "122",
+    "expires_in_version": "132",
     "kind": "exponential",
     "releaseChannelCollection": "opt-out",
     "high": 50000,
@@ -16701,9 +16711,9 @@
     "alert_emails": ["addons-dev-internal@mozilla.com", "lgreco@mozilla.com"],
     "bug_numbers": [
       1483002, 1513556, 1578225, 1623315, 1666980, 1706839, 1745271, 1777402,
-      1811155
+      1811155, 1861303
     ],
-    "expires_in_version": "122",
+    "expires_in_version": "132",
     "kind": "exponential",
     "releaseChannelCollection": "opt-out",
     "high": 50000,
@@ -16717,9 +16727,9 @@
     "alert_emails": ["addons-dev-internal@mozilla.com", "lgreco@mozilla.com"],
     "bug_numbers": [
       1371398, 1513556, 1578225, 1623315, 1666980, 1706839, 1745271, 1777402,
-      1811155
+      1811155, 1861303
     ],
-    "expires_in_version": "122",
+    "expires_in_version": "132",
     "kind": "exponential",
     "releaseChannelCollection": "opt-out",
     "high": 50000,
@@ -16732,9 +16742,9 @@
     "alert_emails": ["addons-dev-internal@mozilla.com", "lgreco@mozilla.com"],
     "bug_numbers": [
       1483002, 1513556, 1578225, 1623315, 1666980, 1706839, 1745271, 1777402,
-      1811155
+      1811155, 1861303
     ],
-    "expires_in_version": "122",
+    "expires_in_version": "132",
     "kind": "exponential",
     "releaseChannelCollection": "opt-out",
     "high": 50000,
@@ -16748,9 +16758,9 @@
     "alert_emails": ["addons-dev-internal@mozilla.com", "lgreco@mozilla.com"],
     "bug_numbers": [
       1465120, 1513556, 1578225, 1623315, 1666980, 1706839, 1745271, 1777402,
-      1811155
+      1811155, 1861303
     ],
-    "expires_in_version": "122",
+    "expires_in_version": "132",
     "kind": "exponential",
     "releaseChannelCollection": "opt-out",
     "high": 50000,
@@ -16763,9 +16773,9 @@
     "alert_emails": ["addons-dev-internal@mozilla.com", "lgreco@mozilla.com"],
     "bug_numbers": [
       1483002, 1513556, 1578225, 1623315, 1666980, 1706839, 1745271, 1777402,
-      1811155
+      1811155, 1861303
     ],
-    "expires_in_version": "122",
+    "expires_in_version": "132",
     "kind": "exponential",
     "releaseChannelCollection": "opt-out",
     "high": 50000,
@@ -16779,9 +16789,9 @@
     "alert_emails": ["addons-dev-internal@mozilla.com", "lgreco@mozilla.com"],
     "bug_numbers": [
       1465120, 1513556, 1578225, 1623315, 1666980, 1706839, 1745271, 1777402,
-      1811155
+      1811155, 1861303
     ],
-    "expires_in_version": "122",
+    "expires_in_version": "132",
     "kind": "exponential",
     "releaseChannelCollection": "opt-out",
     "high": 50000,
@@ -16794,9 +16804,9 @@
     "alert_emails": ["addons-dev-internal@mozilla.com", "lgreco@mozilla.com"],
     "bug_numbers": [
       1483002, 1513556, 1578225, 1623315, 1666980, 1706839, 1745271, 1777402,
-      1811155
+      1811155, 1861303
     ],
-    "expires_in_version": "122",
+    "expires_in_version": "132",
     "kind": "exponential",
     "releaseChannelCollection": "opt-out",
     "high": 50000,
@@ -16809,10 +16819,10 @@
     "products": ["firefox", "fennec"],
     "bug_numbers": [
       1465129, 1513556, 1578225, 1623315, 1666980, 1706839, 1745271, 1777402,
-      1811155
+      1811155, 1861303
     ],
     "alert_emails": ["addons-dev-internal@mozilla.com", "lgreco@mozilla.com"],
-    "expires_in_version": "122",
+    "expires_in_version": "132",
     "kind": "categorical",
     "labels": ["success", "failure"],
     "releaseChannelCollection": "opt-out",
@@ -18117,5 +18127,40 @@
     "n_buckets": 50,
     "keyed": true,
     "description": "LongTask events for parent process (keys: event name): time the event ran in ms"
+  },
+  "STRIP_ON_SHARE_PARAMS_REMOVED": {
+    "record_in_processes": ["main"],
+    "products": ["firefox"],
+    "expires_in_version": "never",
+    "releaseChannelCollection": "opt-out",
+    "kind": "linear",
+    "high": 100,
+    "n_buckets": 50,
+    "alert_emails": ["amadan@mozilla.com", "pbz@mozilla.com"],
+    "bug_numbers": [1833105],
+    "description": "The number of query parameters removed, if any, when strip on share is used"
+  },
+  "STRIP_ON_SHARE_LENGTH_DECREASE": {
+    "record_in_processes": ["main"],
+    "products": ["firefox"],
+    "expires_in_version": "never",
+    "releaseChannelCollection": "opt-out",
+    "kind": "exponential",
+    "high": 1000,
+    "n_buckets": 100,
+    "alert_emails": ["amadan@mozilla.com", "pbz@mozilla.com"],
+    "bug_numbers": [1833105],
+    "description": "The decrease in the length of the URL when strip on share is used, only if at least one parameter is stripped"
+  },
+  "GVSV_AUDIO_STREAM_INITS": {
+    "bug_numbers": [1858954],
+    "description": "Incremented when an audio stream is initialized. For use as part of the GeckoView Streaming Validation.",
+    "expires_in_version": "122",
+    "kind": "categorical",
+    "alert_emails": ["pmcmanis@mozilla.com"],
+    "products": ["firefox", "geckoview_streaming"],
+    "record_in_processes": ["all"],
+    "labels": ["inits"],
+    "releaseChannelCollection": "opt-out"
   }
 }

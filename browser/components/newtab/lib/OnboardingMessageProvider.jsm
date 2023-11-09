@@ -78,6 +78,53 @@ const BASE_MESSAGES = () => [
     trigger: { id: "protectionsPanelOpen" },
   },
   {
+    id: "MILESTONE_MESSAGE_87",
+    groups: ["cfr"],
+    content: {
+      text: "",
+      layout: "short_message",
+      buttons: {
+        primary: {
+          event: "PROTECTION",
+          label: {
+            string_id: "cfr-doorhanger-milestone-ok-button",
+          },
+          action: {
+            type: "OPEN_PROTECTION_REPORT",
+          },
+        },
+        secondary: [
+          {
+            event: "DISMISS",
+            label: {
+              string_id: "cfr-doorhanger-milestone-close-button",
+            },
+            action: {
+              type: "CANCEL",
+            },
+          },
+        ],
+      },
+      category: "cfrFeatures",
+      anchor_id: "tracking-protection-icon-container",
+      bucket_id: "CFR_MILESTONE_MESSAGE",
+      heading_text: {
+        string_id: "cfr-doorhanger-milestone-heading2",
+      },
+      notification_text: "",
+      skip_address_bar_notifier: true,
+    },
+    trigger: {
+      id: "contentBlocking",
+      params: ["ContentBlockingMilestone"],
+    },
+    template: "milestone_message",
+    frequency: {
+      lifetime: 7,
+    },
+    targeting: "pageLoad >= 4 && userPrefs.cfrFeatures",
+  },
+  {
     id: "CFR_FIREFOX_VIEW",
     groups: ["cfr"],
     template: "cfr_doorhanger",
@@ -939,89 +986,6 @@ const BASE_MESSAGES = () => [
       lifetime: 12,
     },
     targeting: `'cookiebanners.service.mode.privateBrowsing'|preferenceValue != 0 || 'cookiebanners.service.mode'|preferenceValue != 0`,
-  },
-  {
-    id: "CFR_COOKIEBANNER",
-    groups: ["cfr"],
-    template: "cfr_doorhanger",
-    content: {
-      bucket_id: "CFR_COOKIEBANNER",
-      anchor_id: "tracking-protection-icon-container",
-      layout: "icon_and_message",
-      icon: "chrome://browser/skin/controlcenter/3rdpartycookies.svg",
-      icon_class: "cfr-doorhanger-small-icon",
-      persistent_doorhanger: true,
-      show_in_private_browsing: true,
-      heading_text: {
-        string_id: "cfr-cbh-header",
-      },
-      text: {
-        string_id: "cfr-cbh-body",
-      },
-      buttons: {
-        primary: {
-          label: {
-            string_id: "cfr-cbh-confirm-button",
-          },
-          action: {
-            type: "MULTI_ACTION",
-            data: {
-              actions: [
-                {
-                  type: "SET_PREF",
-                  data: {
-                    pref: {
-                      name: "cookiebanners.service.mode",
-                      value: 1,
-                    },
-                  },
-                },
-                {
-                  type: "SET_PREF",
-                  data: {
-                    pref: {
-                      name: "cookiebanners.service.mode.privateBrowsing",
-                      value: 1,
-                    },
-                  },
-                },
-                {
-                  type: "SET_PREF",
-                  data: {
-                    pref: {
-                      name: "cookiebanners.service.detectOnly",
-                      value: false,
-                    },
-                  },
-                },
-                {
-                  type: "RELOAD_BROWSER",
-                },
-              ],
-            },
-          },
-        },
-        secondary: [
-          {
-            label: {
-              string_id: "cfr-cbh-dismiss-button",
-            },
-            action: {
-              type: "CANCEL",
-            },
-          },
-        ],
-      },
-      skip_address_bar_notifier: true,
-    },
-    frequency: {
-      custom: [{ period: 24 * 60 * 60 * 1000 * 2, cap: 1 }],
-      lifetime: 2,
-    },
-    trigger: {
-      id: "cookieBannerDetected",
-    },
-    targeting: `'cookiebanners.ui.desktop.enabled'|preferenceValue == true && 'cookiebanners.service.detectOnly'|preferenceValue == true`,
   },
   {
     id: "INFOBAR_LAUNCH_ON_LOGIN",

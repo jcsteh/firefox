@@ -134,10 +134,14 @@ pub enum ConstExpressionError {
     NonConst,
     #[error(transparent)]
     Compose(#[from] super::ComposeError),
+    #[error("Splatting {0:?} can't be done")]
+    InvalidSplatType(Handle<crate::Expression>),
     #[error("Type resolution failed")]
     Type(#[from] ResolveError),
     #[error(transparent)]
     Literal(#[from] LiteralError),
+    #[error(transparent)]
+    Width(#[from] super::r#type::WidthError),
 }
 
 #[derive(Clone, Debug, thiserror::Error)]
@@ -147,6 +151,8 @@ pub enum LiteralError {
     NaN,
     #[error("Float literal is infinite")]
     Infinity,
+    #[error(transparent)]
+    Width(#[from] super::r#type::WidthError),
 }
 
 #[cfg(feature = "validate")]
@@ -186,7 +192,7 @@ impl super::Validator {
 
         match gctx.const_expressions[handle] {
             E::Literal(literal) => {
-                validate_literal(literal)?;
+                self.validate_literal(literal)?;
             }
             E::Constant(_) | E::ZeroValue(_) => {}
             E::Compose { ref components, ty } => {
@@ -196,6 +202,10 @@ impl super::Validator {
                     components.iter().map(|&handle| mod_info[handle].clone()),
                 )?;
             }
+            E::Splat { value, .. } => match *mod_info[value].inner_with(gctx.types) {
+                crate::TypeInner::Scalar { .. } => {}
+                _ => return Err(super::ConstExpressionError::InvalidSplatType(value)),
+            },
             _ => return Err(super::ConstExpressionError::NonConst),
         }
 
@@ -337,7 +347,7 @@ impl super::Validator {
                 ShaderStages::all()
             }
             E::Literal(literal) => {
-                validate_literal(literal)?;
+                self.validate_literal(literal)?;
                 ShaderStages::all()
             }
             E::Constant(_) | E::ZeroValue(_) => ShaderStages::all(),
@@ -643,10 +653,9 @@ impl super::Validator {
                 use crate::UnaryOperator as Uo;
                 let inner = &resolver[expr];
                 match (op, inner.scalar_kind()) {
-                    (_, Some(Sk::Sint | Sk::Bool))
-                    //TODO: restrict Negate for bools?
-                    | (Uo::Negate, Some(Sk::Float))
-                    | (Uo::Not, Some(Sk::Uint)) => {}
+                    (Uo::Negate, Some(Sk::Float | Sk::Sint))
+                    | (Uo::LogicalNot, Some(Sk::Bool))
+                    | (Uo::BitwiseNot, Some(Sk::Sint | Sk::Uint)) => {}
                     other => {
                         log::error!("Op {:?} kind {:?}", op, other);
                         return Err(ExpressionError::InvalidUnaryOperandType(op, expr));
@@ -892,7 +901,7 @@ impl super::Validator {
                             return Err(ExpressionError::InvalidBooleanVector(argument));
                         }
                     },
-                    Rf::IsNan | Rf::IsInf | Rf::IsFinite | Rf::IsNormal => match *argument_inner {
+                    Rf::IsNan | Rf::IsInf => match *argument_inner {
                         Ti::Scalar {
                             kind: Sk::Float, ..
                         }
@@ -1558,9 +1567,18 @@ impl super::Validator {
             _ => Err(ExpressionError::ExpectedGlobalVariable),
         }
     }
+
+    pub fn validate_literal(&self, literal: crate::Literal) -> Result<(), LiteralError> {
+        let kind = literal.scalar_kind();
+        let width = literal.width();
+        self.check_width(kind, width)?;
+        check_literal_value(literal)?;
+
+        Ok(())
+    }
 }
 
-fn validate_literal(literal: crate::Literal) -> Result<(), LiteralError> {
+pub fn check_literal_value(literal: crate::Literal) -> Result<(), LiteralError> {
     let is_nan = match literal {
         crate::Literal::F64(v) => v.is_nan(),
         crate::Literal::F32(v) => v.is_nan(),

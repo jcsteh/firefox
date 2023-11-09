@@ -249,6 +249,11 @@ toolbarseparator + .panel-subview-body {
     margin-top: calc(-1 * (var(--panel-subview-body-padding-block) + var(--panel-shadow-margin) + 1px));
   }
 
+  menuitem::before,
+  menuitem::after {
+    content: none; /* Reset's macOS' checkmark spacing */
+  }
+
   :is(menu, menuitem)[disabled] {
     color: var(--panel-disabled-color);
   }
@@ -273,18 +278,18 @@ toolbarseparator + .panel-subview-body {
   .menu-right {
     /* Reset every spacing and appearance set by the platforms' menu.css
      * and set the ones we need in the following rules. */
-    margin: 0 !important;
-    padding: 0 !important;
-    appearance: none !important;
+    margin: 0;
+    padding: 0;
+    appearance: none;
   }
 
   :is(.menu-iconic, .menuitem-iconic) > .menu-iconic-left {
-    margin-inline-end: 8px !important;
+    margin-inline-end: 8px;
   }
 
   .menu-accel,
   .menu-iconic-accel {
-    margin-inline-start: 16px !important;
+    margin-inline-start: 16px;
   }
 
   menu > .menu-right {
@@ -310,7 +315,7 @@ toolbarseparator + .panel-subview-body {
 }
 
 :is(.toolbar-menupopup, .toolbar-menupopup menupopup)[emptyplacesresult] > menuitem > .menu-accel-container > .menu-accel {
-  margin: 0 !important;
+  margin: 0;
 }
 
 #confirmation-hint {

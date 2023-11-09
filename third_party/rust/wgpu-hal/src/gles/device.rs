@@ -101,12 +101,10 @@ impl super::Device {
         desc: &crate::TextureDescriptor,
         drop_guard: Option<crate::DropGuard>,
     ) -> super::Texture {
-        let (target, _, is_cubemap) = super::Texture::get_info_from_desc(desc);
-
         super::Texture {
             inner: super::TextureInner::Texture {
                 raw: glow::NativeTexture(name),
-                target,
+                target: super::Texture::get_info_from_desc(desc),
             },
             drop_guard,
             mip_level_count: desc.mip_level_count,
@@ -114,7 +112,6 @@ impl super::Device {
             format: desc.format,
             format_desc: self.shared.describe_texture_format(desc.format),
             copy_size: desc.copy_extent(),
-            is_cubemap,
         }
     }
 
@@ -142,7 +139,6 @@ impl super::Device {
             format: desc.format,
             format_desc: self.shared.describe_texture_format(desc.format),
             copy_size: desc.copy_extent(),
-            is_cubemap: false,
         }
     }
 
@@ -276,10 +272,6 @@ impl super::Device {
                 entry_point: stage.entry_point.to_owned(),
             });
         }
-        let glsl_version = match self.shared.shading_language_version {
-            naga::back::glsl::Version::Embedded { version, .. } => version,
-            naga::back::glsl::Version::Desktop(_) => unreachable!(),
-        };
         let mut guard = self
             .shared
             .program_cache
@@ -299,7 +291,7 @@ impl super::Device {
                     layout,
                     label,
                     multiview,
-                    glsl_version,
+                    self.shared.shading_language_version,
                     self.shared.private_caps,
                 )
             })
@@ -315,9 +307,13 @@ impl super::Device {
         layout: &super::PipelineLayout,
         #[cfg_attr(target_arch = "wasm32", allow(unused))] label: Option<&str>,
         multiview: Option<std::num::NonZeroU32>,
-        glsl_version: u16,
+        glsl_version: naga::back::glsl::Version,
         private_caps: super::PrivateCapabilities,
     ) -> Result<Arc<super::PipelineInner>, crate::PipelineError> {
+        let glsl_version = match glsl_version {
+            naga::back::glsl::Version::Embedded { version, .. } => format!("{version} es"),
+            naga::back::glsl::Version::Desktop(version) => format!("{version}"),
+        };
         let program = unsafe { gl.create_program() }.unwrap();
         #[cfg(not(target_arch = "wasm32"))]
         if let Some(label) = label {
@@ -347,7 +343,7 @@ impl super::Device {
 
         // Create empty fragment shader if only vertex shader is present
         if has_stages == wgt::ShaderStages::VERTEX {
-            let shader_src = format!("#version {glsl_version} es \n void main(void) {{}}",);
+            let shader_src = format!("#version {glsl_version}\n void main(void) {{}}",);
             log::info!("Only vertex shader is present. Creating an empty fragment shader",);
             let shader = unsafe {
                 Self::compile_shader(
@@ -668,7 +664,7 @@ impl crate::Device<super::Api> for super::Device {
             | crate::TextureUses::DEPTH_STENCIL_READ;
         let format_desc = self.shared.describe_texture_format(desc.format);
 
-        let (inner, is_cubemap) = if render_usage.contains(desc.usage)
+        let inner = if render_usage.contains(desc.usage)
             && desc.dimension == wgt::TextureDimension::D2
             && desc.size.depth_or_array_layers == 1
         {
@@ -704,10 +700,10 @@ impl crate::Device<super::Api> for super::Device {
             }
 
             unsafe { gl.bind_renderbuffer(glow::RENDERBUFFER, None) };
-            (super::TextureInner::Renderbuffer { raw }, false)
+            super::TextureInner::Renderbuffer { raw }
         } else {
             let raw = unsafe { gl.create_texture().unwrap() };
-            let (target, is_3d, is_cubemap) = super::Texture::get_info_from_desc(desc);
+            let target = super::Texture::get_info_from_desc(desc);
 
             unsafe { gl.bind_texture(target, Some(raw)) };
             //Note: this has to be done before defining the storage!
@@ -728,7 +724,7 @@ impl crate::Device<super::Api> for super::Device {
                 _ => {}
             }
 
-            if is_3d {
+            if conv::is_layered_target(target) {
                 unsafe {
                     gl.tex_storage_3d(
                         target,
@@ -771,7 +767,7 @@ impl crate::Device<super::Api> for super::Device {
             }
 
             unsafe { gl.bind_texture(target, None) };
-            (super::TextureInner::Texture { raw, target }, is_cubemap)
+            super::TextureInner::Texture { raw, target }
         };
 
         Ok(super::Texture {
@@ -782,7 +778,6 @@ impl crate::Device<super::Api> for super::Device {
             format: desc.format,
             format_desc,
             copy_size: desc.copy_extent(),
-            is_cubemap,
         })
     }
     unsafe fn destroy_texture(&self, texture: super::Texture) {
@@ -1229,6 +1224,14 @@ impl crate::Device<super::Api> for super::Device {
             if gl.supports_debug() {
                 use std::fmt::Write;
 
+                // Initialize the query so we can label it
+                match desc.ty {
+                    wgt::QueryType::Timestamp => unsafe {
+                        gl.query_counter(query, glow::TIMESTAMP)
+                    },
+                    _ => (),
+                }
+
                 if let Some(label) = desc.label {
                     temp_string.clear();
                     let _ = write!(temp_string, "{label}[{i}]");
@@ -1243,6 +1246,7 @@ impl crate::Device<super::Api> for super::Device {
             queries: queries.into_boxed_slice(),
             target: match desc.ty {
                 wgt::QueryType::Occlusion => glow::ANY_SAMPLES_PASSED_CONSERVATIVE,
+                wgt::QueryType::Timestamp => glow::TIMESTAMP,
                 _ => unimplemented!(),
             },
         })

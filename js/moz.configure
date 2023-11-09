@@ -1194,7 +1194,7 @@ set_define(
 # ======================================================
 system_lib_option("--with-system-icu", help="Use system ICU")
 
-system_icu = pkg_check_modules("MOZ_ICU", "icu-i18n >= 73.1", when="--with-system-icu")
+system_icu = pkg_check_modules("MOZ_ICU", "icu-i18n >= 74.1", when="--with-system-icu")
 
 
 @depends("--with-system-icu")
@@ -1374,10 +1374,7 @@ with only_when(compile_environment & depends(target.os)(lambda os: os != "WINNT"
 
     set_define("MOZ_DEMANGLE_SYMBOLS", demangle_symbols)
 
-    set_define(
-        "HAVE__UNWIND_BACKTRACE",
-        check_symbol("_Unwind_Backtrace", when=check_header("unwind.h")),
-    )
+    set_define("HAVE__UNWIND_BACKTRACE", True, when=have_unwind)
 
 with only_when(compile_environment):
     set_define("HAVE__GETC_NOLOCK", check_symbol("_getc_nolock"))

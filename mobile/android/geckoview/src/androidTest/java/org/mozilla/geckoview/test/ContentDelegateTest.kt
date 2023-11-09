@@ -817,10 +817,53 @@ class ContentDelegateTest : BaseSessionTest() {
             val result = mainSession.requestRecommendations("https://www.amazon.com/Furmax-Electric-Adjustable-Standing-Computer/dp/B09TJGHL5F/")
             sessionRule.waitForResult(result)
                 .let {
-                    assertThat("First recommendation adjusted rating should match", it[0].adjustedRating, equalTo(4.5))
-                    assertThat("Another recommendation adjusted rating should match", it[2].adjustedRating, equalTo(4.5))
-                    assertThat("First recommendation sponsored field should match", it[0].sponsored, equalTo(true))
+                    assertThat("Recommendation adjusted rating should match", it[0].adjustedRating, equalTo(4.5))
+                    assertThat("Recommendation sponsored field should match", it[0].sponsored, equalTo(true))
                 }
+        }
+    }
+
+    @Test
+    fun sendAttributionEvents() {
+        // TODO (bug 1861175): enable in automation
+        if (!sessionRule.env.isAutomation) {
+            // Checks that the pref value is also consistent with the runtime settings
+            val originalPrefs = sessionRule.getPrefs(
+                "geckoview.shopping.test_response",
+            )
+            assertThat("Pref is correct", originalPrefs[0] as Boolean, equalTo(false))
+
+            val aid = "TEST_AID"
+            val invalidClickResult = mainSession.sendClickAttributionEvent(aid)
+            assertThat(
+                "Click event success result should be false",
+                sessionRule.waitForResult(invalidClickResult),
+                equalTo(false),
+            )
+            val invalidImpressionResult = mainSession.sendImpressionAttributionEvent(aid)
+            assertThat(
+                "Impression event result result should be false",
+                sessionRule.waitForResult(invalidImpressionResult),
+                equalTo(false),
+            )
+
+            sessionRule.setPrefsUntilTestEnd(
+                mapOf(
+                    "geckoview.shopping.test_response" to true,
+                ),
+            )
+            val validClickResult = mainSession.sendClickAttributionEvent(aid)
+            assertThat(
+                "Click event success result should be true",
+                sessionRule.waitForResult(validClickResult),
+                equalTo(true),
+            )
+            val validImpressionResult = mainSession.sendImpressionAttributionEvent(aid)
+            assertThat(
+                "Impression event success result should be true",
+                sessionRule.waitForResult(validImpressionResult),
+                equalTo(true),
+            )
         }
     }
 }
