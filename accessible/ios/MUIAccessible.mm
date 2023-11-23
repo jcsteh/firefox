@@ -401,7 +401,7 @@ static uint64_t GetAccessibilityTraits(Accessible* aAccessible) {
     traits |= Trait::TextEntry;
     if (state & states::FOCUSED) {
       // XXX: Also add "has text cursor" trait
-      traits |= Trait::TextOperationsAvailable;
+      traits |= Trait::IsEditing | Trait::TextOperationsAvailable;
     }
 
     if (aAccessible->IsSearchbox()) {
