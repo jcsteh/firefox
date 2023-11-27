@@ -128,6 +128,27 @@ class Trait {
 - (void)_accessibilityUnregister;
 @end
 
+@interface GeckoTextMarker : NSObject
+@end
+
+@implementation GeckoTextMarker
+
+- (NSData *)dataRepresentation {
+  printf("jtd dataRepresentation\n");
+  return nil;
+}
+
+- (BOOL)isIgnored {
+  return NO;
+}
+
+- (NSString *)description {
+  printf("jtd marker description\n");
+  return @"foo";
+}
+
+@end
+
 @implementation MUIAccessible
 
 - (id)initWithAccessible:(Accessible*)aAcc {
@@ -468,6 +489,182 @@ static uint64_t GetAccessibilityTraits(Accessible* aAccessible) {
 
 - (UIAccessibilityContainerType)accessibilityContainerType {
   return UIAccessibilityContainerTypeNone;
+}
+
+- (NSString *)stringForTextMarkers:(NSArray *)markers {
+  printf("jtd stringForTextMarkers\n");
+  return nil;
+}
+
+- (NSInteger)positionForTextMarker:(GeckoTextMarker *)marker {
+  printf("jtd positionForTextMarker\n");
+  return NSNotFound;
+}
+
+- (NSArray *)textMarkerRange {
+  printf("jtd textMarkerRange\n");
+  return nil;
+}
+
+- (NSRange)elementTextRange {
+  printf("jtd elementTextRange\n");
+  return NSMakeRange(NSNotFound, 0);
+}
+
+- (NSArray *)textMarkerRangeForSelection {
+  printf("jtd textMarkerRangeForSelection\n");
+  return nil;
+}
+
+- (GeckoTextMarker *)textMarkerForPosition:(NSInteger)position {
+  printf("jtd textMarkerForPosition\n");
+  return nil;
+}
+
+- (NSString *)stringForRange:(NSRange)range {
+  printf("jtd stringForRange\n");
+  return nil;
+}
+
+- (NSString *)_accessibilityStringForRange:(NSRange)range {
+  printf("jtd _accessibilityStringForRange\n");
+  return nil;
+}
+
+- (NSRange)_accessibilitySelectedTextRange {
+  printf("jtd _accessibilitySelectedTextRange\n");
+  if (!mGeckoAccessible || !mGeckoAccessible->IsHyperText()) {
+    return NSMakeRange(NSNotFound, 0);
+  }
+  int32_t caret = mGeckoAccessible->AsHyperTextBase()->CaretOffset();
+  if (caret != -1) {
+    printf("jtd caret\n");
+    return NSMakeRange(caret, 0);
+  }
+  return NSMakeRange(NSNotFound, 0);
+}
+
+- (NSString *)selectionRangeString {
+  printf("jtd selectionRangeString\n");
+  return nil;
+}
+
+- (GeckoTextMarker *)selectedTextMarker {
+  printf("jtd selectedTextMarker\n");
+  return nil;
+}
+
+- (GeckoTextMarker *)lineEndMarkerForMarker:(GeckoTextMarker *)marker {
+  printf("jtd lineEndMarkerForMarker\n");
+  return nil;
+}
+
+- (NSArray<GeckoTextMarker *> *)lineMarkersForMarker:(GeckoTextMarker *)marker {
+  printf("jtd lineMarkersForMarker\n");
+  return nil;
+}
+
+- (GeckoTextMarker *)lineStartMarkerForMarker:(GeckoTextMarker *)marker {
+  printf("jtd lineStartMarkerForMarker\n");
+  return nil;
+}
+
+- (GeckoTextMarker *)nextMarkerForMarker:(GeckoTextMarker *)marker {
+  printf("jtd nextMarkerForMarker\n");
+  return nil;
+}
+
+- (GeckoTextMarker *)previousMarkerForMarker:(GeckoTextMarker *)marker {
+  printf("jtd previousMarkerForMarker\n");
+  return nil;
+}
+
+- (CGRect)frameForRange:(NSRange)range {
+  printf("jtd frameForRange\n");
+  return CGRectZero;
+}
+
+- (CGRect)frameForTextMarkers:(NSArray *)array {
+  printf("jtd frameForTextMarkers\n");
+  return CGRectZero;
+}
+
+- (NSArray *)lineRectsForTextMarkerRange:(NSArray *)markers {
+  printf("jtd lineRectsForTextMarkerRange\n");
+  return nil;
+}
+
+- (NSArray *)textRectsFromMarkers:(NSArray *)markers withText:(NSString *)text {
+  printf("jtd textRectsFromMarkers\n");
+  return nil;
+}
+
+- (GeckoTextMarker *)textMarkerForPoint:(CGPoint)point {
+  printf("jtd textMarkerForPoint\n");
+  return nil;
+}
+
+- (NSInteger)lengthForTextMarkers:(NSArray *)textMarkers {
+  printf("jtd lengthForTextMarkers\n");
+  return 0;
+}
+
+- (GeckoTextMarker *)startOrEndTextMarkerForTextMarkers:(NSArray *)textMarkers isStart:(BOOL)isStart {
+  printf("jtd startOrEndTextMarkerForTextMarkers\n");
+  return nil;
+}
+
+- (NSArray *)textMarkerRangeForMarkers:(NSArray *)textMarkers {
+  printf("jtd textMarkerRangeForMarkers\n");
+  return nil;
+}
+
+- (NSAttributedString *)attributedStringForRange:(NSRange)range {
+  printf("jtd attributedStringForRange\n");
+  return nil;
+}
+
+- (void)_accessibilitySetSelectedTextRange:(NSRange)range {
+  printf("jtd _accessibilitySetSelectedTextRange\n");
+  if (!mGeckoAccessible || !mGeckoAccessible->IsHyperText()) {
+    return;
+  }
+  printf("jtd set caret\n");
+  mGeckoAccessible->AsHyperTextBase()->SetCaretOffset(range.location);
+  printf("jtd %s\n", [[NSString stringWithFormat: @"%@", [self performSelector:@selector(_methodDescription)]] UTF8String]);
+}
+
+- (void)_accessibilitySetValue:(NSString *)string {
+  printf("jtd _accessibilitySetValue\n");
+}
+
++ (BOOL) resolveInstanceMethod:(SEL)aSelector {
+  NSString * s = NSStringFromSelector ( aSelector );
+  printf("jtd sel %s\n", [s UTF8String]);
+  return [super resolveInstanceMethod:aSelector];
+}
+
+- (NSMethodSignature *)methodSignatureForSelector:(SEL)aSelector {
+  NSString * s = NSStringFromSelector ( aSelector );
+  printf("jtd sel %s\n", [s UTF8String]);
+  return [super methodSignatureForSelector:aSelector];
+}
+
++ (NSMethodSignature *)instanceMethodSignatureForSelector:(SEL)aSelector {
+  NSString * s = NSStringFromSelector ( aSelector );
+  printf("jtd sel %s\n", [s UTF8String]);
+  return [super instanceMethodSignatureForSelector:aSelector];
+}
+
+- (void)doesNotRecognizeSelector:(SEL)aSelector {
+  NSString * s = NSStringFromSelector ( aSelector );
+  printf("jtd sel %s\n", [s UTF8String]);
+  return [super doesNotRecognizeSelector:aSelector];
+}
+
+- (NSArray<NSDictionary *> *)lineRectsAndText {
+  printf("jtd lineRectsAndText\n");
+  return nil;
 }
 
 @end

@@ -43,7 +43,12 @@ void PlatformFocusEvent(Accessible* aTarget,
 
 void PlatformCaretMoveEvent(Accessible* aTarget, int32_t aOffset,
                             bool aIsSelectionCollapsed, int32_t aGranularity,
-                            const LayoutDeviceIntRect& aCaretRect) {}
+                            const LayoutDeviceIntRect& aCaretRect) {
+  MUIAccessible* wrapper = GetNativeFromGeckoAccessible(aTarget);
+  for (uint32_t n = 0; n < 20; ++n) {
+    UIAccessibilityPostNotification(n, wrapper);
+  }
+}
 
 void PlatformTextChangeEvent(Accessible*, const nsAString&, int32_t, uint32_t,
                              bool, bool) {}
