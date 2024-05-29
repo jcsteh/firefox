@@ -156,6 +156,43 @@ static bool FindHandle(const ComparatorFnT& aComparator) {
 }
 
 static void GetUiaClientPidsWin11(nsTArray<DWORD>& aPids) {
+  //     We need a background thread to query pipes because this can hang on
+  //     some pipes and there's no way to prevent this other than terminating
+  //     the thread. See bug 1899211 for more details.
+  struct QueryThreadData {
+    // Used to signal the query thread to run a query.
+    nsAutoHandle mBeginEvent;
+    // Used to signal the main thread once the query has run.
+    nsAutoHandle mDoneEvent;
+    // Set by the main thread to specify the handle to query.
+    HANDLE mQueryHandle = nullptr;
+    // Set by the query thread to communicate the result pid.
+    ULONG mPid = 0;
+  };
+
+  nsAutoHandle queryThread;
+  QueryThreadData queryThreadData;
+  queryThreadData.mBeginEvent.own(
+      ::CreateEvent(nullptr, false, false, nullptr));
+  queryThreadData.mDoneEvent.own(::CreateEvent(nullptr, false, false, nullptr));
+
+  auto queryThreadProc = [](LPVOID aParameter) -> DWORD {
+    auto& data = *(QueryThreadData*)aParameter;
+    for (;;) {
+      // Wait until we're asked to query a handle.
+      ::WaitForSingleObject(data.mBeginEvent, INFINITE);
+      if (!data.mQueryHandle) {
+        break;  // We were asked to exit.
+      }
+      // Counter-intuitively, for UIA pipes, we're the client and the remote
+      // process is the server.
+      ::GetNamedPipeServerProcessId(data.mQueryHandle, &data.mPid);
+      // Signal the main thread that we have the result.
+      ::SetEvent(data.mDoneEvent);
+    }
+    return 0;
+  };
+
   const DWORD ourPid = ::GetCurrentProcessId();
   FindHandle([&](auto aInfo, auto aHandle) {
     if (aInfo.mPid != ourPid) {
@@ -164,12 +201,31 @@ static void GetUiaClientPidsWin11(nsTArray<DWORD>& aPids) {
     }
     // UIA creates a named pipe between the client and server processes. We want
     // to find our handle to that pipe (if any). If this is a named pipe, get
-    // the process id of the remote end. We do this first because querying the
-    // name of the handle might hang in some cases. Counter-intuitively, for UIA
-    // pipes, we're the client and the remote process is the server.
-    ULONG pid = 0;
-    ::GetNamedPipeServerProcessId(aHandle, &pid);
-    if (!pid) {
+    // the process id of the remote end.
+    if (!queryThread) {
+      // We use CreateThread here rather than Gecko's threading support because
+      // we may terminate this thread and we must be certain it hasn't acquired
+      // any resources which need to be cleaned up.
+      queryThread.own(::CreateThread(nullptr, 0, queryThreadProc,
+                                     (LPVOID)&queryThreadData, 0, nullptr));
+      if (!queryThread) {
+        return false;
+      }
+    }
+    queryThreadData.mQueryHandle = aHandle;
+    // Signal the query thread to query this handle.
+    ::SetEvent(queryThreadData.mBeginEvent);
+    // Wait for the query thread to give us a pid.
+    if (::WaitForSingleObject(queryThreadData.mDoneEvent, 100) !=
+        WAIT_OBJECT_0) {
+      // The thread hung. Terminate it.
+      ::TerminateThread(queryThread, 1);
+      queryThread.reset();
+      return true;
+    }
+    // We have a pid from the query thread.
+    if (!queryThreadData.mPid) {
+      // This probably isn't a named pipe.
       return true;
     }
     // We know this is a named pipe and we have the pid. Now, get the name of
@@ -196,10 +252,16 @@ static void GetUiaClientPidsWin11(nsTArray<DWORD>& aPids) {
     nsDependentString objName(objNameInfo->Name.Buffer,
                               objNameInfo->Name.Length / sizeof(wchar_t));
     if (StringBeginsWith(objName, u"\\Device\\NamedPipe\\UIA_PIPE_"_ns)) {
-      aPids.AppendElement(pid);
+      aPids.AppendElement(queryThreadData.mPid);
     }
     return true;
   });
+
+  if (queryThread) {
+    // Signal the query thread to exit cleanly.
+    queryThreadData.mQueryHandle = nullptr;
+    ::SetEvent(queryThreadData.mBeginEvent);
+  }
 }
 
 static DWORD GetUiaClientPidWin10() {
