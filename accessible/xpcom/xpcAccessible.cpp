@@ -317,7 +317,7 @@ xpcAccessible::GetAttributes(nsIPersistentProperties** aAttributes) {
   RefPtr<AccAttributes> attributes = IntlGeneric()->Attributes();
 
   nsAutoString unused;
-  for (auto iter : *attributes) {
+  for (auto& iter : *attributes) {
     nsAutoString name;
     iter.NameAsString(name);
 
@@ -344,7 +344,7 @@ xpcAccessible::GetCache(nsIPersistentProperties** aCachedFields) {
   if (RemoteAccessible* remoteAcc = IntlGeneric()->AsRemote()) {
     if (RefPtr<AccAttributes> cachedFields = remoteAcc->mCachedFields) {
       nsAutoString unused;
-      for (auto iter : *cachedFields) {
+      for (auto& iter : *cachedFields) {
         nsAutoString name;
         iter.NameAsString(name);
 

@@ -161,7 +161,7 @@ mozilla::ipc::IPCResult DocAccessibleChild::RecvVerifyCache(
       acc->BundleFieldsForCache(aCacheDomain, CacheUpdateType::Update);
   bool mismatches = false;
 
-  for (auto prop : *localFields) {
+  for (auto& prop : *localFields) {
     if (prop.Value<DeleteEntry>()) {
       if (aFields->HasAttribute(prop.Name())) {
         if (!mismatches) {

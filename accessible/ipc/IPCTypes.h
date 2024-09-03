@@ -126,13 +126,12 @@ struct ParamTraits<mozilla::a11y::AccAttributes*> {
     }
 
     WriteParam(aWriter, false);
-    uint32_t count = aParam->mData.Count();
+    uint32_t count = aParam->Count();
     WriteParam(aWriter, count);
-    for (auto iter = aParam->mData.ConstIter(); !iter.Done(); iter.Next()) {
-      RefPtr<nsAtom> key = iter.Key();
+    for (auto& entry : *aParam) {
+      RefPtr<nsAtom> key = entry.Name();
       WriteParam(aWriter, key);
-      const paramType::AttrValueType& data = iter.Data();
-      WriteParam(aWriter, data);
+      WriteParam(aWriter, entry.mValue);
     }
   }
 
@@ -152,6 +151,7 @@ struct ParamTraits<mozilla::a11y::AccAttributes*> {
     if (!ReadParam(aReader, &count)) {
       return false;
     }
+    (*aResult)->mData.SetCapacity(count);
     for (uint32_t i = 0; i < count; ++i) {
       RefPtr<nsAtom> key;
       if (!ReadParam(aReader, &key)) {
@@ -161,7 +161,7 @@ struct ParamTraits<mozilla::a11y::AccAttributes*> {
       if (!ReadParam(aReader, &val)) {
         return false;
       }
-      (*aResult)->mData.InsertOrUpdate(key, std::move(val));
+      (*aResult)->mData.EmplaceBack(paramType::Entry(key, std::move(val)));
     }
     return true;
   }

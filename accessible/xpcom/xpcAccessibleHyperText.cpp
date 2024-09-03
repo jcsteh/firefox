@@ -133,7 +133,7 @@ xpcAccessibleHyperText::GetTextAttributes(
       aIncludeDefAttrs, aOffset, aStartOffset, aEndOffset);
   RefPtr<nsPersistentProperties> props = new nsPersistentProperties();
   nsAutoString unused;
-  for (auto iter : *attributes) {
+  for (auto& iter : *attributes) {
     nsAutoString name;
     iter.NameAsString(name);
 
@@ -158,7 +158,7 @@ xpcAccessibleHyperText::GetDefaultTextAttributes(
   RefPtr<AccAttributes> attributes = Intl()->DefaultTextAttributes();
   RefPtr<nsPersistentProperties> props = new nsPersistentProperties();
   nsAutoString unused;
-  for (auto iter : *attributes) {
+  for (auto& iter : *attributes) {
     nsAutoString name;
     iter.NameAsString(name);
 

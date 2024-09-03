@@ -12,7 +12,7 @@ using namespace mozilla::a11y;
 
 bool AccAttributes::GetAttribute(nsAtom* aAttrName,
                                  nsAString& aAttrValue) const {
-  if (auto value = mData.Lookup(aAttrName)) {
+  if (auto value = Lookup(aAttrName)) {
     StringFromValueAndName(aAttrName, *value, aAttrValue);
     return true;
   }
@@ -115,37 +115,37 @@ void AccAttributes::StringFromValueAndName(nsAtom* aAttrName,
 }
 
 void AccAttributes::Update(AccAttributes* aOther) {
-  for (auto iter = aOther->mData.Iter(); !iter.Done(); iter.Next()) {
-    if (iter.Data().is<DeleteEntry>()) {
-      mData.Remove(iter.Key());
+  for (auto& entry : aOther->mData) {
+    if (entry.mValue.is<DeleteEntry>()) {
+      Remove(entry.Name());
     } else {
-      mData.InsertOrUpdate(iter.Key(), std::move(iter.Data()));
+      InsertOrUpdate(entry.Name(), std::move(entry.mValue));
     }
-    iter.Remove();
   }
+  aOther->mData.Clear();
 }
 
 bool AccAttributes::Equal(const AccAttributes* aOther) const {
   if (Count() != aOther->Count()) {
     return false;
   }
-  for (auto iter = mData.ConstIter(); !iter.Done(); iter.Next()) {
-    const auto otherEntry = aOther->mData.Lookup(iter.Key());
-    if (!otherEntry) {
+  for (auto& entry : mData) {
+    const auto otherVal = aOther->Lookup(entry.Name());
+    if (!otherVal) {
       return false;
     }
-    if (iter.Data().is<UniquePtr<nsString>>()) {
+    if (entry.mValue.is<UniquePtr<nsString>>()) {
       // Because we store nsString in a UniquePtr, we must handle it specially
       // so we compare the string and not the pointer.
-      if (!otherEntry->is<UniquePtr<nsString>>()) {
+      if (!otherVal->is<UniquePtr<nsString>>()) {
         return false;
       }
-      const auto& thisStr = iter.Data().as<UniquePtr<nsString>>();
-      const auto& otherStr = otherEntry->as<UniquePtr<nsString>>();
+      const auto& thisStr = entry.mValue.as<UniquePtr<nsString>>();
+      const auto& otherStr = otherVal->as<UniquePtr<nsString>>();
       if (*thisStr != *otherStr) {
         return false;
       }
-    } else if (iter.Data() != otherEntry.Data()) {
+    } else if (entry.mValue != *otherVal) {
       return false;
     }
   }
@@ -153,52 +153,52 @@ bool AccAttributes::Equal(const AccAttributes* aOther) const {
 }
 
 void AccAttributes::CopyTo(AccAttributes* aDest) const {
-  for (auto iter = mData.ConstIter(); !iter.Done(); iter.Next()) {
-    iter.Data().match(
-        [&iter, &aDest](const bool& val) {
-          aDest->mData.InsertOrUpdate(iter.Key(), AsVariant(val));
+  for (auto& entry : mData) {
+    entry.mValue.match(
+        [&entry, &aDest](const bool& val) {
+          aDest->InsertOrUpdate(entry.Name(), AsVariant(val));
         },
-        [&iter, &aDest](const float& val) {
-          aDest->mData.InsertOrUpdate(iter.Key(), AsVariant(val));
+        [&entry, &aDest](const float& val) {
+          aDest->InsertOrUpdate(entry.Name(), AsVariant(val));
         },
-        [&iter, &aDest](const double& val) {
-          aDest->mData.InsertOrUpdate(iter.Key(), AsVariant(val));
+        [&entry, &aDest](const double& val) {
+          aDest->InsertOrUpdate(entry.Name(), AsVariant(val));
         },
-        [&iter, &aDest](const int32_t& val) {
-          aDest->mData.InsertOrUpdate(iter.Key(), AsVariant(val));
+        [&entry, &aDest](const int32_t& val) {
+          aDest->InsertOrUpdate(entry.Name(), AsVariant(val));
         },
-        [&iter, &aDest](const RefPtr<nsAtom>& val) {
-          aDest->mData.InsertOrUpdate(iter.Key(), AsVariant(val));
+        [&entry, &aDest](const RefPtr<nsAtom>& val) {
+          aDest->InsertOrUpdate(entry.Name(), AsVariant(val));
         },
         [](const nsTArray<int32_t>& val) {
           // We don't copy arrays.
           MOZ_ASSERT_UNREACHABLE(
               "Trying to copy an AccAttributes containing an array");
         },
-        [&iter, &aDest](const CSSCoord& val) {
-          aDest->mData.InsertOrUpdate(iter.Key(), AsVariant(val));
+        [&entry, &aDest](const CSSCoord& val) {
+          aDest->InsertOrUpdate(entry.Name(), AsVariant(val));
         },
-        [&iter, &aDest](const FontSize& val) {
-          aDest->mData.InsertOrUpdate(iter.Key(), AsVariant(val));
+        [&entry, &aDest](const FontSize& val) {
+          aDest->InsertOrUpdate(entry.Name(), AsVariant(val));
         },
-        [&iter, &aDest](const Color& val) {
-          aDest->mData.InsertOrUpdate(iter.Key(), AsVariant(val));
+        [&entry, &aDest](const Color& val) {
+          aDest->InsertOrUpdate(entry.Name(), AsVariant(val));
         },
         [](const DeleteEntry& val) {
           // We don't copy DeleteEntry.
           MOZ_ASSERT_UNREACHABLE(
               "Trying to copy an AccAttributes containing a DeleteEntry");
         },
-        [&iter, &aDest](const UniquePtr<nsString>& val) {
-          aDest->SetAttributeStringCopy(iter.Key(), *val);
+        [&entry, &aDest](const UniquePtr<nsString>& val) {
+          aDest->SetAttributeStringCopy(entry.Name(), *val);
         },
         [](const RefPtr<AccAttributes>& val) {
           // We don't copy nested AccAttributes.
           MOZ_ASSERT_UNREACHABLE(
               "Trying to copy an AccAttributes containing an AccAttributes");
         },
-        [&iter, &aDest](const uint64_t& val) {
-          aDest->mData.InsertOrUpdate(iter.Key(), AsVariant(val));
+        [&entry, &aDest](const uint64_t& val) {
+          aDest->InsertOrUpdate(entry.Name(), AsVariant(val));
         },
         [](const UniquePtr<AccGroupInfo>& val) {
           MOZ_ASSERT_UNREACHABLE(
@@ -248,7 +248,7 @@ size_t AccAttributes::SizeOfIncludingThis(MallocSizeOf aMallocSizeOf) {
   size_t size =
       aMallocSizeOf(this) + mData.ShallowSizeOfExcludingThis(aMallocSizeOf);
 
-  for (auto iter : *this) {
+  for (auto& iter : mData) {
     size += iter.SizeOfExcludingThis(aMallocSizeOf);
   }
 
@@ -261,33 +261,33 @@ size_t AccAttributes::Entry::SizeOfExcludingThis(MallocSizeOf aMallocSizeOf) {
   // We don't count the size of Name() since it's counted by the atoms table
   // memory reporter.
 
-  if (mValue->is<nsTArray<int32_t>>()) {
-    size += mValue->as<nsTArray<int32_t>>().ShallowSizeOfExcludingThis(
+  if (mValue.is<nsTArray<int32_t>>()) {
+    size += mValue.as<nsTArray<int32_t>>().ShallowSizeOfExcludingThis(
         aMallocSizeOf);
-  } else if (mValue->is<UniquePtr<nsString>>()) {
+  } else if (mValue.is<UniquePtr<nsString>>()) {
     // String data will never be shared.
-    size += mValue->as<UniquePtr<nsString>>()->SizeOfIncludingThisIfUnshared(
+    size += mValue.as<UniquePtr<nsString>>()->SizeOfIncludingThisIfUnshared(
         aMallocSizeOf);
-  } else if (mValue->is<RefPtr<AccAttributes>>()) {
+  } else if (mValue.is<RefPtr<AccAttributes>>()) {
     size +=
-        mValue->as<RefPtr<AccAttributes>>()->SizeOfIncludingThis(aMallocSizeOf);
-  } else if (mValue->is<UniquePtr<AccGroupInfo>>()) {
-    size += mValue->as<UniquePtr<AccGroupInfo>>()->SizeOfIncludingThis(
+        mValue.as<RefPtr<AccAttributes>>()->SizeOfIncludingThis(aMallocSizeOf);
+  } else if (mValue.is<UniquePtr<AccGroupInfo>>()) {
+    size += mValue.as<UniquePtr<AccGroupInfo>>()->SizeOfIncludingThis(
         aMallocSizeOf);
-  } else if (mValue->is<UniquePtr<gfx::Matrix4x4>>()) {
-    size += aMallocSizeOf(mValue->as<UniquePtr<gfx::Matrix4x4>>().get());
-  } else if (mValue->is<nsTArray<uint64_t>>()) {
-    size += mValue->as<nsTArray<uint64_t>>().ShallowSizeOfExcludingThis(
+  } else if (mValue.is<UniquePtr<gfx::Matrix4x4>>()) {
+    size += aMallocSizeOf(mValue.as<UniquePtr<gfx::Matrix4x4>>().get());
+  } else if (mValue.is<nsTArray<uint64_t>>()) {
+    size += mValue.as<nsTArray<uint64_t>>().ShallowSizeOfExcludingThis(
         aMallocSizeOf);
   } else {
     // This type is stored directly and already counted or is an atom and
     // stored and counted in the atoms table.
     // Assert that we have exhausted all the remaining variant types.
-    MOZ_ASSERT(mValue->is<RefPtr<nsAtom>>() || mValue->is<bool>() ||
-               mValue->is<float>() || mValue->is<double>() ||
-               mValue->is<int32_t>() || mValue->is<uint64_t>() ||
-               mValue->is<CSSCoord>() || mValue->is<FontSize>() ||
-               mValue->is<Color>() || mValue->is<DeleteEntry>());
+    MOZ_ASSERT(mValue.is<RefPtr<nsAtom>>() || mValue.is<bool>() ||
+               mValue.is<float>() || mValue.is<double>() ||
+               mValue.is<int32_t>() || mValue.is<uint64_t>() ||
+               mValue.is<CSSCoord>() || mValue.is<FontSize>() ||
+               mValue.is<Color>() || mValue.is<DeleteEntry>());
   }
 
   return size;

@@ -542,7 +542,7 @@ ia2Accessible::ConvertToIA2Attributes(AccAttributes* aAttributes,
 
   nsAutoString strAttrs;
 
-  for (auto iter : *aAttributes) {
+  for (auto& iter : *aAttributes) {
     nsAutoString name;
     iter.NameAsString(name);
     EscapeAttributeChars(name);
