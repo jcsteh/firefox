@@ -192,6 +192,7 @@ void RemoteAccessible::ApplyCache(CacheUpdateType aUpdateType,
 
   if (aUpdateType == CacheUpdateType::Initial) {
     mCachedFields = aFields;
+    mCachedFields->LogMaxCount();
   } else {
     if (!mCachedFields) {
       // The fields cache can be uninitialized if there were no cache-worthy

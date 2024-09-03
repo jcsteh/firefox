@@ -138,6 +138,7 @@ class AccAttributes {
     } else {
       mData.InsertOrUpdate(aAttrName, AsVariant(std::forward<T>(aAttrValue)));
     }
+    LogMaxCount();
   }
 
   void SetAttributeStringCopy(nsAtom* aAttrName, nsString aAttrValue) {
@@ -308,6 +309,14 @@ class AccAttributes {
 #ifdef A11Y_LOG
   static void DebugPrint(const char* aPrefix, const AccAttributes& aAttributes);
 #endif
+
+  void LogMaxCount() {
+    static uint32_t maxCount = 0;
+    if (XRE_IsParentProcess() && Count() > maxCount) {
+      maxCount = Count();
+      printf("jtd AccAttributes count %d\n", maxCount);
+    }
+  }
 
   size_t SizeOfIncludingThis(MallocSizeOf aMallocSizeOf);
 

@@ -123,6 +123,7 @@ void AccAttributes::Update(AccAttributes* aOther) {
     }
     iter.Remove();
   }
+  LogMaxCount();
 }
 
 bool AccAttributes::Equal(const AccAttributes* aOther) const {
