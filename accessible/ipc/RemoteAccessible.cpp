@@ -1136,22 +1136,26 @@ void RemoteAccessible::AppendTextTo(nsAString& aText, uint32_t aStartOffset,
 
 nsTArray<bool> RemoteAccessible::PreProcessRelations(AccAttributes* aFields) {
   nsTArray<bool> updateTracker(ArrayLength(kRelationTypeAtoms));
+  nsAtom* tag = nullptr;
   for (auto const& data : kRelationTypeAtoms) {
     if (data.mValidTag) {
       // The relation we're currently processing only applies to particular
       // elements. Check to see if we're one of them.
-      nsAtom* tag = TagName();
+      // Only fetch tag once.
       if (!tag) {
-        // TagName() returns null on an initial cache push -- check aFields
-        // for a tag name instead.
-        if (auto maybeTag =
-                aFields->GetAttribute<RefPtr<nsAtom>>(CacheKey::TagName)) {
-          tag = *maybeTag;
+        nsAtom* tag = TagName();
+        if (!tag) {
+          // TagName() returns null on an initial cache push -- check aFields
+          // for a tag name instead.
+          if (auto maybeTag =
+                  aFields->GetAttribute<RefPtr<nsAtom>>(CacheKey::TagName)) {
+            tag = *maybeTag;
+          }
         }
+        MOZ_ASSERT(
+            tag || IsTextLeaf() || IsDoc(),
+            "Could not fetch tag via TagName() or from initial cache push!");
       }
-      MOZ_ASSERT(
-          tag || IsTextLeaf() || IsDoc(),
-          "Could not fetch tag via TagName() or from initial cache push!");
       if (tag != data.mValidTag) {
         // If this rel doesn't apply to us, do no pre-processing. Also,
         // note in our updateTracker that we should do no post-processing.
