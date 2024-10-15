@@ -23,7 +23,6 @@ import androidx.test.filters.MediumTest
 import androidx.test.platform.app.InstrumentationRegistry
 import org.hamcrest.Matchers.* // ktlint-disable no-wildcard-imports
 import org.junit.After
-import org.junit.Assume.assumeThat
 import org.junit.Before
 import org.junit.Ignore
 import org.junit.Rule
@@ -552,8 +551,6 @@ class AccessibilityTest : BaseSessionTest() {
     }
 
     @Test fun testClipboard() {
-        // disabled for having over 120+ failures in the last 7 days - turned permafailing on Bug 1837126
-        assumeThat(sessionRule.env.isDebugBuild, equalTo(true))
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             // Writing clipboard requires foreground on Android 10.
             activityRule.scenario?.onActivity { activity ->
@@ -587,51 +584,71 @@ class AccessibilityTest : BaseSessionTest() {
         })
 
         provider.performAction(nodeId, AccessibilityNodeInfo.ACTION_SET_SELECTION, setSelectionArguments(5, 11))
-        waitUntilTextSelectionChanged(5, 11, "hello cruel world")
+        waitUntilTextSelectionChanged(5, 11, "hello nasty world")
 
         provider.performAction(nodeId, AccessibilityNodeInfo.ACTION_COPY, null)
 
         provider.performAction(nodeId, AccessibilityNodeInfo.ACTION_SET_SELECTION, setSelectionArguments(11, 11))
-        waitUntilTextSelectionChanged(11, 11, "hello cruel world")
+        waitUntilTextSelectionChanged(11, 11, "hello nasty world")
 
         provider.performAction(nodeId, AccessibilityNodeInfo.ACTION_PASTE, null)
         sessionRule.waitUntilCalled(object : EventDelegate {
             @AssertCalled(count = 1)
             override fun onTextChanged(event: AccessibilityEvent) {
-                assertThat("text should be pasted", event.text[0].toString(), equalTo("hello cruel cruel world"))
+                assertThat("text should be pasted", event.text[0].toString(), equalTo("hello nasty nasty world"))
                 assertThat("fromIndex is correct", event.fromIndex, equalTo(12))
                 assertThat("addedCount is correct", event.addedCount, equalTo(6))
             }
         })
 
-        provider.performAction(nodeId, AccessibilityNodeInfo.ACTION_SET_SELECTION, setSelectionArguments(17, 23))
-        waitUntilTextSelectionChanged(17, 23, "hello cruel cruel world")
+        // Bug 1837126: We don't select the space before "world" because the
+        // text removed and inserted events might or might not get fired in
+        // two separate ticks. The space is replaced, so if they are in two
+        // separate ticks, the space would be included in both events. On the
+        // other hand, If they are in the same tick, the space would be treated
+        // as unchanged and wouldn't be covered by the events. Similarly, we
+        // ensure the word "nasty" has no characters in common with "world" to
+        // avoid multiple pairs of events due to unchanged characters.
+        provider.performAction(nodeId, AccessibilityNodeInfo.ACTION_SET_SELECTION, setSelectionArguments(18, 23))
+        waitUntilTextSelectionChanged(18, 23, "hello nasty nasty world")
 
         provider.performAction(nodeId, AccessibilityNodeInfo.ACTION_PASTE, null)
         sessionRule.waitUntilCalled(object : EventDelegate {
             @AssertCalled
             override fun onTextChanged(event: AccessibilityEvent) {
-                assertThat("text should be pasted", event.text[0].toString(), equalTo("hello cruel cruel cruel"))
+                // First we get the text removed event.
                 assertThat("fromIndex is correct", event.fromIndex, equalTo(18))
                 assertThat("removedCount is correct", event.removedCount, equalTo(5))
             }
         })
+        sessionRule.waitUntilCalled(object : EventDelegate {
+            @AssertCalled
+            override fun onTextChanged(event: AccessibilityEvent) {
+                // Then we get the text inserted event.
+                // Bug 1837126: We assert the new text here because it might not
+                // be up to date yet when the text removed event is fired if the
+                // two events were fired in separate ticks.
+                assertThat("text should be pasted", event.text[0].toString(), equalTo("hello nasty nasty  nasty"))
+                assertThat("fromIndex is correct", event.fromIndex, equalTo(18))
+                assertThat("addedCount is correct", event.addedCount, equalTo(6))
+            }
+        })
 
         provider.performAction(nodeId, AccessibilityNodeInfo.ACTION_SET_SELECTION, setSelectionArguments(0, 0))
-        waitUntilTextSelectionChanged(0, 0, "hello cruel cruel cruel")
+        waitUntilTextSelectionChanged(0, 0, "hello nasty nasty  nasty")
 
         provider.performAction(
             nodeId,
             AccessibilityNodeInfo.ACTION_NEXT_AT_MOVEMENT_GRANULARITY,
             moveByGranularityArguments(AccessibilityNodeInfo.MOVEMENT_GRANULARITY_WORD, true),
         )
-        waitUntilTextSelectionChanged(0, 5, "hello cruel cruel cruel")
+        waitUntilTextSelectionChanged(0, 5, "hello nasty nasty  nasty")
 
         provider.performAction(nodeId, AccessibilityNodeInfo.ACTION_CUT, null)
         sessionRule.waitUntilCalled(object : EventDelegate {
             @AssertCalled
             override fun onTextChanged(event: AccessibilityEvent) {
-                assertThat("text should be cut", event.text[0].toString(), equalTo(" cruel cruel cruel"))
+                assertThat("text should be cut", event.text[0].toString(), equalTo(" nasty nasty  nasty"))
                 assertThat("fromIndex is correct", event.fromIndex, equalTo(0))
                 assertThat("removedCount is correct", event.removedCount, equalTo(5))
             }
