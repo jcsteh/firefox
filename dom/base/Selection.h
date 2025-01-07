@@ -604,6 +604,10 @@ class Selection final : public nsSupportsWeakReference,
   void SetHighlightSelectionData(
       HighlightSelectionData aHighlightSelectionData);
 
+  HighlightSelectionData GetHighlightSelectionData() const {
+    return mHighlightData;
+  }
+
   /**
    * See documentation of `GetRangesForInterval` in Selection.webidl.
    *
