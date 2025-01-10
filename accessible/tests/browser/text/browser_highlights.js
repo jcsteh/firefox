@@ -13,6 +13,7 @@ const highlightAttrs = { mark: "true" };
 const fragmentAttrs = highlightAttrs;
 const spellingAttrs = { invalid: "spelling" };
 const grammarAttrs = { invalid: "grammar" };
+const spellingGrammarAttrs = { invalid: "spelling,grammar" };
 const snippet = `
 <p id="first">The first phrase.</p>
 <p id="second">The <i>second <b>phrase.</b></i></p>
@@ -409,6 +410,10 @@ ${snippet}
   range9.setStart(secondText, 4);
   range9.setEnd(secondText, 6);
   spelling.add(range9);
+  // Also make "nd" a grammar error.
+  const grammar = new Highlight(range9);
+  grammar.type = "grammar-error";
+  CSS.highlights.set("grammar", grammar);
 
   const phrase2Text = document.querySelector("#second b").firstChild;
   // Highlight the word "phrase".
@@ -477,11 +482,20 @@ ${snippet}
         second,
         [
           [4, 7], // "sec"
-          [8, 10], // "nd"
         ],
         spellingAttrs
       ),
       "second spelling ranges correct"
+    );
+    ok(
+      textAttrRangesMatch(
+        second,
+        [
+          [8, 10], // "nd"
+        ],
+        spellingGrammarAttrs
+      ),
+      "second spelling grammar ranges correct"
     );
   },
   { chrome: true, topLevel: true }

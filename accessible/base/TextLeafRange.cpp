@@ -1499,10 +1499,20 @@ TextLeafPoint TextLeafPoint::FindClusterSameAcc(nsDirection aDirection,
 void TextLeafPoint::AddTextOffsetAttributes(AccAttributes* aAttrs) const {
   auto expose = [aAttrs](nsAtom* aAttr) {
     if (aAttr == nsGkAtoms::spelling || aAttr == nsGkAtoms::grammar) {
-      // XXX We don't correctly handle exposure of overlapping spelling and
-      // grammar errors. IA2 and ATK want us to expose "spelling,grammar" as the
-      // value when they overlap, but that doesn't work well for other API code
-      // such as Mac. For now, we expose the one we most recently encountered.
+      if (auto invalid =
+              aAttrs->GetAttribute<RefPtr<nsAtom>>(nsGkAtoms::invalid)) {
+        if (*invalid == aAttr) {
+          // This attribute has already been exposed.
+          return;
+        }
+        if ((aAttr == nsGkAtoms::grammar && *invalid == nsGkAtoms::spelling) ||
+            (aAttr == nsGkAtoms::spelling && *invalid == nsGkAtoms::grammar)) {
+          // This is both a spelling error and a grammar error.
+          RefPtr<nsAtom> spellingGrammar = NS_Atomize("spelling,grammar");
+          aAttrs->SetAttribute(nsGkAtoms::invalid, spellingGrammar);
+        }
+        return;
+      }
       aAttrs->SetAttribute(nsGkAtoms::invalid, aAttr);
     } else if (aAttr == nsGkAtoms::mark) {
       aAttrs->SetAttribute(aAttr, true);
