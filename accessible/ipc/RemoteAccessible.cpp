@@ -602,6 +602,7 @@ Accessible* RemoteAccessible::ChildAtPoint(
           // pushing the viewport cache and doing this hittest
           continue;
         }
+        Accessible::DebugPrint("jtd consider", acc);
 
         if (acc->IsOuterDoc() &&
             aWhichChild == EWhichChildAtPoint::DeepestChild &&
@@ -636,8 +637,10 @@ Accessible* RemoteAccessible::ChildAtPoint(
             // If we haven't found a match, but `this` contains the point we're
             // looking for, set it as our temp last match so we can
             // (potentially) do fuzzy hittesting on it below.
+            printf("jtd no match, possible fuzzy\n");
             lastMatch = acc;
           }
+          printf("jtd hit origin, stopping\n");
           break;
         }
 
@@ -646,11 +649,13 @@ Accessible* RemoteAccessible::ChildAtPoint(
           // first match we encounter is guaranteed to be the
           // deepest match.
           lastMatch = acc;
+          Accessible::DebugPrint("jtd match", lastMatch);
           break;
         }
       }
       if (lastMatch) {
         RemoteAccessible* fuzzyMatch = lastMatch->DoFuzzyHittesting();
+        Accessible::DebugPrint("jtd fuzzy", fuzzyMatch);
         lastMatch = fuzzyMatch ? fuzzyMatch : lastMatch;
       }
     }
@@ -682,6 +687,7 @@ Accessible* RemoteAccessible::ChildAtPoint(
   if (!lastMatch && BoundsWithOffset(Nothing(), hitTesting).Contains(aX, aY)) {
     // Even though the hit target isn't inside `this`, the point is still
     // within our bounds, so fall back to `this`.
+    Accessible::DebugPrint("jtd hit fall back to this", this);
     return this;
   }
 
