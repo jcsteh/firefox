@@ -45,6 +45,7 @@ Accessible* UiaText::Acc() const {
 
 STDMETHODIMP
 UiaText::GetSelection(__RPC__deref_out_opt SAFEARRAY** aRetVal) {
+  printf("jtd GetSelection\n");
   if (!aRetVal) {
     return E_INVALIDARG;
   }
@@ -156,6 +157,7 @@ UiaText::get_DocumentRange(__RPC__deref_out_opt ITextRangeProvider** aRetVal) {
 STDMETHODIMP
 UiaText::get_SupportedTextSelection(
     __RPC__out enum SupportedTextSelection* aRetVal) {
+  printf("jtd supported text selection\n");
   if (!aRetVal) {
     return E_INVALIDARG;
   }

@@ -355,6 +355,7 @@ UiaTextRange::CompareEndpoints(enum TextPatternRangeEndpoint aEndpoint,
 
 STDMETHODIMP
 UiaTextRange::ExpandToEnclosingUnit(enum TextUnit aUnit) {
+  printf("jtd expand %d\n", aUnit);
   TextLeafRange range = GetRange();
   if (!range) {
     return CO_E_OBJNOTCONNECTED;
@@ -791,6 +792,7 @@ UiaTextRange::GetText(int aMaxLength, __RPC__deref_out_opt BSTR* aRetVal) {
 
 STDMETHODIMP
 UiaTextRange::Move(enum TextUnit aUnit, int aCount, __RPC__out int* aRetVal) {
+  printf("jtd move unit %d count %d\n", aUnit, aCount);
   if (!aRetVal) {
     return E_INVALIDARG;
   }
@@ -837,6 +839,7 @@ STDMETHODIMP
 UiaTextRange::MoveEndpointByUnit(enum TextPatternRangeEndpoint aEndpoint,
                                  enum TextUnit aUnit, int aCount,
                                  __RPC__out int* aRetVal) {
+  printf("jtd MoveEndpointByUnit endpoint %d unit %d count %d\n", aEndpoint, aUnit, aCount);
   if (!aRetVal) {
     return E_INVALIDARG;
   }
@@ -875,6 +878,7 @@ UiaTextRange::MoveEndpointByRange(
 
 // XXX Use MOZ_CAN_RUN_SCRIPT_BOUNDARY for now due to bug 1543294.
 MOZ_CAN_RUN_SCRIPT_BOUNDARY STDMETHODIMP UiaTextRange::Select() {
+  printf("jtd select\n");
   TextLeafRange range = GetRange();
   if (!range) {
     return CO_E_OBJNOTCONNECTED;
@@ -897,6 +901,7 @@ MOZ_CAN_RUN_SCRIPT_BOUNDARY STDMETHODIMP UiaTextRange::Select() {
 
 // XXX Use MOZ_CAN_RUN_SCRIPT_BOUNDARY for now due to bug 1543294.
 MOZ_CAN_RUN_SCRIPT_BOUNDARY STDMETHODIMP UiaTextRange::AddToSelection() {
+  printf("jtd AddToSelection\n");
   TextLeafRange range = GetRange();
   if (!range) {
     return CO_E_OBJNOTCONNECTED;
@@ -909,6 +914,7 @@ MOZ_CAN_RUN_SCRIPT_BOUNDARY STDMETHODIMP UiaTextRange::AddToSelection() {
 
 // XXX Use MOZ_CAN_RUN_SCRIPT_BOUNDARY for now due to bug 1543294.
 MOZ_CAN_RUN_SCRIPT_BOUNDARY STDMETHODIMP UiaTextRange::RemoveFromSelection() {
+  printf("jtd RemoveFromSelection\n");
   TextLeafRange range = GetRange();
   if (!range) {
     return CO_E_OBJNOTCONNECTED;
