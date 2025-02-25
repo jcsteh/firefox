@@ -24,6 +24,7 @@
 #include "mozilla/TextEditor.h"
 #include "nsAccUtils.h"
 #include "nsBlockFrame.h"
+#include "nsFocusManager.h"
 #include "nsFrameSelection.h"
 #include "nsIAccessiblePivot.h"
 #include "nsILineIterator.h"
@@ -2207,14 +2208,26 @@ bool TextLeafRange::SetSelection(int32_t aSelectionNum) const {
 
   IgnoredErrorResult err;
   domSel->AddRangeAndSelectFramesAndNotifyListeners(*domRange, err);
-  if (!err.Failed()) {
-    // Changing the direction of the selection assures that the caret
-    // will be at the logical end of the selection.
-    domSel->SetDirection(reversed ? eDirPrevious : eDirNext);
-    return true;
+  if (err.Failed()) {
+    return false;
   }
 
-  return false;
+  // Changing the direction of the selection assures that the caret
+  // will be at the logical end of the selection.
+  domSel->SetDirection(reversed ? eDirPrevious : eDirNext);
+  if (mStart == mEnd && !(mStart.mAcc->State() & states::FOCUSABLE)) {
+    if (nsFocusManager* DOMFocusManager = nsFocusManager::GetFocusManager()) {
+      MOZ_ASSERT(mStart.mAcc->AsLocal()->Document());
+      dom::Document* domDoc = mStart.mAcc->AsLocal()->Document()->DocumentNode();
+      MOZ_ASSERT(domDoc);
+      nsCOMPtr<nsPIDOMWindowOuter> window = domDoc->GetWindow();
+      RefPtr<dom::Element> result;
+      DOMFocusManager->MoveFocus(
+        window, nullptr, nsIFocusManager::MOVEFOCUS_CARET,
+        nsIFocusManager::FLAG_BYMOVEFOCUS, getter_AddRefs(result));
+    }
+  }
+  return true;
 }
 
 /* static */
