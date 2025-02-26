@@ -730,7 +730,7 @@ ROLE(PARAGRAPH,
      IA2_ROLE_PARAGRAPH,
      java::SessionAccessibility::CLASSNAME_VIEW,
      IsAccessibilityElementRule::IfChildlessWithNameAndFocusable,
-     UIA_TextControlTypeId,
+     UIA_GroupControlTypeId,
      eNameFromSubtreeIfReqRule)
 
 ROLE(ENTRY,
