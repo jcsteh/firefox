@@ -997,7 +997,11 @@ uiaRawElmProvider::get_Value(__RPC__deref_out_opt BSTR* aRetVal) {
     return CO_E_OBJNOTCONNECTED;
   }
   nsAutoString value;
-  acc->Value(value);
+  if (acc->IsDoc()) {
+    nsAccUtils::DocumentURL(acc, value);
+  } else {
+    acc->Value(value);
+  }
   *aRetVal = ::SysAllocStringLen(value.get(), value.Length());
   if (!*aRetVal) {
     return E_OUTOFMEMORY;
@@ -1380,7 +1384,7 @@ bool uiaRawElmProvider::HasValuePattern() const {
   Accessible* acc = Acc();
   MOZ_ASSERT(acc);
   if (acc->HasNumericValue() || acc->IsCombobox() || acc->IsHTMLLink() ||
-      acc->IsTextField()) {
+      acc->IsTextField() || acc->IsDoc()) {
     return true;
   }
   const nsRoleMapEntry* roleMapEntry = acc->ARIARoleMap();
