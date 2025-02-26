@@ -1355,6 +1355,9 @@ bool uiaRawElmProvider::IsControl() {
   // about when navigating.
   Accessible* acc = Acc();
   MOZ_ASSERT(acc);
+  if (acc->IsOuterDoc()) {
+    return false;
+  }
   if (acc->IsTextLeaf()) {
     // If an ancestor control allows the name to be generated from content, do
     // not expose this text leaf as a control. Otherwise, the user will see the
