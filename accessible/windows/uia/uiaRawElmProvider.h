@@ -40,7 +40,8 @@ class uiaRawElmProvider : public IAccessibleEx,
                           public IRangeValueProvider,
                           public ISelectionProvider,
                           public ISelectionItemProvider,
-                          public ITextChildProvider {
+                          public ITextChildProvider,
+                          public IScrollProvider {
  public:
   static constexpr enum ProviderOptions kProviderOptions =
       static_cast<enum ProviderOptions>(ProviderOptions_ServerSideProvider |
@@ -189,6 +190,33 @@ class uiaRawElmProvider : public IAccessibleEx,
 
   virtual /* [propget] */ HRESULT STDMETHODCALLTYPE get_TextRange(
       /* [retval][out] */ __RPC__deref_out_opt ITextRangeProvider** aRetVal);
+
+  // IScrollProvider
+  virtual HRESULT STDMETHODCALLTYPE Scroll(
+      /* [in] */ enum ScrollAmount aHorizontalAmount,
+      /* [in] */ enum ScrollAmount aVerticalAmount);
+
+  virtual HRESULT STDMETHODCALLTYPE SetScrollPercent(
+      /* [in] */ double aHorizontalPercent,
+      /* [in] */ double aVerticalPercent);
+
+  virtual /* [propget] */ HRESULT STDMETHODCALLTYPE get_HorizontalScrollPercent(
+      /* [retval][out] */ __RPC__out double* aRetVal);
+
+  virtual /* [propget] */ HRESULT STDMETHODCALLTYPE get_VerticalScrollPercent(
+      /* [retval][out] */ __RPC__out double* aRetVal);
+
+  virtual /* [propget] */ HRESULT STDMETHODCALLTYPE get_HorizontalViewSize(
+      /* [retval][out] */ __RPC__out double* aRetVal);
+
+  virtual /* [propget] */ HRESULT STDMETHODCALLTYPE get_VerticalViewSize(
+      /* [retval][out] */ __RPC__out double* aRetVal);
+
+  virtual /* [propget] */ HRESULT STDMETHODCALLTYPE get_HorizontallyScrollable(
+      /* [retval][out] */ __RPC__out BOOL* aRetVal);
+
+  virtual /* [propget] */ HRESULT STDMETHODCALLTYPE get_VerticallyScrollable(
+      /* [retval][out] */ __RPC__out BOOL* aRetVal);
 
  private:
   Accessible* Acc() const;

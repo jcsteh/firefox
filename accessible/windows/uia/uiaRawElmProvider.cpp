@@ -275,6 +275,8 @@ uiaRawElmProvider::QueryInterface(REFIID aIid, void** aInterface) {
     *aInterface = static_cast<IRangeValueProvider*>(this);
   } else if (aIid == IID_IScrollItemProvider) {
     *aInterface = static_cast<IScrollItemProvider*>(this);
+  } else if (aIid == IID_IScrollProvider) {
+    *aInterface = static_cast<IScrollProvider*>(this);
   } else if (aIid == IID_ISelectionItemProvider) {
     *aInterface = static_cast<ISelectionItemProvider*>(this);
   } else if (aIid == IID_ISelectionProvider) {
@@ -413,6 +415,12 @@ uiaRawElmProvider::GetPatternProvider(
       if (acc->HasNumericValue()) {
         RefPtr<IValueProvider> value = this;
         value.forget(aPatternProvider);
+      }
+      return S_OK;
+    case UIA_ScrollPatternId:
+      if (acc->IsDoc()) {
+        RefPtr<IScrollProvider> scroll = this;
+        scroll.forget(aPatternProvider);
       }
       return S_OK;
     case UIA_ScrollItemPatternId: {
@@ -1273,6 +1281,64 @@ uiaRawElmProvider::get_TextRange(
   TextLeafRange range = TextLeafRange::FromAccessible(acc);
   RefPtr uiaRange = new UiaTextRange(range);
   uiaRange.forget(aRetVal);
+  return S_OK;
+}
+
+// IScrollProvider methods
+
+STDMETHODIMP
+uiaRawElmProvider::Scroll(
+    /* [in] */ enum ScrollAmount aHorizontalAmount,
+    /* [in] */ enum ScrollAmount aVerticalAmount) {
+  return S_OK;
+}
+
+STDMETHODIMP
+uiaRawElmProvider::SetScrollPercent(
+    /* [in] */ double aHorizontalPercent,
+    /* [in] */ double aVerticalPercent) {
+  return S_OK;
+}
+
+STDMETHODIMP
+uiaRawElmProvider::get_HorizontalScrollPercent(
+    /* [retval][out] */ __RPC__out double* aRetVal) {
+  *aRetVal = 100.0;
+  return S_OK;
+}
+
+STDMETHODIMP
+uiaRawElmProvider::get_VerticalScrollPercent(
+    /* [retval][out] */ __RPC__out double* aRetVal) {
+  *aRetVal = 100.0;
+  return S_OK;
+}
+
+STDMETHODIMP
+uiaRawElmProvider::get_HorizontalViewSize(
+    /* [retval][out] */ __RPC__out double* aRetVal) {
+  *aRetVal = 100.0;
+  return S_OK;
+}
+
+STDMETHODIMP
+uiaRawElmProvider::get_VerticalViewSize(
+    /* [retval][out] */ __RPC__out double* aRetVal) {
+  *aRetVal = 100.0;
+  return S_OK;
+}
+
+STDMETHODIMP
+uiaRawElmProvider::get_HorizontallyScrollable(
+    /* [retval][out] */ __RPC__out BOOL* aRetVal) {
+  *aRetVal = true;
+  return S_OK;
+}
+
+STDMETHODIMP
+uiaRawElmProvider::get_VerticallyScrollable(
+    /* [retval][out] */ __RPC__out BOOL* aRetVal) {
+  *aRetVal = true;
   return S_OK;
 }
 
