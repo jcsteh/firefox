@@ -728,6 +728,11 @@ uiaRawElmProvider::GetPropertyValue(PROPERTYID aPropertyId,
 
     case UIA_NamePropertyId: {
       nsAutoString name;
+      if (acc->IsTextLeaf()) {
+        aPropertyValue->vt = VT_BSTR;
+        aPropertyValue->bstrVal = ::SysAllocString(L"jtd name");
+        return S_OK;
+      }
       acc->Name(name);
       if (!name.IsEmpty()) {
         aPropertyValue->vt = VT_BSTR;
