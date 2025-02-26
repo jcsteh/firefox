@@ -165,7 +165,7 @@ UiaText::get_SupportedTextSelection(
   if (!acc) {
     return CO_E_OBJNOTCONNECTED;
   }
-  if (acc->State() & states::SELECTABLE_TEXT) {
+  if (acc->IsDoc() || acc->State() & states::SELECTABLE_TEXT) {
     *aRetVal = SupportedTextSelection_Multiple;
   } else {
     *aRetVal = SupportedTextSelection_None;
