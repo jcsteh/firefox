@@ -104,7 +104,7 @@ static bool HasTextPattern(Accessible* aAcc) {
   // Only documents and editable text controls should have the Text pattern.
   // https://learn.microsoft.com/en-us/windows/win32/winauto/uiauto-textpattern-and-embedded-objects-overview#webpage-and-text-input-controls-in-edge
   constexpr uint64_t editableRootStates = states::EDITABLE | states::FOCUSABLE;
-  return (aAcc->IsDoc() && !aAcc->IsRoot()) ||
+  return aAcc->IsText() || (aAcc->IsDoc() && !aAcc->IsRoot()) ||
          (aAcc->IsHyperText() &&
           (aAcc->State() & editableRootStates) == editableRootStates);
 }
