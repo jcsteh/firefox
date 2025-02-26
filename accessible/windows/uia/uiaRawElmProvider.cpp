@@ -29,6 +29,7 @@
 #include "Relation.h"
 #include "RootAccessible.h"
 #include "TextLeafRange.h"
+#include "UiaText.h"
 #include "UiaTextRange.h"
 
 using namespace mozilla;
@@ -474,8 +475,8 @@ uiaRawElmProvider::GetPatternProvider(
       return S_OK;
     case UIA_TextPatternId:
       if (HasTextPattern(acc)) {
-        auto text =
-            GetPatternFromDerived<ia2AccessibleHypertext, ITextProvider>();
+        RefPtr<ITextProvider> text =
+            new UiaText(static_cast<MsaaAccessible*>(this));
         text.forget(aPatternProvider);
       }
       return S_OK;
