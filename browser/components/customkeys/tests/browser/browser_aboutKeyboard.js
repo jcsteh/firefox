@@ -54,6 +54,11 @@ addAboutKbTask(async function testInit(doc) {
     "All keys are assigned"
   );
   is(doc.querySelectorAll(".editing").length, 0, "No keys are being edited");
+  // Make sure that lazy DevTools items have been added.
+  ok(
+    doc.querySelector('.key[data-id="key_browserConsole"]'),
+    "key_browserConsole is present"
+  );
 });
 
 // Test searching.
