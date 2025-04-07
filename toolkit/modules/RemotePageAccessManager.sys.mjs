@@ -74,6 +74,19 @@ export let RemotePageAccessManager = {
     "about:certificate": {
       RPMSendQuery: ["getCertificates"],
     },
+    "about:keyboard": {
+      RPMSendQuery: [
+        "CustomKeys:ChangeKey",
+        "CustomKeys:GetDefaultKey",
+        "CustomKeys:GetKeyAttribute",
+        "CustomKeys:GetKeys",
+        "CustomKeys:GetModifierString",
+        "CustomKeys:GetModifiersAttribute",
+        "CustomKeys:PrettifyShortcut",
+        "CustomKeys:ResetAll",
+        "CustomKeys:ResetKey",
+      ],
+    },
     "about:neterror": {
       RPMSendAsyncMessage: [
         "Browser:EnableOnlineMode",
