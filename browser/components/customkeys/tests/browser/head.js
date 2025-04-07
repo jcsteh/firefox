@@ -12,6 +12,9 @@ const isLinux = AppConstants.platform == "linux";
 const historyDisplay = isMac ? "⇧⌘H" : "Ctrl+H";
 const historyModifiers = isMac ? "accel,shift" : "accel";
 const historyOptions = { accelKey: true, shiftKey: isMac };
+// key_openDownloads
+const downloadsDisplay =
+  (isMac && "⌘J") || (isLinux && "Ctrl+Shift+Y") || "Ctrl+J";
 
 // The following unused* constants specify a key combination which is unused by
 // default. This will need to be updated if this key combination is assigned to
@@ -21,3 +24,4 @@ const unusedOptions = { accelKey: true, shiftKey: true };
 const unusedKey = isLinux ? "Q" : "Y";
 const unusedModifiersDisplay = isMac ? "⇧⌘" : "Ctrl+Shift+";
 const unusedDisplay = `${unusedModifiersDisplay}${unusedKey}`;
+const unusedModifiersArgs = ["KEY_Shift", { accelKey: true }];
