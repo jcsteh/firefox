@@ -14,6 +14,10 @@ const topWin = window.browsingContext.topChromeWindow;
 // Get keyboard shortcuts in the form: { categoryTitle: { keyId: keyTitle } }
 // If categoryTitle or keyTitle begins with "customkeys-", it is a Fluent id.
 function getKeys() {
+  // Make Dev Tools populate the Browser Tools menu so we can gather those
+  // shortcuts here.
+  Services.obs.notifyObservers(topWin, "customkeys-ui-showing");
+
   const keys = {};
   // Gather as many keys as we can from the menu bar menus.
   const mainMenuBar = topWin.document.getElementById("main-menubar");
