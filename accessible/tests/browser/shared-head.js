@@ -513,13 +513,10 @@ function accessibleTask(doc, task, options = {}) {
       }
     });
 
-    let onContentDocLoad;
-    if (!options.chrome) {
-      onContentDocLoad = waitForEvent(
-        EVENT_DOCUMENT_LOAD_COMPLETE,
-        DEFAULT_CONTENT_DOC_BODY_ID
-      );
-    }
+    const onContentDocLoad = waitForEvent(
+      EVENT_DOCUMENT_LOAD_COMPLETE,
+      DEFAULT_CONTENT_DOC_BODY_ID
+    );
 
     let onIframeDocLoad;
     if (options.remoteIframe && !options.skipFissionDocLoad) {
@@ -578,23 +575,7 @@ function accessibleTask(doc, task, options = {}) {
           ok(browser.isRemoteBrowser, "Actually remote browser");
         }
 
-        let docAccessible;
-        if (options.chrome) {
-          // Chrome documents don't fire DOCUMENT_LOAD_COMPLETE. Instead, wait
-          // until we can get the DocAccessible and it doesn't have the busy
-          // state.
-          await BrowserTestUtils.waitForCondition(() => {
-            docAccessible = getAccessible(browser.contentWindow.document);
-            if (!docAccessible) {
-              return false;
-            }
-            const state = {};
-            docAccessible.getState(state, {});
-            return !(state.value & STATE_BUSY);
-          });
-        } else {
-          ({ accessible: docAccessible } = await onContentDocLoad);
-        }
+        const docAccessible = (await onContentDocLoad).accessible;
         // The test may want to access document methods/attributes such as URL
         // and browsingContext.
         docAccessible.QueryInterface(nsIAccessibleDocument);
