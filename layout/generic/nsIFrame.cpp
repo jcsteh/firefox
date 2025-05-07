@@ -340,6 +340,7 @@ nsIFrame* nsIFrame::FindLineContainer() const {
 }
 
 bool nsIFrame::CheckAndClearDisplayListState() {
+  mWasDisplayListChecked = !mWasDisplayListChecked;
   bool result = BuiltDisplayList();
   SetBuiltDisplayList(false);
 

@@ -5086,7 +5086,11 @@ class nsIFrame : public nsQueryFrame {
   }
 
   bool BuiltDisplayList() const { return mBuiltDisplayList; }
-  void SetBuiltDisplayList(const bool aBuilt) { mBuiltDisplayList = aBuilt; }
+  void SetBuiltDisplayList(const bool aBuilt) {
+    mBuiltDisplayList = aBuilt;
+    NS_ASSERTION(!aBuilt || !mWasDisplayListChecked,
+                 "jtd display list unexpectedly built!\n");
+  }
 
   bool IsFrameModified() const { return mFrameIsModified; }
   void SetFrameIsModified(const bool aFrameIsModified) {
@@ -5311,6 +5315,7 @@ class nsIFrame : public nsQueryFrame {
    * display list building.
    */
   bool mBuiltDisplayList : 1;
+  bool mWasDisplayListChecked = false;
 
   /**
    * True if the frame has been marked modified by
