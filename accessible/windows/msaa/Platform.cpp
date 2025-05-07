@@ -260,6 +260,10 @@ void a11y::SetInstantiator(const uint32_t aPid) {
   }
 
   gInstantiator = clientExe;
+  nsAutoString path;
+  if (NS_SUCCEEDED(clientExe->GetPath(path))) {
+    printf("jtd a11y client %s\n", NS_ConvertUTF16toUTF8(path).get());
+  }
 
   nsCOMPtr<nsIRunnable> runnable(
       NS_NewRunnableFunction("a11y::GatherInstantiatorTelemetry",

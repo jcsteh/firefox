@@ -113,6 +113,7 @@ already_AddRefed<IRawElementProviderSimple> LazyInstantiator::GetRootUia(
   if (!Compatibility::IsUiaEnabled()) {
     return nullptr;
   }
+  NS_ASSERTION(false, "jtd GetRootUia");
   return GetRoot<IRawElementProviderSimple>(aHwnd);
 }
 
@@ -272,6 +273,10 @@ bool LazyInstantiator::ShouldInstantiate() {
   }
   if (Compatibility::HasKnownNonUiaConsumer()) {
     // We detected a known in-process client.
+    nsAutoString consumers;
+    Compatibility::GetHumanReadableConsumersStr(consumers);
+    printf("jtd non uia in-proc, sConsumers is %s\n",
+           NS_ConvertUTF16toUTF8(consumers).get());
     return true;
   }
   // UIA client detection can be expensive, so we cache the result. See the
@@ -285,9 +290,11 @@ bool LazyInstantiator::ShouldInstantiate() {
     if (uiaPids.IsEmpty()) {
       // No UIA clients, so don't block UIA. However, we might block for
       // non-UIA clients below.
+      printf("jtd no UIA clients found\n");
       sShouldBlockUia = Some(false);
     } else {
       for (const DWORD pid : uiaPids) {
+        printf("jtd check uia pid %lu\n", pid);
         if (ShouldInstantiate(pid)) {
           sShouldBlockUia = Some(false);
           return true;
@@ -304,6 +311,7 @@ bool LazyInstantiator::ShouldInstantiate() {
   if (IsBlockedInjection()) {
     return false;
   }
+  printf("jtd allow instantiation\n");
   return true;
 }
 
