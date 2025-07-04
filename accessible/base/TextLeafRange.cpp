@@ -644,6 +644,17 @@ TextLeafPoint::TextLeafPoint(Accessible* aAcc, int32_t aOffset) {
     return;
   }
 
+  if (aOffset == 1 && aAcc->HasChildren()) {
+    // This refers to the end of the container. This can happen, for example,
+    // when the caret moves due to a mouse click in the empty space at the end
+    // of a document. If a text input is the last element in the document, we
+    // must not descend into the text input because that tells the client that
+    // the caret is inside the text input, which isn't even focused any more.
+    mAcc = aAcc;
+    mOffset = 1;
+    return;
+  }
+
   // Even though an OuterDoc contains a document, we treat it as a leaf because
   // we don't want to move into another document.
   if (aOffset != nsIAccessibleText::TEXT_OFFSET_CARET && !aAcc->IsOuterDoc() &&
