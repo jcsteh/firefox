@@ -128,6 +128,7 @@ nsresult nsVideoFrame::CreateAnonymousContent(
     nsGenericHTMLElement* div =
         static_cast<nsGenericHTMLElement*>(mCaptionDiv.get());
     div->SetClassName(u"caption-box"_ns);
+    div->SetAttr(kNameSpaceID_None, nsGkAtoms::role, u"group"_ns, false);
 
     // XXX(Bug 1631371) Check if this should use a fallible operation as it
     // pretended earlier.
