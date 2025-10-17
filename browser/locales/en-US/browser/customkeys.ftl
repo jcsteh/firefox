@@ -38,3 +38,8 @@ customkeys-nav-home = Home
 customkeys-nav-reload = Reload
 customkeys-nav-reload-skip-cache = Reload (Override Cache)
 customkeys-nav-stop = Stop
+
+customkeys-caution-heading = Proceed with Caution
+customkeys-caution-message = This feature is experimental and may not work as expected.
+customkeys-caution-toggle = Warn me when I attempt to access this feature
+customkeys-caution-accept = Accept the Risk and Continue

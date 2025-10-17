@@ -3,6 +3,9 @@
 
 "use strict";
 
+const { Preferences } = ChromeUtils.importESModule(
+  "resource://gre/modules/Preferences.sys.mjs"
+);
 const { PromptTestUtils } = ChromeUtils.importESModule(
   "resource://testing-common/PromptTestUtils.sys.mjs"
 );
@@ -13,6 +16,7 @@ const { PromptTestUtils } = ChromeUtils.importESModule(
 
 registerCleanupFunction(() => {
   CustomKeys.resetAll();
+  Preferences.reset("browser.customkeys.showWarning");
 });
 
 function addAboutKbTask(task) {
@@ -26,7 +30,33 @@ function addAboutKbTask(task) {
   add_task(wrapped);
 }
 
-// Test initial loading of about:keyboard.
+// Test the caution dialog.
+addAboutKbTask(async function testCaution(doc) {
+  const dialog = doc.getElementById("cautionDialog");
+  ok(dialog.open, "Caution dialog is open");
+  is(doc.activeElement.id, "cautionAccept", "cautionAccept is focused");
+  info("Clicking Accept");
+  let closed = BrowserTestUtils.waitForEvent(dialog, "close");
+  doc.getElementById("cautionAccept").click();
+  await closed;
+  ok(!dialog.open, "Caution dialog is closed");
+});
+
+// Test that the caution dialog opens a second time.
+addAboutKbTask(async function testCautionSecond(doc) {
+  const dialog = doc.getElementById("cautionDialog");
+  ok(dialog.open, "Caution dialog is open");
+  info("Unchecking Warn me");
+  doc.getElementById("cautionToggle").click();
+  info("Clicking Accept");
+  let closed = BrowserTestUtils.waitForEvent(dialog, "close");
+  doc.getElementById("cautionAccept").click();
+  await closed;
+  ok(!dialog.open, "Caution dialog is closed");
+});
+
+// Test initial loading of about:keyboard. The caution dialog should not appear
+// henceforth because we disabled it in the previous test.
 addAboutKbTask(async function testInit(doc) {
   Assert.greater(
     doc.querySelectorAll("tbody").length,

@@ -5,6 +5,7 @@
 ChromeUtils.defineESModuleGetters(this, {
   AppConstants: "resource://gre/modules/AppConstants.sys.mjs",
   CustomKeys: "resource:///modules/CustomKeys.sys.mjs",
+  Preferences: "resource://gre/modules/Preferences.sys.mjs",
   ShortcutUtils: "resource://gre/modules/ShortcutUtils.sys.mjs",
 });
 
@@ -297,9 +298,29 @@ async function onResetAll() {
   }
 }
 
-buildTable();
-table.addEventListener("click", onAction);
-table.addEventListener("keydown", onKey);
-table.addEventListener("focusout", onFocusLost);
-document.getElementById("search").addEventListener("input", onSearchInput);
-document.getElementById("resetAll").addEventListener("click", onResetAll);
+function init() {
+  buildTable();
+  table.addEventListener("click", onAction);
+  table.addEventListener("keydown", onKey);
+  table.addEventListener("focusout", onFocusLost);
+  document.getElementById("search").addEventListener("input", onSearchInput);
+  document.getElementById("resetAll").addEventListener("click", onResetAll);
+}
+
+const cautionPref = "browser.customkeys.showWarning";
+if (Preferences.get(cautionPref)) {
+  const cautionDialog = document.getElementById("cautionDialog");
+  cautionDialog.addEventListener(
+    "close",
+    () => {
+      const toggle = document.getElementById("cautionToggle");
+      Preferences.set(cautionPref, toggle.checked);
+      init();
+    },
+    { once: true }
+  );
+  // Without setTimeout, the document body gets focus instead of the dialog.
+  setTimeout(() => cautionDialog.showModal(), 0);
+} else {
+  init();
+}

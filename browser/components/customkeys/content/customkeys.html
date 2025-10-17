@@ -24,6 +24,31 @@
     <div>
       <button id="resetAll" data-l10n-id="customkeys-reset-all"></button>
     </div>
+
+    <!-- We set closedby="none" so that escape cannot dismiss this dialog. -->
+    <dialog
+      id="cautionDialog"
+      closedby="none"
+      aria-labelledby="cautionHeading"
+      aria-describedby="cautionMessage"
+    >
+      <h1 id="cautionHeading" data-l10n-id="customkeys-caution-heading"></h1>
+      <p id="cautionMessage" data-l10n-id="customkeys-caution-message"></p>
+      <div>
+        <input type="checkbox" id="cautionToggle" checked />
+        <label for="cautionToggle" data-l10n-id="customkeys-caution-toggle">
+        </label>
+      </div>
+      <div>
+        <button
+          id="cautionAccept"
+          commandfor="cautionDialog"
+          command="close"
+          autofocus
+          data-l10n-id="customkeys-caution-accept"
+        ></button>
+      </div>
+    </dialog>
     <script src="chrome://browser/content/customkeys/customkeys.js"></script>
   </body>
 </html>

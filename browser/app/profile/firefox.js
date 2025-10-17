@@ -3496,3 +3496,5 @@ pref("toolkit.rust-components.logging.internal-level", "Warn");
 
 // Settings Redesign 2025 prefs
 pref("browser.settings-redesign.enabled", false);
+
+pref("browser.customkeys.showWarning", true);
