@@ -195,17 +195,20 @@ async function onAction(event) {
   const row = event.target.closest("tr");
   const keyId = row.dataset.id;
   if (event.target.className == "reset") {
+    Glean.browserCustomkeys.actions.reset.add();
     const [modifiers, key] = CustomKeys.getDefaultKey(keyId);
     if (await maybeHandleConflict(keyId, modifiers, key)) {
       CustomKeys.resetKey(keyId);
       updateKey(row);
     }
   } else if (event.target.className == "change") {
+    Glean.browserCustomkeys.actions.change.add();
     // The "editing" class will cause the Change button to be replaced by a
     // labelled input for the new key.
     row.classList.add("editing");
     row.querySelector(".new").focus();
   } else if (event.target.className == "clear") {
+    Glean.browserCustomkeys.actions.clear.add();
     CustomKeys.changeKey(keyId, "", "");
     updateKey(row);
   }
@@ -284,6 +287,7 @@ function onSearchInput(event) {
 }
 
 async function onResetAll() {
+  Glean.browserCustomkeys.actions.reset_all.add();
   if (
     !window.confirm(
       await document.l10n.formatValue("customkeys-reset-all-confirm")
@@ -303,3 +307,4 @@ table.addEventListener("keydown", onKey);
 table.addEventListener("focusout", onFocusLost);
 document.getElementById("search").addEventListener("input", onSearchInput);
 document.getElementById("resetAll").addEventListener("click", onResetAll);
+Glean.browserCustomkeys.opened.add();

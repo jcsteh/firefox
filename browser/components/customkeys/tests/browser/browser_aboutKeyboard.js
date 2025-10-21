@@ -26,8 +26,18 @@ function addAboutKbTask(task) {
   add_task(wrapped);
 }
 
+// Check telemetry before about:keyboard is first opened.
+add_task(function testBeforeFirstOpen() {
+  ok(!Glean.browserCustomkeys.opened.testGetValue(), "No telemetry for opened");
+});
+
 // Test initial loading of about:keyboard.
 addAboutKbTask(async function testInit(doc) {
+  is(
+    Glean.browserCustomkeys.opened.testGetValue(),
+    1,
+    "Correct telemetry for opened"
+  );
   Assert.greater(
     doc.querySelectorAll("tbody").length,
     5,
@@ -63,6 +73,11 @@ addAboutKbTask(async function testInit(doc) {
 
 // Test searching.
 addAboutKbTask(async function testSearch(doc, win) {
+  is(
+    Glean.browserCustomkeys.opened.testGetValue(),
+    2,
+    "Correct telemetry for opened"
+  );
   is(
     doc.querySelectorAll("tbody[hidden], tr[hidden]").length,
     0,
@@ -147,6 +162,10 @@ addAboutKbTask(async function testChange(doc, win) {
     downloadsDisplay,
     "Key is the default key"
   );
+  ok(
+    !Glean.browserCustomkeys.actions.change.testGetValue(),
+    "No telemetry for change action"
+  );
   info("Clicking Change for key_openDownloads");
   const input = downloadsRow.querySelector(".new");
   let focused = BrowserTestUtils.waitForEvent(input, "focus");
@@ -154,6 +173,11 @@ addAboutKbTask(async function testChange(doc, win) {
   change.click();
   await focused;
   ok(true, "New key input got focus");
+  is(
+    Glean.browserCustomkeys.actions.change.testGetValue(),
+    1,
+    "Correct telemetry for change action"
+  );
   info(`Pressing ${unusedModifiersDisplay}`);
   let keyHandled = BrowserTestUtils.waitForEvent(input, "keydown");
   EventUtils.synthesizeKey(...unusedModifiersArgs, win);
@@ -193,11 +217,20 @@ addAboutKbTask(async function testReset(doc) {
     unusedDisplay,
     "Key is the customized key"
   );
+  ok(
+    !Glean.browserCustomkeys.actions.reset.testGetValue(),
+    "No telemetry for reset action"
+  );
   info("Clicking Reset for key_openDownloads");
   const reset = downloadsRow.querySelector(".reset");
   let clicked = BrowserTestUtils.waitForEvent(reset, "click");
   reset.click();
   await clicked;
+  is(
+    Glean.browserCustomkeys.actions.reset.testGetValue(),
+    1,
+    "Correct telemetry for reset action"
+  );
   ok(
     !downloadsRow.classList.contains("customized"),
     "key_openDownloads is not customized"
@@ -220,11 +253,20 @@ addAboutKbTask(async function testClear(doc) {
     downloadsRow.classList.contains("assigned"),
     "key_openDownloads is assigned"
   );
+  ok(
+    !Glean.browserCustomkeys.actions.clear.testGetValue(),
+    "No telemetry for clear action"
+  );
   info("Clicking Clear for key_openDownloads");
   const clear = downloadsRow.querySelector(".clear");
   let clicked = BrowserTestUtils.waitForEvent(clear, "click");
   clear.click();
   await clicked;
+  is(
+    Glean.browserCustomkeys.actions.clear.testGetValue(),
+    1,
+    "Correct telemetry for clear action"
+  );
   ok(
     downloadsRow.classList.contains("customized"),
     "key_openDownloads is customized"
@@ -249,6 +291,10 @@ addAboutKbTask(async function testResetAll(doc) {
     !downloadsRow.classList.contains("assigned"),
     "key_openDownloads is not assigned"
   );
+  ok(
+    !Glean.browserCustomkeys.actions.reset_all.testGetValue(),
+    "No telemetry for reset all action"
+  );
 
   info("Clicking Reset all, then Cancel");
   let handled = PromptTestUtils.handleNextPrompt(
@@ -259,6 +305,11 @@ addAboutKbTask(async function testResetAll(doc) {
   const resetAll = doc.getElementById("resetAll");
   resetAll.click();
   await handled;
+  is(
+    Glean.browserCustomkeys.actions.reset_all.testGetValue(),
+    1,
+    "Correct telemetry for reset all action"
+  );
   ok(
     downloadsRow.classList.contains("customized"),
     "key_openDownloads is customized"
@@ -276,6 +327,11 @@ addAboutKbTask(async function testResetAll(doc) {
   );
   resetAll.click();
   await handled;
+  is(
+    Glean.browserCustomkeys.actions.reset_all.testGetValue(),
+    2,
+    "Correct telemetry for reset all action"
+  );
   ok(
     !downloadsRow.classList.contains("customized"),
     "key_openDownloads is not customized"
@@ -306,6 +362,11 @@ addAboutKbTask(async function testConflictingChange(doc, win) {
   change.click();
   await focused;
   ok(true, "New key input got focus");
+  is(
+    Glean.browserCustomkeys.actions.change.testGetValue(),
+    2,
+    "Correct telemetry for change action"
+  );
   info(`Pressing ${historyDisplay}, then clicking Cancel`);
   let handled = PromptTestUtils.handleNextPrompt(
     window,
@@ -331,6 +392,11 @@ addAboutKbTask(async function testConflictingChange(doc, win) {
   change.click();
   await focused;
   ok(true, "New key input got focus");
+  is(
+    Glean.browserCustomkeys.actions.change.testGetValue(),
+    3,
+    "Correct telemetry for change action"
+  );
   info(`Pressing ${historyDisplay}, then clicking OK`);
   handled = PromptTestUtils.handleNextPrompt(
     window,
@@ -390,6 +456,11 @@ addAboutKbTask(async function testConflictingReset(doc) {
   const reset = historyRow.querySelector(".reset");
   reset.click();
   await handled;
+  is(
+    Glean.browserCustomkeys.actions.reset.testGetValue(),
+    2,
+    "Correct telemetry for reset action"
+  );
   ok(
     downloadsRow.classList.contains("customized"),
     "key_openDownloads is customized"
@@ -407,6 +478,11 @@ addAboutKbTask(async function testConflictingReset(doc) {
   );
   reset.click();
   await handled;
+  is(
+    Glean.browserCustomkeys.actions.reset.testGetValue(),
+    3,
+    "Correct telemetry for reset action"
+  );
   ok(
     downloadsRow.classList.contains("customized"),
     "key_openDownloads is customized"
