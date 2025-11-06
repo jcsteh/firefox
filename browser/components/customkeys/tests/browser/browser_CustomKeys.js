@@ -7,6 +7,8 @@
  * Test the behavior of assigning keys, resetting keys, etc. via the CustomKeys module. The UI is tested separately.
  */
 
+SimpleTest.requestCompleteLog();
+
 registerCleanupFunction(() => {
   CustomKeys.resetAll();
 });
@@ -36,7 +38,9 @@ add_task(async function testChangeKey() {
   );
   info(`Pressing ${consts.unusedDisplay}`);
   let focused = BrowserTestUtils.waitForEvent(window, "SidebarFocused");
+  info("jtd press");
   EventUtils.synthesizeKey(consts.unusedKey, consts.unusedOptions, window);
+  info("jtd wait for sidebar focus");
   await focused;
   ok(true, "Sidebar got focus");
   is(

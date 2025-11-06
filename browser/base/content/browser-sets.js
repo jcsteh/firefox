@@ -295,6 +295,7 @@ document.addEventListener(
           }
           break;
         case "key_gotoHistory":
+          console.log("jtd mainKeyset command handler key_gotoHistory\n");
           SidebarController.toggle("viewHistorySidebar");
           break;
 

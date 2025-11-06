@@ -181,6 +181,7 @@ already_AddRefed<dom::Element> KeyEventHandler::GetHandlerElement() const {
 
 nsresult KeyEventHandler::ExecuteHandler(dom::EventTarget* aTarget,
                                          dom::Event* aEvent) {
+  printf("jtd KeyEventHandler::ExecuteHandler\n");
   // In both cases the union should be defined.
   if (!mHandlerElement) {
     return NS_ERROR_FAILURE;

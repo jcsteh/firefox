@@ -173,6 +173,7 @@ NS_IMETHODIMP
 GlobalKeyListener::HandleEvent(dom::Event* aEvent) {
   RefPtr<dom::KeyboardEvent> keyEvent = aEvent->AsKeyboardEvent();
   NS_ENSURE_TRUE(keyEvent, NS_ERROR_INVALID_ARG);
+  if (keyEvent->CharCode()) printf("jtd charCode %d\n", keyEvent->CharCode());
 
   if (aEvent->EventPhase() == dom::Event_Binding::CAPTURING_PHASE) {
     if (aEvent->WidgetEventPtr()->mFlags.mInSystemGroup) {
@@ -186,10 +187,12 @@ GlobalKeyListener::HandleEvent(dom::Event* aEvent) {
   // If this event was handled by APZ then don't do the default action, and
   // preventDefault to prevent any other listeners from handling the event.
   if (aEvent->WidgetEventPtr()->mFlags.mHandledByAPZ) {
+    printf("jtd handled by APZ\n");
     aEvent->PreventDefault();
     return NS_OK;
   }
 
+  if (keyEvent->CharCode()) printf("jtd HandleEvent calling WalkHandlers\n");
   WalkHandlers(keyEvent);
   return NS_OK;
 }
@@ -220,6 +223,7 @@ void GlobalKeyListener::HandleEventOnCaptureInSystemEventGroup(
   // in the system event group may want to handle the event before registered
   // shortcut key handlers.
   if (!widgetEvent->WillBeSentToRemoteProcess()) {
+    printf("jtd won't be sent to remote process\n");
     return;
   }
 
@@ -237,6 +241,7 @@ void GlobalKeyListener::HandleEventOnCaptureInSystemEventGroup(
   // a reply from the remote process, it should be dispatched into this
   // DOM tree again.
   widgetEvent->StopImmediatePropagation();
+  printf("jtd calling MarkAsWaitingReplyFromRemoteProcess\n");
   widgetEvent->MarkAsWaitingReplyFromRemoteProcess();
 }
 
@@ -258,6 +263,7 @@ GlobalKeyListener::WalkHandlersResult GlobalKeyListener::WalkHandlersInternal(
   nativeKeyboardEvent->GetShortcutKeyCandidates(shortcutKeys);
 
   if (shortcutKeys.IsEmpty()) {
+    printf("jtd shortcutKeys.IsEmpty\n");
     return WalkHandlersAndExecute(aPurpose, aKeyEvent, 0,
                                   IgnoreModifierState());
   }
@@ -269,6 +275,7 @@ GlobalKeyListener::WalkHandlersResult GlobalKeyListener::WalkHandlersInternal(
         key.mSkipIfEarlierHandlerDisabled ==
         ShortcutKeyCandidate::SkipIfEarlierHandlerDisabled::Yes;
     if (foundDisabledHandler && skipIfEarlierHandlerDisabled) {
+      printf("jtd foundDisabledHandler && skipIfEarlierHandlerDisabled\n");
       continue;
     }
     IgnoreModifierState ignoreModifierState;
@@ -277,6 +284,7 @@ GlobalKeyListener::WalkHandlersResult GlobalKeyListener::WalkHandlersInternal(
     WalkHandlersResult result = WalkHandlersAndExecute(
         aPurpose, aKeyEvent, key.mCharCode, ignoreModifierState);
     if (result.mMeaningfulHandlerFound) {
+      printf("jtd result.mMeaningfulHandlerFound\n");
       return result;
     }
     foundRelevantHandler |= result.mRelevantHandlerFound;

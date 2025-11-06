@@ -584,6 +584,7 @@ nsresult nsXULElement::BindToTree(BindContext& aContext, nsINode& aParent) {
 
   if (NodeInfo()->Equals(nsGkAtoms::keyset, kNameSpaceID_XUL)) {
     // Create our XUL key listener and hook it up.
+    printf("jtd hooking keyset\n");
     XULKeySetGlobalKeyListener::AttachKeyHandler(this);
   }
 
