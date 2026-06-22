@@ -65,22 +65,21 @@ Check focus after each key press:
 _a11y.dumpFocus()
 ```
 
-### Firefox keyboard navigation model
+### Toolbar keyboard navigation
 
-Firefox UI uses two complementary navigation models:
+The Firefox main toolbar is divided into tab stop groups, with the address bar text box in the middle of several groups of toolbar buttons.
+Tab and Shift+Tab move to the next and previous group respectively, always positioning you on the first button in the group.
+Right and left arrow keys move within a group, but do not move between groups or wrap around.
+Toolbar buttons do not have a tab index — toolbar keyboard navigation is handled specially — so do not assume a toolbar button is not keyboard focusable because it lacks a tab index.
+F6 cycles focus through major chrome regions (content, toolbar, notification bars) and may need multiple presses.
 
-**Tab / Shift+Tab** moves between tab stop groups in the browser chrome (content area, toolbar
-groups, sidebar, notification bars, etc.) and also navigates within many surfaces — menus,
-dialogs, settings pages, panels. Press repeatedly and check focus each time.
+When searching for a specific toolbar button, follow this algorithm:
 
-**Arrow keys** move between items within the current tab stop group (e.g. between buttons in
-a toolbar group, between items in a menu).
-
-Toolbar tab stop groups: the toolbar is divided into groups (back/forward/reload, address bar,
-toolbar buttons, etc.). Tab and Shift+Tab move between groups; arrow keys move within a group.
-To reach toolbar buttons from the address bar, use Shift+Tab or Tab to move to the adjacent
-group, then arrow keys to navigate within it. F6 cycles focus through major chrome regions
-(content, toolbar, notification bars) and may need multiple presses.
+1. Focus the address bar.
+2. Press Tab or Shift+Tab once to land on a toolbar group.
+3. Press Right Arrow repeatedly, checking focus after each press, to visit every button in the current group. Do this even if you think the target is in a different direction. You cannot know the button's position without exploring.
+4. Only after the current group is fully explored (Right Arrow no longer moves focus or you have visited every button) should you press Tab or Shift+Tab to move to the next or previous group.
+5. Repeat from step 3 until the target button is found.
 
 If focus doesn't land where expected after reasonable effort, that may itself be an
 accessibility issue — note it and try an alternative route.
