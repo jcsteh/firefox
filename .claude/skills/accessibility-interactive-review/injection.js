@@ -32,6 +32,7 @@
       if (state & S.STATE_SELECTABLE) node.selected = !!(state & S.STATE_SELECTED);
       if (acc.role === Ci.nsIAccessibleRole.ROLE_TOGGLE_BUTTON) node.pressed = !!(state & S.STATE_PRESSED);
       if (state & S.STATE_HASPOPUP) node.hasPopup = true;
+      if (state & S.STATE_UNAVAILABLE) node.disabled = true;
       try { node.domTag = acc.attributes.getStringProperty("tag"); } catch(e) {}
       if (acc.id) node.domId = acc.id;
       return node;
