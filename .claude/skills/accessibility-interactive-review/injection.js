@@ -32,6 +32,8 @@
       if (state & S.STATE_SELECTABLE) node.selected = !!(state & S.STATE_SELECTED);
       if (acc.role === Ci.nsIAccessibleRole.ROLE_TOGGLE_BUTTON) node.pressed = !!(state & S.STATE_PRESSED);
       if (state & S.STATE_HASPOPUP) node.hasPopup = true;
+      try { node.domTag = acc.attributes.getStringProperty("tag"); } catch(e) {}
+      if (acc.id) node.domId = acc.id;
       return node;
     },
     serializeAccSubtree(acc, maxDepth) {
@@ -45,9 +47,16 @@
       if (children.length) node.children = children;
       return node;
     },
-    isPanelOpen(id) {
-      const panel = document.getElementById(id);
-      return panel ? panel.state === "open" : false;
+    dumpFocusAncestry() {
+      const focused = svc.getAccessibleFor(document).focusedChild;
+      if (!focused) return JSON.stringify([]);
+      const chain = [];
+      for (let cur = focused.parent; cur; cur = cur.parent) {
+        const node = this.serializeAcc(cur);
+        if (!node) break;
+        chain.push(node);
+      }
+      return JSON.stringify(chain);
     },
     dumpSubtree(id, depth) {
       const el = document.getElementById(id);
@@ -59,15 +68,9 @@
       if (!acc) return JSON.stringify(null);
       return JSON.stringify(this.serializeAccSubtree(acc, depth || 10));
     },
-    dumpFocus(containerId) {
+    dumpFocus() {
       const acc = svc.getAccessibleFor(document).focusedChild;
-      const result = this.serializeAcc(acc) || {};
-      if (acc) {
-        try { result.domTag = acc.attributes.getStringProperty("tag"); } catch(e) {}
-        if (acc.id) result.domId = acc.id;
-      }
-      if (containerId) result.inContainer = !!(document.getElementById(containerId)?.contains(acc?.DOMNode));
-      return JSON.stringify(result);
+      return JSON.stringify(this.serializeAcc(acc) || {});
     },
   };
 

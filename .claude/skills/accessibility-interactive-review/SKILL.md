@@ -89,24 +89,25 @@ accessibility issue — note it and try an alternative route.
 - **Space** and **Enter** should both activate buttons — test both.
 - After activation, verify the UI opened using this sequence:
 
-  **1. DOM state check** (works for known panel IDs):
-  ```js
-  _a11y.isPanelOpen("panel-id")
-  ```
-
-  **2. Focus check** (did focus move somewhere new?):
+  **1. Focus check** (did focus move somewhere new?):
   ```js
   _a11y.dumpFocus()
+  _a11y.dumpFocusAncestry()
   ```
+  If focus moved into the expected UI (visible from the ancestry chain), activation succeeded.
+  If focus did not move, the panel may still have opened without managing focus — that is itself
+  an accessibility bug, but confirm visually before recording it as such.
 
-  **3. Screenshot fallback** — if the above are inconclusive or contradictory (e.g. DOM says
-  closed but focus moved, or the panel type is unknown), take a full desktop screenshot saved
-  to file and spawn a minimal subagent to verify:
+  **2. Screenshot** — take whenever focus did not move, or the focus evidence is ambiguous.
+  Take a full desktop screenshot saved to file and spawn a minimal subagent to verify:
   - Save screenshot: use the OS-appropriate tool (`screencapture -x`, `scrot`, or PowerShell
     `CopyFromScreen`) to save to `artifacts/verify-N.png`. Ensure Firefox is foreground first.
   - Spawn a subagent with: the file path, and the single question "Does this screenshot show
     [name of UI] open? Answer yes or no and briefly describe what you see."
-  - Use the subagent's answer to decide whether activation succeeded before continuing.
+  - If the screenshot confirms the UI opened but focus did not move inside it, that is a focus
+    management bug — record it as a finding and continue.
+  - If the screenshot confirms the UI did not open, activation failed — investigate why before
+    continuing.
 
 ---
 
@@ -133,7 +134,7 @@ the full desktop, saving directly to file:
 - **Windows**: use PowerShell with `System.Drawing.CopyFromScreen` saving to the file path
 
 Ensure Firefox is the foreground window before capturing. Confirm the panel is open via
-`_a11y.isPanelOpen("panel-id")` before taking the screenshot.
+focus evidence or a prior verification screenshot before capturing the evidence screenshot.
 
 Only record the file path. Do not read or describe the image — the subagent will read it.
 
@@ -151,11 +152,14 @@ Scope to the specific subtree of interest (e.g. just the open panel, not the who
 ### 4c. Focus state
 
 ```js
-_a11y.dumpFocus("expected-container-id")
+_a11y.dumpFocus()
+// When you need to verify the focus context (e.g. after activation):
+_a11y.dumpFocusAncestry()
 ```
 
 Record inline (it's small): what key was pressed, what `dumpFocus` returned, and whether
-the result seems correct.
+the result seems correct. When the ancestry is relevant, note the closest meaningful ancestor
+(role + name) from `dumpFocusAncestry`.
 
 ---
 
