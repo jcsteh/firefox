@@ -186,8 +186,7 @@ into what a user or tester would describe.]
 ## Your task
 
 ### Step 1: Load review resources in parallel
-1. Read `.claude/skills/accessibility-frontend-review/references/runsheet.md`
-2. Fetch `https://wiki.mozilla.org/Accessibility/Triage`
+Read `.claude/skills/accessibility-frontend-review/references/runsheet.md`
 
 ### Step 2: Visual analysis
 Read the screenshot. Examine it for issues that the accessibility tree cannot reveal:
@@ -222,7 +221,41 @@ This is one input among several. Do not weight keyboard and focus disproportiona
 
 ### Step 5: Full runsheet pass
 Work through every applicable category in the runsheet, giving each equal consideration.
+Assign a severity based on the severity ratings described below.
+If an issue type is explicitly covered by an example in the severity ratings below, assign that severity; do not alter the severity based on reasoning outside this guidance.
 Record each issue using the output format below.
+
+#### Severity ratings
+- s1: Accessibility of the entire product is broken. Examples include a critical piece of the browser's functionality like the URLbar not working. These bugs represent catastrophic failures and should be rare.
+- s2: Feature completely unavailable/inaccessible; i.e. a person with a disability cannot independently use it. These bugs should absolutely block a feature from shipping to our stable release audience. Examples include:
+    *  Lack of keyboard support
+    * Missing labels for screen reader users on icon buttons/links
+    * Missing semantic indication of toggle state
+    * Insufficient contrast
+    * Missing focus indicators
+    * Missing controls in HCM (due to no background images) that make a feature not discoverable/actionable by users with low vision
+    * UI does not adapt to HCM at all, or adapts in a way that makes it unusable such as having a foreground and background color that are the same
+    * UI that disappears or becomes otherwise inaccessible with large zoom factors (200% and 400%)
+    * Touch targets below WCAG recommendations (interactive target areas are smaller than 24x24 CSS px on desktop or smaller than 35 dp on mobile)
+- s3: Feature available but difficult to use. These bugs should be fixed and may or may not block a feature from shipping to our stable release audience and will be evaluated for blocking status on a case by case basis. Examples include:
+    * inconsiderate tab order
+    * Missing alt text for non-text content
+    * Visually hidden but not accessibility hidden content
+    * Inconsistent heading levels
+    * Dialogs that should be role=document
+    * Missing semantic indication of other states such as expanded and has popup
+    * Missing dialog labels
+    * Duplication of semantic state in the label; e.g. the label includes the word "on" when the control also has a semantic checked or pressed state
+    * Difficult to see or partially covered focus indicators
+    * UI adapts to HCM and is visible but may not use semantic colors correctly for some themes (e.g. it is using a `ButtonText` system color on `Canvas` background), which may result in low visibility
+    * UI that is cut off, obscured, truncated or causes two-dimensional scroll with large zoom factors
+    * Touch targets under mobile platform recommendations (interactive target areas are between 24x24 and 44x44 CSS px on desktop or between 35-41 dp on mobile)
+- s4: Feature available with minor defects. These bugs do not block a feature from shipping to our release audience. Examples include:
+    * Minor overlapping of the control borders while on HCM
+    * UI that adapts to HCM and is visible but may have minor defects such as incorrect border sizing or a focus ring that slightly overlaps other controls but doesn't render them unusable
+    * Interactive target areas that are between 42-48 dp on mobile
+    * Use of alertdialog role where dialog is more appropriate
+    * Technically compliant with WCAG patterns, but could be improved to be more delightful and efficient to use
 
 ### Output
 Return a structured list of findings. For each issue:
