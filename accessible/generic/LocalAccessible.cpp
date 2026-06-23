@@ -1966,6 +1966,11 @@ bool LocalAccessible::DoAction(uint8_t aIndex) const {
   return false;
 }
 
+bool LocalAccessible::DoActionWithoutFocus() const {
+  DoCommand();
+  return true;
+}
+
 bool LocalAccessible::HasPrimaryAction() const {
   return GetActionRule() != eNoAction;
 }

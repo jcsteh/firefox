@@ -534,6 +534,11 @@ class Accessible {
   virtual bool DoAction(uint8_t aIndex) const = 0;
 
   /**
+   * Invoke the accessible action without focusing the target.
+   */
+  virtual bool DoActionWithoutFocus() const = 0;
+
+  /**
    * Return access key, such as Alt+D.
    */
   virtual KeyBinding AccessKey() const = 0;

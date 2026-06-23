@@ -186,6 +186,7 @@ child:
   async SetSelected(uint64_t aID, bool aSelected);
 
   async DoActionAsync(uint64_t aID, uint8_t aIndex);
+  async DoActionWithoutFocus(uint64_t aID);
 
   async SetCurValue(uint64_t aID, double aValue);
 

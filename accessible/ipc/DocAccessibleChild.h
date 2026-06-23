@@ -89,6 +89,8 @@ class DocAccessibleChild : public PDocAccessibleChild {
   mozilla::ipc::IPCResult RecvDoActionAsync(const uint64_t& aID,
                                             const uint8_t& aIndex);
 
+  mozilla::ipc::IPCResult RecvDoActionWithoutFocus(const uint64_t& aID);
+
   MOZ_CAN_RUN_SCRIPT_BOUNDARY
   mozilla::ipc::IPCResult RecvSetTextSelection(const uint64_t& aStartID,
                                                const int32_t& aStartOffset,

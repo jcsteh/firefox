@@ -2251,6 +2251,11 @@ bool RemoteAccessible::DoAction(uint8_t aIndex) const {
   return true;
 }
 
+bool RemoteAccessible::DoActionWithoutFocus() const {
+  (void)mDoc->SendDoActionWithoutFocus(mID);
+  return true;
+}
+
 KeyBinding RemoteAccessible::AccessKey() const {
   if (mDoc->RequestDomainsIfInactive(CacheDomain::Actions)) {
     return {};

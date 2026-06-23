@@ -245,6 +245,15 @@ mozilla::ipc::IPCResult DocAccessibleChild::RecvDoActionAsync(
   return IPC_OK();
 }
 
+mozilla::ipc::IPCResult DocAccessibleChild::RecvDoActionWithoutFocus(
+    const uint64_t& aID) {
+  if (LocalAccessible* acc = IdToAccessible(aID)) {
+    (void)acc->DoActionWithoutFocus();
+  }
+
+  return IPC_OK();
+}
+
 mozilla::ipc::IPCResult DocAccessibleChild::RecvSetTextSelection(
     const uint64_t& aStartID, const int32_t& aStartOffset,
     const uint64_t& aEndID, const int32_t& aEndOffset,

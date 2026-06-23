@@ -505,6 +505,8 @@ class LocalAccessible : public nsISupports, public Accessible {
 
   virtual bool DoAction(uint8_t aIndex) const override;
 
+  virtual bool DoActionWithoutFocus() const override;
+
   virtual bool HasCustomActions() const override;
 
   virtual KeyBinding AccessKey() const override;

@@ -224,6 +224,8 @@ class RemoteAccessible : public Accessible, public HyperTextAccessibleBase {
 
   virtual bool DoAction(uint8_t aIndex) const override;
 
+  virtual bool DoActionWithoutFocus() const override;
+
   virtual KeyBinding AccessKey() const override;
 
   virtual void SelectionRanges(nsTArray<TextRange>* aRanges) const override;
