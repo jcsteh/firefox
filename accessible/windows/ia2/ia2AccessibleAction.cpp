@@ -76,7 +76,7 @@ ia2AccessibleAction::doAction(long aActionIndex) {
     if (target->HasPrimaryAction()) {
       MOZ_ASSERT(target->ActionCount() > 0);
       if (actionIndex == index) {
-        DebugOnly<bool> success = target->DoAction(0);
+        DebugOnly<bool> success = target->DoActionWithoutFocus();
         MOZ_ASSERT(success, "Failed to perform action");
         return S_OK;
       }
