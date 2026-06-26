@@ -143,9 +143,13 @@ void FocusManager::NotifyOfDOMFocus(nsISupports* aTarget) {
   }
 #endif
 
+  nsCOMPtr<nsINode> targetNode(do_QueryInterface(aTarget));
+  if (mIgnoreFocus == targetNode) {
+    return;
+  }
+
   mActiveItem = nullptr;
 
-  nsCOMPtr<nsINode> targetNode(do_QueryInterface(aTarget));
   if (targetNode) {
     DocAccessible* document =
         GetAccService()->GetDocAccessible(targetNode->OwnerDoc());
@@ -236,7 +240,7 @@ void FocusManager::ActiveItemChanged(LocalAccessible* aItem,
 
 void FocusManager::ForceFocusEvent() {
   nsINode* focusedNode = FocusedDOMNode();
-  if (focusedNode) {
+  if (focusedNode && mIgnoreFocus != focusedNode) {
     DocAccessible* document =
         GetAccService()->GetDocAccessible(focusedNode->OwnerDoc());
     if (document) {

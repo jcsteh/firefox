@@ -1967,7 +1967,33 @@ bool LocalAccessible::DoAction(uint8_t aIndex) const {
 }
 
 bool LocalAccessible::DoActionWithoutFocus() const {
-  DoCommand();
+  RefPtr<LocalAccessible> origFocus =
+      FocusMgr() ? FocusMgr()->FocusedLocalAccessible() : nullptr;
+  if (!origFocus) {
+    DoCommand();
+    return true;
+  }
+  NS_DispatchToMainThread(NS_NewRunnableFunction(
+      "LocalAccessible::DoActionWithoutFocus",
+      [origFocus = RefPtr{origFocus}, target = RefPtr{this}]()
+          MOZ_CAN_RUN_SCRIPT_BOUNDARY {
+            if (FocusMgr()) {
+              // Clicking the action target might cause it to get focus.
+              // Suppress accessibility focus if that happens.
+              FocusMgr()->IgnoreFocus(target->GetContent());
+            }
+            target->DispatchClickEvent(0);
+            if (!FocusMgr()) {
+              return;
+            }
+            FocusMgr()->IgnoreFocus(nullptr);
+            if (target->GetContent() &&
+                FocusMgr()->FocusedDOMNode() == target->GetContent()) {
+              // Clicking the action target caused it to get focus. Bounce focus
+              // back to where it was originally.
+              origFocus->TakeFocus();
+            }
+          }));
   return true;
 }
 

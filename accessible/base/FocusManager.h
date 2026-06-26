@@ -145,6 +145,14 @@ class FocusManager {
   }
 #endif
 
+  /**
+   * Ignore focus on a particular DOM node or stop ignoring if null. This is
+   * intended to suppress an accessibility focus change when we know for certain
+   * that we will quickly bounce the focus to another node. It should always be
+   * cleared very soon after it is set.
+   */
+  void IgnoreFocus(nsINode* aNode) { mIgnoreFocus = aNode; }
+
  protected:
   FocusManager();
 
@@ -160,6 +168,7 @@ class FocusManager {
 #ifdef ANDROID
   DocAccessibleParent* mFocusedRemoteDoc = nullptr;
 #endif
+  RefPtr<nsINode> mIgnoreFocus;
 };
 
 }  // namespace a11y
