@@ -181,6 +181,16 @@ export class SidebarBookmarks extends SidebarPage {
     this.searchInput?.focus();
   }
 
+  updated() {
+    if (!this.treeView.hasActiveNode) {
+      const list = this.bookmarkList;
+      if (list && !list.activeInTree && list.tabItems?.length) {
+        list.activeIndex = 0;
+        list.activeInTree = true;
+      }
+    }
+  }
+
   getNodesInOrder() {
     const nodes = [];
     this.#collectNodesFromList(this.bookmarkList, nodes);
@@ -1091,6 +1101,7 @@ export class SidebarBookmarks extends SidebarPage {
   }
 
   onSearchQuery(e) {
+    this.treeView.resetActiveNode();
     this.searchQuery = e.detail.query;
     this.searchResults = this.searchQuery
       ? this.#searchBookmarks(this.bookmarks, this.searchQuery.toLowerCase())

@@ -22,6 +22,52 @@ registerCleanupFunction(() => {
   Services.prefs.clearUserPref("sidebar.history.sortOption");
 });
 
+add_task(async function test_initial_tab_order() {
+  const { lists, cards } = component;
+  await BrowserTestUtils.waitForMutationCondition(
+    component.shadowRoot,
+    { childList: true, subtree: true },
+    () => !!lists.length
+  );
+  await BrowserTestUtils.waitForMutationCondition(
+    lists[0].shadowRoot,
+    { subtree: true, childList: true },
+    () => !!lists[0].rowEls.length
+  );
+  await cards[0].updateComplete;
+
+  // Initially, Tab from the card summary must not step into the rows.
+  cards[0].summaryEl.focus();
+  EventUtils.synthesizeKey("KEY_Tab", {}, contentWindow);
+  await waitForRepaint();
+  ok(
+    ![...lists[0].rowEls].some(row => isActiveElement(row)),
+    "Tab from the card summary (initial state) does not enter the rows."
+  );
+
+  // Navigate into the rows via ArrowDown, then Tab out, then Shift+Tab back in.
+  // Shift+Tab must return to the row (which now has tabIndex=0), not the summary
+  // (which now has tabIndex=-1 because the row is the active tab stop).
+  cards[0].summaryEl.focus();
+  await focusWithKeyboard(lists[0].rowEls[0], "KEY_ArrowDown", contentWindow);
+
+  const panelBlurred = BrowserTestUtils.waitForEvent(contentWindow, "blur");
+  EventUtils.synthesizeKey("KEY_Tab", {}, contentWindow);
+  await panelBlurred;
+  ok(!contentWindow.document.hasFocus(), "Tab from a row exits the panel.");
+
+  const rowRefocused = BrowserTestUtils.waitForEvent(
+    lists[0].rowEls[0],
+    "focus"
+  );
+  EventUtils.synthesizeKey("KEY_Tab", { shiftKey: true });
+  await rowRefocused;
+  ok(
+    isActiveElement(lists[0].rowEls[0]),
+    "Shift+Tab returns focus to the active row, not the card summary."
+  );
+});
+
 add_task(async function test_navigation_sort_by_date() {
   const { lists, cards } = component;
   await BrowserTestUtils.waitForMutationCondition(

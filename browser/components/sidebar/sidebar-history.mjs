@@ -515,8 +515,47 @@ export class SidebarHistory extends SidebarPage {
   }
 
   onSearchQuery(e) {
+    this.treeView.resetActiveNode();
     this.controller.onSearchQuery(e);
     Glean.browserUiInteraction.sidebarHistory.search.add(1);
+  }
+
+  updated() {
+    this.#updateCardTabindexes();
+  }
+
+  #updateCardTabindexes() {
+    const activeCard = this.treeView.activeCardEl;
+    const hasActiveNode = this.treeView.hasActiveNode;
+    const accordionCards = [...(this.cards ?? [])].filter(
+      c => c.getAttribute("type") === "accordion"
+    );
+    const activeInList = activeCard && accordionCards.includes(activeCard);
+    let first = true;
+    for (const card of accordionCards) {
+      let isActive;
+      if (!hasActiveNode) {
+        // No navigation yet: first card is the initial tab target.
+        isActive = first;
+      } else if (activeInList) {
+        // A card-summary is focused: only that card gets tabIndex=0.
+        isActive = card === activeCard;
+      } else {
+        // A row is focused: no card header should be in the tab order.
+        isActive = false;
+      }
+      card.summaryTabIndex = isActive ? 0 : -1;
+      first = false;
+    }
+    // For non-accordion layouts (e.g. "lastvisited" sort or search results),
+    // initialize the first list as the tab target.
+    if (!accordionCards.length && !hasActiveNode) {
+      const firstList = this.lists?.[0];
+      if (firstList && !firstList.activeInTree && firstList.tabItems?.length) {
+        firstList.activeIndex = 0;
+        firstList.activeInTree = true;
+      }
+    }
   }
 
   getTabItems(items) {

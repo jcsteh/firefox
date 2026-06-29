@@ -127,18 +127,13 @@ export class SidebarBookmarkList extends SidebarTabList {
   };
 
   itemTemplate = (tabItem, i) => {
-    let tabIndex = -1;
-    if ((this.searchQuery || this.sortOption == "lastvisited") && i == 0) {
-      tabIndex = 0;
-    } else if (!this.searchQuery) {
-      tabIndex = 0;
-    }
+    const tabIndex = i === this.activeIndex && this.activeInTree ? 0 : -1;
     if (!tabItem.url && !tabItem.children) {
       return html`<div
         class="bookmark-separator"
         draggable="true"
         role="separator"
-        tabindex="0"
+        tabindex=${tabIndex}
         data-guid=${tabItem.guid}
         .guid=${tabItem.guid}
       ></div>`;
@@ -156,7 +151,7 @@ export class SidebarBookmarkList extends SidebarTabList {
         return html`<div
           class="bookmark-folder-label"
           data-folder-kind=${ifDefined(folderKind)}
-          tabindex="0"
+          tabindex=${tabIndex}
           draggable="true"
           data-guid=${tabItem.guid}
           @auxclick=${e => this.#onFolderAuxClick(e, tabItem.guid)}
@@ -176,6 +171,7 @@ export class SidebarBookmarkList extends SidebarTabList {
           <summary
             draggable="true"
             part="summary"
+            tabindex=${tabIndex}
             data-guid=${tabItem.guid}
             @auxclick=${e => this.#onFolderAuxClick(e, tabItem.guid)}
             @mouseenter=${e => this.#updateFolderTooltip(e, tabItem.title)}

@@ -49,6 +49,7 @@ export default class MozCard extends MozLitElement {
     type: { type: String, reflect: true },
     expanded: { type: Boolean },
     role: { type: String, mapped: true },
+    summaryTabIndex: { type: Number },
   };
 
   constructor() {
@@ -105,7 +106,9 @@ export default class MozCard extends MozLitElement {
           @toggle=${this.onToggle}
           ?open=${this.expanded}
         >
-          <summary part="summary">${this.headingTemplate()}</summary>
+          <summary part="summary" tabindex=${ifDefined(this.summaryTabIndex)}>
+            ${this.headingTemplate()}
+          </summary>
           <div id="content"><slot id="content-slot"></slot></div>
         </details>
       `;

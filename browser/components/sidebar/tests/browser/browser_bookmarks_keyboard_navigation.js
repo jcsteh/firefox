@@ -404,6 +404,59 @@ add_task(async function test_arrow_right_enters_already_expanded_folder() {
   SidebarTestUtils.closePanel(window);
 });
 
+add_task(async function test_initial_tab_order() {
+  await PlacesUtils.bookmarks.insert({
+    url: "https://example.com/",
+    title: "Test",
+    parentGuid: PlacesUtils.bookmarks.toolbarGuid,
+  });
+
+  const { component, contentWindow } = await showBookmarksSidebar();
+  const tabList = component.bookmarkList;
+
+  await BrowserTestUtils.waitForMutationCondition(
+    tabList.shadowRoot,
+    { childList: true, subtree: true },
+    () => !!tabList.folderEls[0]
+  );
+
+  const toolbarDetails = tabList.folderEls[0];
+  await openFolder(toolbarDetails);
+  const nestedList = toolbarDetails.querySelector("sidebar-bookmark-list");
+  await waitForNestedListRows(nestedList);
+
+  const toolbarSummary = toolbarDetails.querySelector("summary");
+  toolbarSummary.focus();
+
+  // Navigate into the first bookmark row and verify Tab exits the panel rather
+  // than cycling to the other rows (which would happen if they all had
+  // tabIndex=0, as before the fix).
+  await focusWithKeyboard(nestedList.rowEls[0], "KEY_ArrowDown", contentWindow);
+
+  const panelBlurred = BrowserTestUtils.waitForEvent(contentWindow, "blur");
+  EventUtils.synthesizeKey("KEY_Tab", {}, contentWindow);
+  await panelBlurred;
+  ok(
+    !contentWindow.document.hasFocus(),
+    "Tab from a bookmark row exits the panel."
+  );
+
+  // Shift+Tab must return to the active row (which now has tabIndex=0), not
+  // the toolbar folder summary (which now has tabIndex=-1).
+  const rowRefocused = BrowserTestUtils.waitForEvent(
+    nestedList.rowEls[0],
+    "focus"
+  );
+  EventUtils.synthesizeKey("KEY_Tab", { shiftKey: true });
+  await rowRefocused;
+  ok(
+    isActiveElement(nestedList.rowEls[0]),
+    "Shift+Tab returns focus to the active row, not the folder summary."
+  );
+
+  SidebarTestUtils.closePanel(window);
+});
+
 add_task(async function test_arrow_up_enters_previous_expanded_folder() {
   const folder1 = await PlacesUtils.bookmarks.insert({
     type: PlacesUtils.bookmarks.TYPE_FOLDER,
