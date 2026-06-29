@@ -15,11 +15,17 @@ import {
 } from "chrome://browser/content/firefoxview/fxview-tab-list.mjs";
 
 export class SidebarTabList extends FxviewTabListBase {
+  static properties = {
+    ...FxviewTabListBase.properties,
+    activeInTree: { type: Boolean },
+  };
+
   constructor() {
     super();
     // Panel is open, assume we always want to react to updates.
     this.updatesPaused = false;
     this.multiSelect = true;
+    this.activeInTree = false;
   }
 
   static queries = {
@@ -102,13 +108,7 @@ export class SidebarTabList extends FxviewTabListBase {
   }
 
   itemTemplate = (tabItem, i) => {
-    let tabIndex = -1;
-    if ((this.searchQuery || this.sortOption == "lastvisited") && i == 0) {
-      // Make the first row focusable if there is no header.
-      tabIndex = 0;
-    } else if (!this.searchQuery) {
-      tabIndex = 0;
-    }
+    const tabIndex = i === this.activeIndex && this.activeInTree ? 0 : -1;
     return html`
       <sidebar-tab-row
         ?active=${i == this.activeIndex}

@@ -73,7 +73,8 @@ export class SidebarPage extends MozLitElement {
 
   #collectNodes({ children }, nodes) {
     for (const el of children) {
-      const isCard = el.localName === "moz-card" && el.type === "accordion";
+      const isCard =
+        el.localName === "moz-card" && el.getAttribute("type") === "accordion";
       const isTabList = !!el.tabItems;
 
       if (isCard) {

@@ -43,6 +43,42 @@ export class SidebarTreeView {
    */
   #selectionAnchor = { list: null, guid: null };
 
+  /**
+   * The tree node that currently holds tabindex="0" for roving tabindex.
+   *
+   * @type {TreeViewNode | null}
+   */
+  #activeNode = null;
+
+  get hasActiveNode() {
+    return this.#activeNode !== null;
+  }
+
+  /**
+   * The moz-card element whose summary currently has tabindex="0", or null if
+   * focus is on a row or nothing has been navigated yet.
+   *
+   * @type {Element | null}
+   */
+  get activeCardEl() {
+    return this.#activeNode?.type === "card-summary"
+      ? this.#activeNode.card
+      : null;
+  }
+
+  /**
+   * Reset the active node so the panel re-initialises its first focusable item
+   * on the next render (e.g. after a search query change).
+   */
+  resetActiveNode() {
+    const prevNode = this.#activeNode;
+    this.#activeNode = null;
+    if (prevNode?.list) {
+      prevNode.list.activeInTree = false;
+    }
+    this.host.requestUpdate();
+  }
+
   constructor(host, { multiSelect = true } = {}) {
     this.host = host;
     host.addController(this);
@@ -256,7 +292,7 @@ export class SidebarTreeView {
     // If we're on a nested card header, move up one level.
     if (container.localName === "moz-card") {
       if (container.classList.contains("nested-card")) {
-        this.#focusElement(container.parentElement.summaryEl);
+        this.#focusNodeByElement(container.parentElement.summaryEl);
       }
       return;
     }
@@ -264,12 +300,12 @@ export class SidebarTreeView {
     // If we're in a tab list, move up to the closest header.
     const parentDetails = container.closest("details");
     if (parentDetails) {
-      this.#focusElement(parentDetails.querySelector("summary"));
+      this.#focusNodeByElement(parentDetails.querySelector("summary"));
       return;
     }
     const parentCard = container.closest("moz-card");
     if (parentCard?.summaryEl) {
-      this.#focusElement(parentCard.summaryEl);
+      this.#focusNodeByElement(parentCard.summaryEl);
     }
   }
 
@@ -290,15 +326,69 @@ export class SidebarTreeView {
   }
 
   /**
-   * Focus the DOM element corresponding to a tree view node.
+   * Focus the DOM element corresponding to a tree view node, and update the
+   * roving tabindex so exactly this node has tabindex="0".
    *
    * @param {TreeViewNode} node
    */
   #focusNode(node) {
     const el = node.domNode;
     if (el) {
+      this.#updateTabindexes(node);
       this.#focusElement(el);
     }
+  }
+
+  /**
+   * Look up the tree node for an element and call #focusNode(), falling back
+   * to a plain #focusElement() if the element is not in treeNodes.
+   *
+   * @param {Element} element
+   */
+  #focusNodeByElement(element) {
+    const node = this.#findNode(this.treeNodes, element);
+    if (node) {
+      this.#focusNode(node);
+    } else {
+      this.#focusElement(element);
+    }
+  }
+
+  /**
+   * Update roving-tabindex state when focus moves to newNode.
+   * - For row/folder/separator nodes: set activeIndex + activeInTree on the
+   *   owning list and clear the previously active list.
+   * - For card-summary nodes: the host's updated() reads activeCardEl and
+   *   sets summaryTabIndex on each moz-card accordingly.
+   * In all cases requestUpdate() is called so the host re-renders.
+   *
+   * @param {TreeViewNode} newNode
+   */
+  #updateTabindexes(newNode) {
+    const prevNode = this.#activeNode;
+    this.#activeNode = newNode;
+
+    // Deactivate the previously active list (if switching to a different one
+    // or to a card-summary).
+    if (
+      prevNode?.list &&
+      (prevNode.list !== newNode?.list || newNode.type === "card-summary")
+    ) {
+      prevNode.list.activeInTree = false;
+    }
+
+    if (newNode.type !== "card-summary" && newNode.list) {
+      const idx = newNode.list.tabItems.findIndex(
+        i => i.guid === newNode.item?.guid
+      );
+      if (idx !== -1) {
+        newNode.list.activeIndex = idx;
+      }
+      newNode.list.activeInTree = true;
+    }
+
+    // Ask the host to re-render so it can update card summaryTabIndex values.
+    this.host.requestUpdate();
   }
 
   /**
