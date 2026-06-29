@@ -32,6 +32,7 @@ export class SidebarBookmarkList extends SidebarTabList {
     ...SidebarTabList.properties,
     expandedFolderGuids: { type: Object },
     readOnly: { type: Boolean },
+    nested: { type: Boolean },
   };
 
   #draggedGuid = null;
@@ -151,6 +152,8 @@ export class SidebarBookmarkList extends SidebarTabList {
         return html`<div
           class="bookmark-folder-label"
           data-folder-kind=${ifDefined(folderKind)}
+          role="treeitem"
+          aria-selected="false"
           tabindex=${tabIndex}
           draggable="true"
           data-guid=${tabItem.guid}
@@ -163,6 +166,7 @@ export class SidebarBookmarkList extends SidebarTabList {
       }
       return html`
         <details
+          role="none"
           ?open=${this.expandedFolderGuids.has(tabItem.guid)}
           @toggle=${e => this.#onFolderToggle(e, tabItem.guid)}
           data-folder-kind=${ifDefined(folderKind)}
@@ -173,6 +177,8 @@ export class SidebarBookmarkList extends SidebarTabList {
             part="summary"
             tabindex=${tabIndex}
             data-guid=${tabItem.guid}
+            role="treeitem"
+            aria-selected="false"
             @auxclick=${e => this.#onFolderAuxClick(e, tabItem.guid)}
             @mouseenter=${e => this.#updateFolderTooltip(e, tabItem.title)}
           >
@@ -180,6 +186,7 @@ export class SidebarBookmarkList extends SidebarTabList {
           </summary>
           <div id="content">
             <sidebar-bookmark-list
+              nested
               maxTabsLength="-1"
               secondaryActionClass="delete-button"
               .tabItems=${tabItem.children}
@@ -208,7 +215,8 @@ export class SidebarBookmarkList extends SidebarTabList {
         .indicators=${tabItem.indicators}
         .primaryL10nArgs=${ifDefined(tabItem.primaryL10nArgs)}
         .primaryL10nId=${tabItem.primaryL10nId}
-        role="listitem"
+        role="treeitem"
+        aria-selected=${this.isTabItemSelected(tabItem)}
         .searchQuery=${ifDefined(this.searchQuery)}
         .secondaryActionClass=${ifDefined(
           this.secondaryActionClass ?? tabItem.secondaryActionClass
@@ -244,7 +252,7 @@ export class SidebarBookmarkList extends SidebarTabList {
       <div
         id="fxview-tab-list"
         class="fxview-tab-list"
-        role="list"
+        role=${this.nested ? "group" : "tree"}
         @keydown=${this.handleFocusElementInRow}
         @dragstart=${this.#onDragStart}
         @dragover=${this.#onDragOver}

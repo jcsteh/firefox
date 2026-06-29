@@ -371,7 +371,11 @@ export class SidebarHistory extends SidebarPage {
         return historyVisits.map(
           ({ items }) =>
             html`<moz-card>
-              ${this.#tabListTemplate(this.getTabItems(items))}
+              ${this.#tabListTemplate(
+                this.getTabItems(items),
+                undefined,
+                "tree"
+              )}
             </moz-card>`
         );
       default:
@@ -384,6 +388,7 @@ export class SidebarHistory extends SidebarPage {
     return html` <moz-card
       type="accordion"
       class="date-card"
+      summaryRole="treeitem"
       ?expanded=${index < DAYS_EXPANDED_INITIALLY}
       data-l10n-id=${l10nId}
       data-l10n-args=${JSON.stringify({
@@ -421,6 +426,7 @@ export class SidebarHistory extends SidebarPage {
         "site-card": true,
       })}
       type="accordion"
+      summaryRole="treeitem"
       ?expanded=${!isDateSite}
       heading=${domain}
       @keydown=${this.keydownHandler}
@@ -492,16 +498,18 @@ export class SidebarHistory extends SidebarPage {
         )}
         ${this.#tabListTemplate(
           this.getTabItems(this.controller.searchResults),
-          this.controller.searchQuery
+          this.controller.searchQuery,
+          "tree"
         )}
       </div>
     </moz-card>`;
   }
 
-  #tabListTemplate(tabItems, searchQuery) {
+  #tabListTemplate(tabItems, searchQuery, listRole) {
     return html`<sidebar-tab-list
       .handleFocusElementToCard=${this.handleFocusElementToCard}
       maxTabsLength="-1"
+      .listRole=${listRole}
       .searchQuery=${searchQuery}
       secondaryActionClass="delete-button"
       .sortOption=${this.controller.sortOption}
@@ -625,7 +633,14 @@ export class SidebarHistory extends SidebarPage {
             </moz-button>
           </div>
         </sidebar-panel-header>
-        <div class="sidebar-panel-scrollable-content" tabindex="-1">
+        <div
+          tabindex="-1"
+          class="sidebar-panel-scrollable-content"
+          role=${!this.controller.searchResults &&
+          ["date", "site", "datesite"].includes(this.controller.sortOption)
+            ? "tree"
+            : nothing}
+        >
           ${this.cardsTemplate}
         </div>
       </div>
