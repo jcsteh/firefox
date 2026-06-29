@@ -18,6 +18,7 @@ export class SidebarTabList extends FxviewTabListBase {
   static properties = {
     ...FxviewTabListBase.properties,
     activeInTree: { type: Boolean },
+    listRole: { type: String },
   };
 
   constructor() {
@@ -125,7 +126,8 @@ export class SidebarTabList extends FxviewTabListBase {
         .indicators=${tabItem.indicators}
         .primaryL10nArgs=${ifDefined(tabItem.primaryL10nArgs)}
         .primaryL10nId=${tabItem.primaryL10nId}
-        role="listitem"
+        role="treeitem"
+        aria-selected=${this.isTabItemSelected(tabItem)}
         .searchQuery=${ifDefined(this.searchQuery)}
         .secondaryActionClass=${ifDefined(
           this.secondaryActionClass ?? tabItem.secondaryActionClass
@@ -156,6 +158,29 @@ export class SidebarTabList extends FxviewTabListBase {
         href="chrome://browser/content/sidebar/sidebar-tab-list.css"
       />`,
     ];
+  }
+
+  render() {
+    if (this.searchQuery && !this.tabItems.length) {
+      return this.emptySearchResultsTemplate();
+    }
+    return html`
+      ${this.stylesheets()}
+      <div
+        id="fxview-tab-list"
+        class="fxview-tab-list"
+        role=${this.listRole || "group"}
+        @keydown=${this.handleFocusElementInRow}
+      >
+        <virtual-list
+          .activeIndex=${this.activeIndex}
+          .items=${this.tabItems}
+          .template=${this.itemTemplate}
+          .getItemHeight=${this.getItemHeight}
+        ></virtual-list>
+      </div>
+      <slot name="menu"></slot>
+    `;
   }
 }
 customElements.define("sidebar-tab-list", SidebarTabList);

@@ -7,6 +7,7 @@ import {
   staticHtml,
   literal,
   ifDefined,
+  nothing,
   when,
 } from "chrome://global/content/vendor/lit.all.mjs";
 import { MozLitElement } from "chrome://global/content/lit-utils.mjs";
@@ -50,6 +51,7 @@ export default class MozCard extends MozLitElement {
     expanded: { type: Boolean },
     role: { type: String, mapped: true },
     summaryTabIndex: { type: Number },
+    summaryRole: { type: String },
   };
 
   constructor() {
@@ -103,10 +105,18 @@ export default class MozCard extends MozLitElement {
       return html`
         <details
           id="moz-card-details"
+          role=${this.summaryRole ? "none" : nothing}
           @toggle=${this.onToggle}
           ?open=${this.expanded}
         >
-          <summary part="summary" tabindex=${ifDefined(this.summaryTabIndex)}>
+          <summary
+            part="summary"
+            tabindex=${ifDefined(this.summaryTabIndex)}
+            role=${ifDefined(this.summaryRole)}
+            aria-expanded=${ifDefined(
+              this.summaryRole ? String(this.expanded) : undefined
+            )}
+          >
             ${this.headingTemplate()}
           </summary>
           <div id="content"><slot id="content-slot"></slot></div>
@@ -145,9 +155,11 @@ export default class MozCard extends MozLitElement {
         href="chrome://global/content/elements/moz-card.css"
       />
       <article
-        role=${ifDefined(this.role)}
+        role=${this.summaryRole ? "none" : ifDefined(this.role)}
         class="moz-card"
-        aria-labelledby=${ifDefined(this.heading ? "heading" : undefined)}
+        aria-labelledby=${ifDefined(
+          this.heading && !this.summaryRole ? "heading" : undefined
+        )}
       >
         ${this.cardTemplate()}
       </article>
