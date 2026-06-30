@@ -648,7 +648,15 @@ export default class SidebarMain extends MozLitElement {
     this._toolsResizeObserver?.disconnect();
   }
 
-  updated() {
+  updated(changedProperties) {
+    if (changedProperties.has("selectedView") && this.selectedView) {
+      const activeButton = this.buttonGroup?.querySelector(
+        `moz-button[view="${this.selectedView}"]`
+      );
+      if (activeButton) {
+        this.buttonGroup.activeChild = activeButton;
+      }
+    }
     if (
       window.SidebarController.sidebarRevampVisibility !== "expand-on-hover"
     ) {
