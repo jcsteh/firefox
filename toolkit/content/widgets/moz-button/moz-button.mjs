@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { html, ifDefined, classMap } from "../vendor/lit.all.mjs";
+import { html, ifDefined, classMap, nothing } from "../vendor/lit.all.mjs";
 import { MozLitElement } from "../lit-utils.mjs";
 
 window.MozXULElement?.insertFTLIfNeeded("toolkit/global/mozButton.ftl");
@@ -262,6 +262,7 @@ export default class MozButton extends MozLitElement {
     ariaHasPopup: { type: String, mapped: true },
     ariaExpanded: { type: String, mapped: true },
     ariaPressed: { type: String, mapped: true },
+    _isTab: { type: Boolean, state: true },
     iconSrc: { type: String },
     hasVisibleLabel: { type: Boolean, state: true },
     accessKey: { type: String, mapped: true },
@@ -288,6 +289,11 @@ export default class MozButton extends MozLitElement {
     this.iconPosition = "start";
     this.menuId = "";
     this.parentDisabled = undefined;
+  }
+
+  connectedCallback() {
+    super.connectedCallback();
+    this._isTab = !!this.closest("button-group");
   }
 
   updated(changedProperties) {
@@ -379,7 +385,9 @@ export default class MozButton extends MozLitElement {
         aria-haspopup=${ifDefined(
           this.isSplitButton ? undefined : this.ariaHasPopup
         )}
-        aria-pressed=${ifDefined(this.ariaPressed)}
+        role=${this._isTab ? "tab" : nothing}
+        aria-selected=${this._isTab ? ifDefined(this.ariaPressed) : nothing}
+        aria-pressed=${!this._isTab ? ifDefined(this.ariaPressed) : nothing}
         accesskey=${ifDefined(this.accessKey)}
       >
         <span
