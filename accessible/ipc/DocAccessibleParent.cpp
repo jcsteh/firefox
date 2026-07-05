@@ -387,7 +387,12 @@ void DocAccessibleParent::ShutdownOrPrepareForMove(RemoteAccessible* aAcc) {
     // Even if some children are kept, those will be re-attached when we handle
     // the show event. For now, clear all of them by moving them to a temporary.
     auto children{std::move(aAcc->mChildren)};
-    for (RemoteAccessible* child : children) {
+    for (RemoteAccessible::Ptr& childPtr : children) {
+      RemoteAccessible* child = childPtr;
+      // Release our weak ref to the child before recursing into it so that
+      // if it gets shut down below, its own release assert doesn't see this
+      // (now stale) reference.
+      childPtr = nullptr;
       if (child == aAcc) {
         MOZ_ASSERT_UNREACHABLE(
             "Somehow an accessible got added as a child of itself!");
@@ -1160,6 +1165,23 @@ void DocAccessibleParent::Destroy() {
       acc->SetParent(nullptr);
       CachedTableAccessible::Invalidate(acc);
     }
+  }
+
+  // mChildren and mParent are weak Ptrs whose destructor touches the
+  // pointee. The accessibles in this document are about to be destroyed
+  // below in unspecified (hash table) order, so sever every remaining
+  // cross-reference between them now, before any of them are actually
+  // destroyed. Otherwise, destroying one could touch another which was
+  // already destroyed earlier in the loop below.
+  mChildren.Clear();
+  for (auto iter = mAccessibles.Iter(); !iter.Done(); iter.Next()) {
+    RemoteAccessible* acc = iter.Get()->mProxy;
+    acc->mChildren.Clear();
+    acc->SetParent(nullptr);
+  }
+
+  for (auto iter = mAccessibles.Iter(); !iter.Done(); iter.Next()) {
+    RemoteAccessible* acc = iter.Get()->mProxy;
     ProxyDestroyed(acc);
     // mAccessibles owns acc, so removing it deletes acc.
     iter.Remove();
@@ -1171,7 +1193,6 @@ void DocAccessibleParent::Destroy() {
     return;
   }
 
-  mChildren.Clear();
   // The code above should have already completely cleared these, but to be
   // extra safe make sure they are cleared here.
   thisDoc->mAccessibles.Clear();

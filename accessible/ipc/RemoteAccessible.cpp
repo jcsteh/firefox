@@ -50,6 +50,12 @@ static constexpr uint64_t kNecessaryStateDomains =
 
 void RemoteAccessible::Shutdown() {
   MOZ_DIAGNOSTIC_ASSERT(!IsDoc());
+  // We're about to be destroyed. Nothing should still hold a Ptr to us; if
+  // something does, it's a dangling reference which would otherwise cause a
+  // use-after-free once we're deleted below.
+  MOZ_RELEASE_ASSERT(mWeakRefCount == 0,
+                     "RemoteAccessible has outstanding weak references at "
+                     "Shutdown!");
   xpcAccessibleDocument* xpcDoc =
       GetAccService()->GetCachedXPCDocument(Document());
   if (xpcDoc) {
@@ -68,18 +74,24 @@ void RemoteAccessible::Shutdown() {
 
   // XXX Ideally  this wouldn't be necessary, but it seems OuterDoc
   // accessibles can be destroyed before the doc they own.
-  uint32_t childCount = mChildren.Length();
+  // Take ownership of mChildren and release our weak ref to each child
+  // before recursing into its Shutdown(), so that the child's own
+  // release assert above sees no outstanding references to it.
+  nsTArray<Ptr> children{std::move(mChildren)};
   if (!IsOuterDoc()) {
-    for (uint32_t idx = 0; idx < childCount; idx++) mChildren[idx]->Shutdown();
+    for (Ptr& childPtr : children) {
+      RemoteAccessible* child = childPtr;
+      childPtr = nullptr;
+      child->Shutdown();
+    }
   } else {
-    if (childCount > 1) {
+    if (children.Length() > 1) {
       MOZ_CRASH("outer doc has too many documents!");
-    } else if (childCount == 1) {
-      mChildren[0]->AsDoc()->Unbind();
+    } else if (children.Length() == 1) {
+      children[0]->AsDoc()->Unbind();
     }
   }
 
-  mChildren.Clear();
   ProxyDestroyed(static_cast<RemoteAccessible*>(this));
   // mDoc owns this RemoteAccessible, so RemoveAccessible deletes this.
   mDoc->RemoveAccessible(static_cast<RemoteAccessible*>(this));

@@ -30,6 +30,62 @@ enum class RelationType;
  */
 class RemoteAccessible : public Accessible, public HyperTextAccessibleBase {
  public:
+  /**
+   * A weak pointer to a RemoteAccessible. This tracks how many Ptrs are
+   * pointing at its target in mWeakRefCount, purely so that Shutdown() can
+   * release assert that nothing still refers to the RemoteAccessible being
+   * destroyed. This is not used to manage the lifetime of the target in any
+   * way.
+   */
+  class Ptr {
+   public:
+    constexpr Ptr() = default;
+    constexpr MOZ_IMPLICIT Ptr(std::nullptr_t) {}
+    MOZ_IMPLICIT Ptr(RemoteAccessible* aAcc) : mAcc(aAcc) { AddRef(); }
+    MOZ_IMPLICIT Ptr(const Ptr& aOther) : mAcc(aOther.mAcc) { AddRef(); }
+    MOZ_IMPLICIT Ptr(Ptr&& aOther) : mAcc(aOther.mAcc) {
+      aOther.mAcc = nullptr;
+    }
+    ~Ptr() { Release(); }
+
+    Ptr& operator=(RemoteAccessible* aAcc) {
+      if (mAcc != aAcc) {
+        Release();
+        mAcc = aAcc;
+        AddRef();
+      }
+      return *this;
+    }
+    Ptr& operator=(const Ptr& aOther) { return *this = aOther.mAcc; }
+    Ptr& operator=(Ptr&& aOther) {
+      if (this != &aOther) {
+        Release();
+        mAcc = aOther.mAcc;
+        aOther.mAcc = nullptr;
+      }
+      return *this;
+    }
+
+    operator RemoteAccessible*() const { return mAcc; }
+    RemoteAccessible* operator->() const { return mAcc; }
+    RemoteAccessible* get() const { return mAcc; }
+
+   private:
+    void AddRef() {
+      if (mAcc) {
+        ++mAcc->mWeakRefCount;
+      }
+    }
+    void Release() {
+      if (mAcc) {
+        MOZ_ASSERT(mAcc->mWeakRefCount > 0);
+        --mAcc->mWeakRefCount;
+      }
+    }
+
+    RemoteAccessible* mAcc = nullptr;
+  };
+
   virtual ~RemoteAccessible() {
     MOZ_ASSERT(!mWrapper);
     MOZ_COUNT_DTOR(RemoteAccessible);
@@ -47,16 +103,18 @@ class RemoteAccessible : public Accessible, public HyperTextAccessibleBase {
 
   virtual uint32_t ChildCount() const override { return mChildren.Length(); }
   RemoteAccessible* RemoteChildAt(uint32_t aIdx) const {
-    RemoteAccessible* child = mChildren.SafeElementAt(aIdx);
+    RemoteAccessible* child =
+        aIdx < mChildren.Length() ? mChildren[aIdx].get() : nullptr;
     MOZ_ASSERT(!child || child->mParent == this,
                "Child's parent should be this");
     return child;
   }
   RemoteAccessible* RemoteFirstChild() const {
-    return mChildren.Length() ? mChildren[0] : nullptr;
+    return mChildren.Length() ? mChildren[0].get() : nullptr;
   }
   RemoteAccessible* RemoteLastChild() const {
-    return mChildren.Length() ? mChildren[mChildren.Length() - 1] : nullptr;
+    return mChildren.Length() ? mChildren[mChildren.Length() - 1].get()
+                              : nullptr;
   }
   RemoteAccessible* RemotePrevSibling() const {
     if (IsDoc()) {
@@ -70,7 +128,7 @@ class RemoteAccessible : public Accessible, public HyperTextAccessibleBase {
       return nullptr;  // No parent.
     }
     MOZ_ASSERT(RemoteParent());
-    return idx > 0 ? RemoteParent()->mChildren[idx - 1] : nullptr;
+    return idx > 0 ? RemoteParent()->mChildren[idx - 1].get() : nullptr;
   }
   RemoteAccessible* RemoteNextSibling() const {
     if (IsDoc()) {
@@ -87,7 +145,7 @@ class RemoteAccessible : public Accessible, public HyperTextAccessibleBase {
     size_t newIdx = idx + 1;
     MOZ_ASSERT(RemoteParent());
     return newIdx < RemoteParent()->mChildren.Length()
-               ? RemoteParent()->mChildren[newIdx]
+               ? RemoteParent()->mChildren[newIdx].get()
                : nullptr;
   }
 
@@ -514,7 +572,7 @@ class RemoteAccessible : public Accessible, public HyperTextAccessibleBase {
     }
   }
 
-  RemoteAccessible* mParent;
+  Ptr mParent;
 
   friend DocAccessibleParent;
   friend TextLeafPoint;
@@ -525,11 +583,15 @@ class RemoteAccessible : public Accessible, public HyperTextAccessibleBase {
   friend class sdnAccessible;
 #endif
 
-  nsTArray<RemoteAccessible*> mChildren;
+  nsTArray<Ptr> mChildren;
   DocAccessibleParent* mDoc;
   uintptr_t mWrapper;
   uint64_t mID;
   int32_t mIndexInParent = -1;
+  // The number of live Ptrs which currently point to this RemoteAccessible.
+  // This exists purely so that Shutdown() can release assert that this is 0;
+  // see Ptr above.
+  uint32_t mWeakRefCount = 0;
 
  protected:
   virtual const Accessible* Acc() const override { return this; }
