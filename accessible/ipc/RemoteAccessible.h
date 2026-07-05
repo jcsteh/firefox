@@ -9,6 +9,7 @@
 #include "mozilla/a11y/CacheConstants.h"
 #include "mozilla/a11y/HyperTextAccessibleBase.h"
 #include "mozilla/a11y/Role.h"
+#include "mozilla/Poison.h"
 #include "AccAttributes.h"
 #include "nsIAccessibleText.h"
 #include "nsIAccessibleTypes.h"
@@ -50,13 +51,14 @@ class RemoteAccessible : public Accessible, public HyperTextAccessibleBase {
     RemoteAccessible* child = mChildren.SafeElementAt(aIdx);
     MOZ_ASSERT(!child || child->mParent == this,
                "Child's parent should be this");
-    return child;
+    return CheckAlive(child);
   }
   RemoteAccessible* RemoteFirstChild() const {
-    return mChildren.Length() ? mChildren[0] : nullptr;
+    return CheckAlive(mChildren.Length() ? mChildren[0] : nullptr);
   }
   RemoteAccessible* RemoteLastChild() const {
-    return mChildren.Length() ? mChildren[mChildren.Length() - 1] : nullptr;
+    return CheckAlive(mChildren.Length() ? mChildren[mChildren.Length() - 1]
+                                         : nullptr);
   }
   RemoteAccessible* RemotePrevSibling() const {
     if (IsDoc()) {
@@ -70,7 +72,7 @@ class RemoteAccessible : public Accessible, public HyperTextAccessibleBase {
       return nullptr;  // No parent.
     }
     MOZ_ASSERT(RemoteParent());
-    return idx > 0 ? RemoteParent()->mChildren[idx - 1] : nullptr;
+    return CheckAlive(idx > 0 ? RemoteParent()->mChildren[idx - 1] : nullptr);
   }
   RemoteAccessible* RemoteNextSibling() const {
     if (IsDoc()) {
@@ -86,9 +88,9 @@ class RemoteAccessible : public Accessible, public HyperTextAccessibleBase {
     MOZ_ASSERT(idx >= 0);
     size_t newIdx = idx + 1;
     MOZ_ASSERT(RemoteParent());
-    return newIdx < RemoteParent()->mChildren.Length()
-               ? RemoteParent()->mChildren[newIdx]
-               : nullptr;
+    return CheckAlive(newIdx < RemoteParent()->mChildren.Length()
+                          ? RemoteParent()->mChildren[newIdx]
+                          : nullptr);
   }
 
   // Accessible hierarchy method overrides
@@ -514,6 +516,20 @@ class RemoteAccessible : public Accessible, public HyperTextAccessibleBase {
     }
   }
 
+  /**
+   * mChildren and mParent are raw pointers, so they can dangle if something
+   * fails to update them when an Accessible goes away. Tree navigation
+   * methods pass the pointer they're about to return through this so that a
+   * dangling pointer reliably crashes here instead of causing a
+   * use-after-free in the caller. See mCanary below.
+   */
+  static RemoteAccessible* CheckAlive(RemoteAccessible* aAcc) {
+    if (aAcc) {
+      aAcc->mCanary.Check();
+    }
+    return aAcc;
+  }
+
   RemoteAccessible* mParent;
 
   friend DocAccessibleParent;
@@ -530,6 +546,10 @@ class RemoteAccessible : public Accessible, public HyperTextAccessibleBase {
   uintptr_t mWrapper;
   uint64_t mID;
   int32_t mIndexInParent = -1;
+  // Poisoned by its destructor, so that any later use of a dangling
+  // RemoteAccessible* through CheckAlive() above, or through Shutdown()
+  // being called again, crashes instead of reading/writing freed memory.
+  CorruptionCanary mCanary;
 
  protected:
   virtual const Accessible* Acc() const override { return this; }

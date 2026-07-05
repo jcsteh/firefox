@@ -50,6 +50,9 @@ static constexpr uint64_t kNecessaryStateDomains =
 
 void RemoteAccessible::Shutdown() {
   MOZ_DIAGNOSTIC_ASSERT(!IsDoc());
+  // Guard against Shutdown() somehow being called twice on the same
+  // (now freed) RemoteAccessible; see mCanary.
+  mCanary.Check();
   xpcAccessibleDocument* xpcDoc =
       GetAccService()->GetCachedXPCDocument(Document());
   if (xpcDoc) {
@@ -75,7 +78,7 @@ void RemoteAccessible::Shutdown() {
     if (childCount > 1) {
       MOZ_CRASH("outer doc has too many documents!");
     } else if (childCount == 1) {
-      mChildren[0]->AsDoc()->Unbind();
+      CheckAlive(mChildren[0])->AsDoc()->Unbind();
     }
   }
 
@@ -105,7 +108,7 @@ void RemoteAccessible::ClearChildDoc(DocAccessibleParent* aChildDoc) {
 uint32_t RemoteAccessible::EmbeddedChildCount() {
   size_t count = 0, kids = mChildren.Length();
   for (size_t i = 0; i < kids; i++) {
-    if (mChildren[i]->IsEmbeddedObject()) {
+    if (CheckAlive(mChildren[i])->IsEmbeddedObject()) {
       count++;
     }
   }
@@ -116,7 +119,7 @@ uint32_t RemoteAccessible::EmbeddedChildCount() {
 int32_t RemoteAccessible::IndexOfEmbeddedChild(Accessible* aChild) {
   size_t index = 0, kids = mChildren.Length();
   for (size_t i = 0; i < kids; i++) {
-    if (mChildren[i]->IsEmbeddedObject()) {
+    if (CheckAlive(mChildren[i])->IsEmbeddedObject()) {
       if (mChildren[i] == aChild) {
         return index;
       }
@@ -131,7 +134,7 @@ int32_t RemoteAccessible::IndexOfEmbeddedChild(Accessible* aChild) {
 Accessible* RemoteAccessible::EmbeddedChildAt(uint32_t aChildIdx) {
   size_t index = 0, kids = mChildren.Length();
   for (size_t i = 0; i < kids; i++) {
-    if (!mChildren[i]->IsEmbeddedObject()) {
+    if (!CheckAlive(mChildren[i])->IsEmbeddedObject()) {
       continue;
     }
 
@@ -176,7 +179,7 @@ RemoteAccessible* RemoteAccessible::RemoteParent() const {
              "Doc's parent should be in another doc");
   MOZ_ASSERT(!IsDoc() || !mParent || mParent->IsOuterDoc(),
              "Doc's parent should be in another doc");
-  return mParent;
+  return CheckAlive(mParent);
 }
 
 bool RemoteAccessible::ApplyCache(CacheUpdateType aUpdateType,
