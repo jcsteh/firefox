@@ -81,7 +81,8 @@ class PdfStructTreeBuilder {
   explicit PdfStructTreeBuilder(uint64_t aBrowsingContextId);
   void InitInternal(dom::BrowsingContext* aBrowsingContext);
   int GeneratePdfId(Accessible* aAcc);
-  void BuildStructSubtree(Accessible* aAcc, SkPDF::StructureElementNode& aPdf);
+  void BuildStructSubtree(Accessible* aAcc, SkPDF::StructureElementNode& aPdf,
+                          bool aInMath = false);
   int GetPdfIdInternal(uint64_t aBrowsingContextId, uint64_t aAccId) const;
 
   // We can't take a reference to an Accessible, so we store the BrowsingContext
