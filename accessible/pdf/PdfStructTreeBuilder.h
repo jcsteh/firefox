@@ -92,7 +92,8 @@ class PdfStructTreeBuilder {
   explicit PdfStructTreeBuilder(uint64_t aInnerWindowId);
   void InitInternal(dom::WindowContext*);
   int GeneratePdfId(Accessible* aAcc);
-  void BuildStructSubtree(Accessible* aAcc, SkPDF::StructureElementNode& aPdf);
+  void BuildStructSubtree(Accessible* aAcc, SkPDF::StructureElementNode& aPdf,
+                          bool aInMath = false);
   int GetPdfIdInternal(uint64_t aInnerWindowId, uint64_t aAccId) const;
 
   // We can't take a reference to an Accessible, so we store the inner window
