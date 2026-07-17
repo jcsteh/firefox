@@ -291,7 +291,8 @@ already_AddRefed<DrawTarget> PrintTargetSkPDF::MakeDrawTarget(
   if (!mPageCanvas) {
     return nullptr;
   }
-  mPageDT = Factory::CreateDrawTargetWithSkCanvas(mPageCanvas);
+  mPageDT = Factory::CreateDrawTargetWithSkCanvas(
+      mPageCanvas, /* aSupportsGlyphSourceText */ true);
   if (!mPageDT) {
     mPageCanvas = nullptr;
     return nullptr;
