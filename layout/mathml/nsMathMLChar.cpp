@@ -35,6 +35,9 @@
 #include "nsNetUtil.h"
 #include "nsPresContext.h"
 #include "nsUnicharUtils.h"
+#if defined(ACCESSIBILITY) && defined(MOZ_ENABLE_SKIA_PDF)
+#  include "mozilla/a11y/PdfStructTreeBuilder.h"
+#endif
 
 using namespace mozilla;
 using namespace mozilla::gfx;
@@ -1574,6 +1577,12 @@ class nsDisplayMathMLCharForeground final : public nsPaintedDisplayItem {
 
   virtual void Paint(nsDisplayListBuilder* aBuilder,
                      gfxContext* aCtx) override {
+#if defined(ACCESSIBILITY) && defined(MOZ_ENABLE_SKIA_PDF)
+    // This character is implicitly drawn due to the MathML element; e.g. a
+    // square root sign.
+    aCtx->GetDrawTarget()->AccessibleId(
+        0, a11y::PdfStructTreeBuilder::SpecialId::OtherArtifact);
+#endif
     imgDrawingParams imgParams(aBuilder->GetImageDecodeFlags());
     mChar->PaintForeground(mFrame, *aCtx, imgParams, ToReferenceFrame(),
                            mIsSelected);
