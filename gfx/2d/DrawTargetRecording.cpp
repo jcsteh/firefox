@@ -378,11 +378,9 @@ void DrawTargetRecording::DrawGlyphs(ScaledFont* aFont,
 
   if (aStrokeOptions) {
     RecordEventSelf(RecordedStrokeGlyphs(aFont, aPattern, *aStrokeOptions,
-                                         aOptions, aBuffer.mGlyphs,
-                                         aBuffer.mNumGlyphs));
+                                         aOptions, aBuffer));
   } else {
-    RecordEventSelf(RecordedFillGlyphs(aFont, aPattern, aOptions,
-                                       aBuffer.mGlyphs, aBuffer.mNumGlyphs));
+    RecordEventSelf(RecordedFillGlyphs(aFont, aPattern, aOptions, aBuffer));
   }
 }
 

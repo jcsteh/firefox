@@ -27,9 +27,11 @@ const uint32_t kMagicInt = 0xc001feed;
 // using a newer major revision. And new streams will not work in a player
 // using an older major revision.
 const uint16_t kMajorRevision = 10;
-// A change in minor revision means additions of new events. New streams will
-// not play in older players.
-const uint16_t kMinorRevision = 3;
+// A change in minor revision means additions of new events, or additive
+// changes to an existing event's format (with older players ignoring the
+// addition or new players tolerating its absence). New streams will not
+// play in older players.
+const uint16_t kMinorRevision = 4;
 
 struct ReferencePtr {
   ReferencePtr() : mLongPtr(0) {}

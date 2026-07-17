@@ -413,13 +413,18 @@ class RecordedDrawGlyphs : public RecordedEventDerived<Derived> {
  public:
   RecordedDrawGlyphs(RecordedEvent::EventType aType, ReferencePtr aScaledFont,
                      const Pattern& aPattern, const DrawOptions& aOptions,
-                     const Glyph* aGlyphs, uint32_t aNumGlyphs)
+                     const GlyphBuffer& aBuffer)
       : RecordedEventDerived<Derived>(aType),
         mScaledFont(aScaledFont),
         mPattern(),
         mOptions(aOptions) {
     this->StorePattern(mPattern, aPattern);
-    mGlyphs.Assign(aGlyphs, aNumGlyphs);
+    mGlyphs.Assign(aBuffer.mGlyphs, aBuffer.mNumGlyphs);
+    // Only carried over if both are present; see gfx::GlyphBuffer.
+    if (aBuffer.mText && aBuffer.mClusters) {
+      mText.Assign(aBuffer.mText, aBuffer.mTextLength);
+      mClusters.Assign(aBuffer.mClusters, aBuffer.mNumGlyphs);
+    }
   }
 
   bool PlayEvent(Translator* aTranslator) const override;
@@ -442,15 +447,19 @@ class RecordedDrawGlyphs : public RecordedEventDerived<Derived> {
   PatternStorage mPattern;
   DrawOptions mOptions;
   RecordedEventArray<Glyph, uint32_t> mGlyphs;
+  // Source text/clusters for ToUnicode/ActualText purposes; either both
+  // empty, or mClusters has one entry per glyph in mGlyphs. See
+  // gfx::GlyphBuffer.
+  RecordedEventArray<char, uint32_t> mText;
+  RecordedEventArray<uint32_t, uint32_t> mClusters;
 };
 
 class RecordedFillGlyphs : public RecordedDrawGlyphs<RecordedFillGlyphs> {
  public:
   RecordedFillGlyphs(ReferencePtr aScaledFont, const Pattern& aPattern,
-                     const DrawOptions& aOptions, const Glyph* aGlyphs,
-                     uint32_t aNumGlyphs)
-      : RecordedDrawGlyphs(FILLGLYPHS, aScaledFont, aPattern, aOptions, aGlyphs,
-                           aNumGlyphs) {}
+                     const DrawOptions& aOptions, const GlyphBuffer& aBuffer)
+      : RecordedDrawGlyphs(FILLGLYPHS, aScaledFont, aPattern, aOptions,
+                           aBuffer) {}
 
   std::string GetName() const override { return "FillGlyphs"; }
 
@@ -473,10 +482,9 @@ class RecordedStrokeGlyphs : public RecordedDrawGlyphs<RecordedStrokeGlyphs>,
  public:
   RecordedStrokeGlyphs(ReferencePtr aScaledFont, const Pattern& aPattern,
                        const StrokeOptions& aStrokeOptions,
-                       const DrawOptions& aOptions, const Glyph* aGlyphs,
-                       uint32_t aNumGlyphs)
+                       const DrawOptions& aOptions, const GlyphBuffer& aBuffer)
       : RecordedDrawGlyphs(STROKEGLYPHS, aScaledFont, aPattern, aOptions,
-                           aGlyphs, aNumGlyphs),
+                           aBuffer),
         mStrokeOptions(aStrokeOptions) {}
 
   std::string GetName() const override { return "StrokeGlyphs"; }
@@ -2803,6 +2811,11 @@ inline bool RecordedDrawGlyphs<T>::PlayEvent(Translator* aTranslator) const {
   GlyphBuffer buffer;
   buffer.mGlyphs = mGlyphs.data();
   buffer.mNumGlyphs = mGlyphs.size();
+  if (mText.size() && mClusters.size() == mGlyphs.size()) {
+    buffer.mText = mText.data();
+    buffer.mTextLength = mText.size();
+    buffer.mClusters = mClusters.data();
+  }
   DrawGlyphs(dt, scaledFont, buffer, *GenericPattern(mPattern, aTranslator));
   return true;
 }
@@ -2825,6 +2838,19 @@ RecordedDrawGlyphs<T>::RecordedDrawGlyphs(RecordedEvent::EventType aType,
     gfxCriticalNote << "RecordedDrawGlyphs failed to allocate glyphs of size "
                     << numGlyphs;
     aStream.SetIsBad();
+    return;
+  }
+
+  uint32_t textLength;
+  ReadElement(aStream, textLength);
+  if (!aStream.good() || textLength == 0) {
+    return;
+  }
+  if (!mText.Read(aStream, textLength) || !mClusters.Read(aStream, numGlyphs)) {
+    gfxCriticalNote
+        << "RecordedDrawGlyphs failed to allocate glyph source text of size "
+        << textLength;
+    aStream.SetIsBad();
   }
 }
 
@@ -2836,6 +2862,11 @@ void RecordedDrawGlyphs<T>::Record(S& aStream) const {
   this->RecordPatternData(aStream, mPattern);
   WriteElement(aStream, mGlyphs.size());
   mGlyphs.Write(aStream);
+  WriteElement(aStream, mText.size());
+  if (mText.size()) {
+    mText.Write(aStream);
+    mClusters.Write(aStream);
+  }
 }
 
 template <class T>
