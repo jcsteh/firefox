@@ -62,6 +62,21 @@ class PdfStructTreeBuilder {
    */
   static GlobalAccessibleId GetAccId(nsIFrame* aFrame);
 
+  /**
+   * Specifies that subsequent drawing commands are not associated with an
+   * accessibility node. These ids are passed to DrawTarget::AccessibleId
+   * alongside a BrowsingContext id of 0.
+   */
+  struct SpecialId {
+    static constexpr uint64_t Nothing = 0;
+    static constexpr uint64_t PageHeader = 1;
+    static constexpr uint64_t PageFooter = 2;
+    // Used for content which is purely visual and is communicated semantically
+    // through other means. For example, the MathML <msqrt> tag draws a square
+    // root sign, but that shouldn't be exposed to assistive technology.
+    static constexpr uint64_t OtherArtifact = 3;
+  };
+
   using ReadyPromise = MozPromise<Ok, Ok, true>;
   /**
    * Return a promise which is resolved when this builder is ready.

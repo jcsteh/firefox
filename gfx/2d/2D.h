@@ -1453,8 +1453,10 @@ class DrawTarget : public external::AtomicRefCounted<DrawTarget> {
 
   /**
    * Associate subsequent calls to other methods with a specific accessibility
-   * node. This is used to generate tagged PDF output. Specifying an id of (0,
-   * 0) disassociates subsequent calls from any accessibility node.
+   * node. This is used to generate tagged PDF output. If subsequent calls
+   * aren't associated with any accessibility node, use 0 for
+   * aBrowsingContextId, along with one of the ids in
+   * a11y::PdfStructTreeBuilder::SpecialId.
    */
   virtual void AccessibleId(uint64_t aBrowsingContextId, uint64_t aAccId) {}
 

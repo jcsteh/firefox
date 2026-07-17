@@ -88,8 +88,21 @@ void PdfStructTreeBuilder::Done(uint64_t aBrowsingContextId) {
 /* static */
 int PdfStructTreeBuilder::GetPdfId(uint64_t aBrowsingContextId,
                                    uint64_t aAccId) {
-  if (!sBuilders) {
-    return 0;
+  if (!sBuilders || sBuilders->IsEmpty()) {
+    return SkPDF::NodeID::Nothing;
+  }
+  if (aBrowsingContextId == 0) {
+    // This indicates that the following drawing instructions are not associated
+    // with anything in the struct tree; e.g. page headers and footers.
+    switch (aAccId) {
+      case SpecialId::PageHeader:
+        return SkPDF::NodeID::PaginationHeaderArtifact;
+      case SpecialId::PageFooter:
+        return SkPDF::NodeID::PaginationFooterArtifact;
+      case SpecialId::OtherArtifact:
+        return SkPDF::NodeID::OtherArtifact;
+    }
+    return SkPDF::NodeID::Nothing;
   }
   // aBrowsingContextId might be a descendant BrowsingContext. Rather than
   // walking the BrowsingContext ancestry for each builder, we just ask each
@@ -486,12 +499,6 @@ void PdfStructTreeBuilder::BuildStructSubtree(Accessible* aAcc,
 
 int PdfStructTreeBuilder::GetPdfIdInternal(uint64_t aBrowsingContextId,
                                            uint64_t aAccId) const {
-  if (aBrowsingContextId == 0) {
-    // This indicates that the following drawing instructions are not associated
-    // with anything in the struct tree; e.g. page headers and footers.
-    MOZ_ASSERT(aAccId == 0);
-    return 0;
-  }
   if (auto entry = mAccToPdf.lookup({aBrowsingContextId, aAccId})) {
     return entry->value();
   }
