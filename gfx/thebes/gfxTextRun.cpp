@@ -624,6 +624,12 @@ void gfxTextRun::Draw(const Range aRange, const gfx::Point aPt,
   params.paintSVGGlyphs =
       !aParams.callbacks || aParams.callbacks->mShouldPaintSVGGlyphs;
   params.dt = aParams.context->GetDrawTarget();
+  params.provider = aParams.provider;
+  // Only bother collecting per-glyph source text/clusters (see OutputGlyph)
+  // when there's a provider to supply it and a target that can use it; this
+  // keeps the common canvas/WebRender case free of the extra work.
+  params.needsToUnicode =
+      aParams.provider && !textDrawer && params.dt->SupportsGlyphSourceText();
   params.textDrawer = textDrawer;
   if (textDrawer) {
     params.clipRect = textDrawer->GeckoClipRect();

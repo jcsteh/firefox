@@ -44,6 +44,14 @@ class DrawTargetRecording final : public DrawTarget {
   }
   virtual bool IsRecording() const override { return true; }
 
+  // We can't know at record time whether the target this recording will
+  // eventually be replayed against (e.g. in another process, for printing)
+  // supports this; mFinalDT here is just a local reference/measurement
+  // target, not necessarily the real eventual one. So we always opt in to
+  // collecting the data and let it be replayed as a no-op if the eventual
+  // target doesn't use it.
+  bool SupportsGlyphSourceText() const override { return true; }
+
   virtual void Link(const char* aLocalDest, const char* aURI,
                     const Rect& aRect) override;
   virtual void Destination(const char* aDestination,

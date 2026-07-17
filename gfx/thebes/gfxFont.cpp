@@ -1844,7 +1844,9 @@ class GlyphBufferAzure {
         mBuffer(*mAutoBuffer.addr()),
         mBufSize(AUTO_BUFFER_SIZE),
         mCapacity(0),
-        mNumGlyphs(0) {}
+        mNumGlyphs(0),
+        mCurrentCluster(0),
+        mClusterTextValid(true) {}
 
   ~GlyphBufferAzure() {
     if (mNumGlyphs > 0) {
@@ -1896,12 +1898,50 @@ class GlyphBufferAzure {
     Glyph* glyph = mBuffer + mNumGlyphs++;
     glyph->mIndex = aGlyphID;
     glyph->mPosition = aPt;
+    if (mRunParams.needsToUnicode) {
+      // Every glyph gets an entry, in lock-step with mBuffer, recording the
+      // byte offset in mClusterText of the source character(s) it came
+      // from (set via SetCurrentCluster before this glyph was output).
+      // Multiple glyphs from one character (e.g. synthetic bold strikes)
+      // share the same offset; a single glyph covering multiple characters
+      // (e.g. a ligature) is disambiguated by the following characters'
+      // own (glyph-less) entries in mClusterText, which the consumer uses
+      // to determine where this cluster's text ends.
+      mClusters.AppendElement(mCurrentCluster);
+    }
   }
+
+  // Append aUTF8 (the source text for an upcoming run of OutputGlyph calls)
+  // to the buffer's accumulated source text, and return the byte offset it
+  // was appended at, for use with SetCurrentCluster. Only meaningful when
+  // mRunParams.needsToUnicode is true.
+  uint32_t AppendClusterText(const nsACString& aUTF8) {
+    uint32_t base = mClusterText.Length();
+    mClusterText.Append(aUTF8);
+    return base;
+  }
+
+  // Record that the glyphs about to be output via OutputGlyph came from the
+  // source character(s) starting at byte offset aByteOffset in the text
+  // previously appended via AppendClusterText.
+  void SetCurrentCluster(uint32_t aByteOffset) {
+    mCurrentCluster = aByteOffset;
+  }
+
+  // Record that source text could not be obtained for some of the glyphs
+  // that will be buffered before the next Flush, so no ToUnicode/ActualText
+  // data should be emitted for this flush (partial coverage isn't useful,
+  // since a PDF backend needs cluster data for every glyph in the run).
+  void NoteMissingClusterText() { mClusterTextValid = false; }
 
   void Flush() {
     if (mNumGlyphs > 0) {
       FlushGlyphs();
       mNumGlyphs = 0;
+      mClusterText.Truncate();
+      mClusters.ClearAndRetainStorage();
+      mClusterTextValid = true;
+      mCurrentCluster = 0;
     }
   }
 
@@ -1919,6 +1959,12 @@ class GlyphBufferAzure {
     gfx::GlyphBuffer buf;
     buf.mGlyphs = mBuffer;
     buf.mNumGlyphs = mNumGlyphs;
+    if (mRunParams.needsToUnicode && mClusterTextValid) {
+      MOZ_ASSERT(mClusters.Length() == mNumGlyphs);
+      buf.mText = mClusterText.get();
+      buf.mTextLength = mClusterText.Length();
+      buf.mClusters = mClusters.Elements();
+    }
 
     const gfxContext::AzureState& state = mRunParams.context->CurrentState();
 
@@ -2046,6 +2092,15 @@ class GlyphBufferAzure {
   uint32_t mCapacity;   // amount of buffer size reserved
   uint32_t mNumGlyphs;  // number of glyphs actually present in the buffer
 
+  // Source text accumulated via AppendClusterText, and one entry per glyph
+  // in mBuffer (kept in step by OutputGlyph) recording the byte offset into
+  // mClusterText that glyph's source character(s) start at. Only populated
+  // when mRunParams.needsToUnicode is true; see gfx::GlyphBuffer.
+  nsCString mClusterText;
+  nsTArray<uint32_t> mClusters;
+  uint32_t mCurrentCluster;
+  bool mClusterTextValid;
+
 #undef AUTO_BUFFER_SIZE
 };
 
@@ -2099,9 +2154,30 @@ bool gfxFont::DrawGlyphs(const gfxShapedText* aShapedText,
   uint32_t capacityMult = 1 + aBuffer.mFontParams.extraStrikes;
   aBuffer.AddCapacity(aCount, capacityMult);
 
+  // If the target wants it, fetch the source text this run was shaped from
+  // once for the whole run, so we can attribute each glyph below to its
+  // source character(s) for ToUnicode/ActualText purposes. See
+  // gfxTextRunSourceText::GetToUnicodeText and gfx::GlyphBuffer.
+  nsAutoCString runUTF8;
+  nsTArray<uint32_t> runCharToByte;
+  uint32_t runTextBase = 0;
+  bool haveRunText = false;
+  if (aBuffer.mRunParams.needsToUnicode) {
+    haveRunText = aBuffer.mRunParams.provider->GetToUnicodeText(
+        aOffset, aOffset + aCount, runUTF8, runCharToByte);
+    if (haveRunText) {
+      runTextBase = aBuffer.AppendClusterText(runUTF8);
+    } else {
+      aBuffer.NoteMissingClusterText();
+    }
+  }
+
   bool emittedGlyphs = false;
 
   for (uint32_t i = 0; i < aCount; ++i, ++glyphData) {
+    if (haveRunText) {
+      aBuffer.SetCurrentCluster(runTextBase + runCharToByte[i]);
+    }
     if (glyphData->IsSimpleGlyph()) {
       float advance =
           glyphData->GetSimpleAdvance() * aBuffer.mFontParams.advanceDirection;
