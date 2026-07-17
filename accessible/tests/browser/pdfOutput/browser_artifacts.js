@@ -87,3 +87,11 @@ addPdfTabTask(async function testHeaderFooter(ctx) {
   assertArtifactContains(items, HEADER_TEXT);
   assertArtifactContains(items, FOOTER_TEXT);
 });
+
+addPdfTabTask(async function testMsqrt(ctx) {
+  const items = await getPdfArtifactItems(
+    ctx,
+    `<math><msqrt><mn>4</mn></msqrt></math>`
+  );
+  assertArtifactContains(items, "√");
+});

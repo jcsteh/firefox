@@ -103,6 +103,8 @@ int PdfStructTreeBuilder::GetPdfId(uint64_t aInnerWindowId, uint64_t aAccId) {
         return SkPDF::NodeID::PaginationHeaderArtifact;
       case SpecialId::PageFooter:
         return SkPDF::NodeID::PaginationFooterArtifact;
+      case SpecialId::OtherArtifact:
+        return SkPDF::NodeID::OtherArtifact;
       default:
         MOZ_ASSERT_UNREACHABLE("Invalid special acc id");
     }
