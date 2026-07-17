@@ -169,6 +169,9 @@ class nsTextFrame : public nsIFrame {
     }
     mozilla::gfx::ShapedTextFlags GetShapedTextFlags() const final;
 
+    bool GetToUnicodeText(uint32_t aStart, uint32_t aEnd, nsACString& aUTF8,
+                          nsTArray<uint32_t>& aCharToByte) const final;
+
     already_AddRefed<DrawTarget> GetDrawTarget() const final;
 
     uint32_t GetAppUnitsPerDevUnit() const final {

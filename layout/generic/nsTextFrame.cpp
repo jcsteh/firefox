@@ -64,6 +64,7 @@
 #include "nsPlaceholderFrame.h"
 #include "nsPresContext.h"
 #include "nsRange.h"
+#include "nsReadableUtils.h"
 #include "nsRubyFrame.h"
 #include "nsSplittableFrame.h"
 #include "nsString.h"
@@ -4474,6 +4475,80 @@ void nsTextFrame::PropertyProvider::GetHyphenationBreaks(
       }
     }
   }
+}
+
+bool nsTextFrame::PropertyProvider::GetToUnicodeText(
+    uint32_t aStart, uint32_t aEnd, nsACString& aUTF8,
+    nsTArray<uint32_t>& aCharToByte) const {
+  Range aRange(aStart, aEnd);
+  MOZ_ASSERT(IsInBounds(mStart, mLength, aRange), "Range out of bounds");
+
+  // This is only useful for PDF export, and DrawTargetRecording (used for
+  // printing in the content process) can't know at record time whether the
+  // eventual replay target will use it, so it always opts in; gate the
+  // actual work here, where we can see we're not printing, instead.
+  if (!mFrame->PresContext()->IsPrintingOrPrintPreview()) {
+    return false;
+  }
+
+  // Generated content (e.g. list markers, ::before/::after) has no source
+  // characters to report.
+  if (mFrame->IsGeneratedContentFrame()) {
+    return false;
+  }
+
+  const bool isTransformed =
+      !!(mTextRun->GetFlags2() & nsTextFrameUtils::Flags::IsTransformed);
+  const nsTransformedTextRun* transformedTextRun =
+      isTransformed ? static_cast<const nsTransformedTextRun*>(mTextRun.get())
+                    : nullptr;
+  gfxSkipCharsIterator skipIter(mStart);
+
+  // Returns the shaped source character at textrun offset aOffset, or
+  // Nothing() if it must never be exposed (a masked password character).
+  // For a transformed textrun (case transforms, -moz-text-security, etc),
+  // mString already holds the shaped (and, for passwords, already-masked)
+  // text at the same offsets as the textrun itself; otherwise we map back
+  // to the original DOM text via the skip-chars iterator.
+  auto getChar = [&](uint32_t aOffset) -> Maybe<char16_t> {
+    if (transformedTextRun) {
+      if (transformedTextRun->mStyles[aOffset]->mMaskPassword) {
+        return Nothing();
+      }
+      return Some(transformedTextRun->mString[aOffset]);
+    }
+    return Some(mCharacterDataBuffer.CharAt(
+        AssertedCast<uint32_t>(skipIter.ConvertSkippedToOriginal(aOffset))));
+  };
+
+  aCharToByte.SetCapacity(aRange.Length() + 1);
+  uint32_t i = aRange.start;
+  while (i < aRange.end) {
+    aCharToByte.AppendElement(aUTF8.Length());
+    Maybe<char16_t> ch = getChar(i);
+    if (!ch) {
+      return false;
+    }
+    Maybe<char16_t> low;
+    if (IsHighSurrogate(*ch) && i + 1 < aRange.end) {
+      low = getChar(i + 1);
+      if (!low) {
+        return false;
+      }
+    }
+    if (low && IsLowSurrogate(*low)) {
+      char16_t pair[2] = {*ch, *low};
+      AppendUTF16toUTF8(Span<const char16_t>(pair, 2), aUTF8);
+      aCharToByte.AppendElement(aUTF8.Length());
+      i += 2;
+      continue;
+    }
+    char16_t single[1] = {*ch};
+    AppendUTF16toUTF8(Span<const char16_t>(single, 1), aUTF8);
+    ++i;
+  }
+  aCharToByte.AppendElement(aUTF8.Length());
+  return true;
 }
 
 void nsTextFrame::PropertyProvider::InitializeForDisplay(bool aTrimAfter) {

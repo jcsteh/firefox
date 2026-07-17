@@ -217,7 +217,7 @@ class gfxTextRun : public gfxShapedText {
    * is unable to apply it in some context. Exception: spacing around a
    * whitespace character MUST always be applied.
    */
-  class PropertyProvider {
+  class PropertyProvider : public gfxTextRunSourceText {
    public:
     // Detect hyphenation break opportunities in the given range; breaks
     // not at cluster boundaries will be ignored.
@@ -257,6 +257,11 @@ class gfxTextRun : public gfxShapedText {
     virtual uint32_t GetAppUnitsPerDevUnit() const = 0;
 
     virtual nscoord LetterSpacing() const = 0;
+
+    // See gfxTextRunSourceText::GetToUnicodeText (gfxFont.h) for the
+    // contract; that method takes textrun character offsets as plain
+    // uint32_t rather than a Range so it can be declared without depending
+    // on gfxTextRun, which is not yet defined at that point in gfxFont.h.
   };
 
   struct MOZ_STACK_CLASS DrawParams {

@@ -2442,6 +2442,37 @@ class gfxFont {
 // proportion of ascent used for x-height, if unable to read value from font
 #define DEFAULT_XHEIGHT_FACTOR 0.56f
 
+/**
+ * A minimal interface for fetching the source text that was shaped into a
+ * textrun, over a range given as textrun character offsets. aCharToByte is
+ * filled with (aEnd - aStart) + 1 monotonically non-decreasing byte offsets
+ * into the UTF-8 text appended to aUTF8 (aCharToByte[i] is the byte offset of
+ * the source character(s) for textrun char aStart + i; the last entry is the
+ * total number of bytes appended). Returns false to decline to provide this
+ * information (e.g. because there is no meaningful source text, as for
+ * generated content, or because doing so could leak sensitive text, as for
+ * masked password fields); the default implementation always declines.
+ *
+ * This is used to recover the original characters for glyphs that were
+ * produced via OpenType substitution (ligatures, math styling, etc), so that
+ * DrawTarget backends which support it can emit a correct PDF ToUnicode/
+ * ActualText mapping.
+ *
+ * gfxTextRun::PropertyProvider (implemented by nsTextFrame et al) implements
+ * this interface. It is declared separately here, rather than as a virtual
+ * directly on PropertyProvider, so that TextRunDrawParams below can hold a
+ * pointer to it without a circular dependency on gfxTextRun.h, which is not
+ * included by (and itself includes) this header.
+ */
+class gfxTextRunSourceText {
+ public:
+  virtual bool GetToUnicodeText(uint32_t aStart, uint32_t aEnd,
+                                nsACString& aUTF8,
+                                nsTArray<uint32_t>& aCharToByte) const {
+    return false;
+  }
+};
+
 // Parameters passed to gfxFont methods for drawing glyphs from a textrun.
 // The TextRunDrawParams are set up once per textrun; the FontDrawParams
 // are dependent on the specific font, so they are set per GlyphRun.
@@ -2466,12 +2497,27 @@ struct MOZ_STACK_CLASS TextRunDrawParams {
   const mozilla::gfx::StrokeOptions* strokeOpts = nullptr;
   const mozilla::gfx::DrawOptions* drawOpts = nullptr;
   nsAtom* fontPalette = nullptr;
+  // Only non-null if needsToUnicode is true; used to recover per-glyph
+  // source text for backends that can use it. See gfxTextRunSourceText.
+  const gfxTextRunSourceText* provider = nullptr;
   DrawMode drawMode = DrawMode::GLYPH_FILL;
   bool isVerticalRun = false;
   bool isRTL = false;
   bool paintSVGGlyphs = true;
   bool allowGDI = true;
   bool hasTextShadow = false;
+  // Whether the target of this draw might want per-glyph source text/
+  // clusters for ToUnicode/ActualText purposes (see gfx::GlyphBuffer).
+  // Computed once per run from DrawTarget::SupportsGlyphSourceText(), so
+  // that the common case (no provider, or a target that can never use this
+  // data, e.g. WebRender) costs nothing. A target being recorded (e.g. for
+  // printing in the content process) always opts in here, since it can't
+  // know at record time whether the eventual replay target will use it;
+  // provider->GetToUnicodeText() is expected to decline cheaply itself when
+  // the data isn't actually needed (see e.g.
+  // nsTextFrame::PropertyProvider::GetToUnicodeText declining outside of
+  // printing).
+  bool needsToUnicode = false;
 };
 
 struct MOZ_STACK_CLASS FontDrawParams {
