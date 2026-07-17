@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 
 #include "Blur.h"
 #include "DataSurfaceHelpers.h"
@@ -1336,18 +1337,43 @@ void DrawTargetSkia::DrawGlyphs(ScaledFont* aFont, const GlyphBuffer& aBuffer,
   // Limit the amount of internal batch allocations Skia does.
   const uint32_t kMaxGlyphBatchSize = 8192;
 
+  bool haveClusters = aBuffer.mText && aBuffer.mClusters;
+
   for (uint32_t offset = 0; offset < aBuffer.mNumGlyphs;) {
     uint32_t batchSize =
         std::min(aBuffer.mNumGlyphs - offset, kMaxGlyphBatchSize);
     SkTextBlobBuilder builder;
-    auto runBuffer = builder.allocRunPos(font, batchSize);
-    for (uint32_t i = 0; i < batchSize; i++, offset++) {
-      runBuffer.glyphs[i] = aBuffer.mGlyphs[offset].mIndex;
-      runBuffer.points()[i] = PointToSkPoint(aBuffer.mGlyphs[offset].mPosition);
+    if (haveClusters) {
+      // Associate this run with the source text it was shaped from, so
+      // backends that support it (e.g. SkPDF) can produce a correct
+      // ToUnicode/ActualText mapping even for glyphs reached via OpenType
+      // substitution. mClusters gives, for each glyph, the byte offset in
+      // mText of the source character(s) it came from.
+      uint32_t minByte = aBuffer.mClusters[offset];
+      uint32_t maxByte = offset + batchSize < aBuffer.mNumGlyphs
+                             ? aBuffer.mClusters[offset + batchSize]
+                             : aBuffer.mTextLength;
+      auto runBuffer =
+          builder.allocRunTextPos(font, batchSize, maxByte - minByte);
+      memcpy(runBuffer.utf8text, aBuffer.mText + minByte, maxByte - minByte);
+      for (uint32_t i = 0; i < batchSize; i++, offset++) {
+        runBuffer.glyphs[i] = aBuffer.mGlyphs[offset].mIndex;
+        runBuffer.points()[i] =
+            PointToSkPoint(aBuffer.mGlyphs[offset].mPosition);
+        runBuffer.clusters[i] = aBuffer.mClusters[offset] - minByte;
+      }
+      sk_sp<SkTextBlob> text = builder.make();
+      mCanvas->drawTextBlob(text, 0, 0, paint.mPaint);
+    } else {
+      auto runBuffer = builder.allocRunPos(font, batchSize);
+      for (uint32_t i = 0; i < batchSize; i++, offset++) {
+        runBuffer.glyphs[i] = aBuffer.mGlyphs[offset].mIndex;
+        runBuffer.points()[i] =
+            PointToSkPoint(aBuffer.mGlyphs[offset].mPosition);
+      }
+      sk_sp<SkTextBlob> text = builder.make();
+      mCanvas->drawTextBlob(text, 0, 0, paint.mPaint);
     }
-
-    sk_sp<SkTextBlob> text = builder.make();
-    mCanvas->drawTextBlob(text, 0, 0, paint.mPaint);
   }
 }
 
@@ -1935,6 +1961,9 @@ bool DrawTargetSkia::Init(const IntSize& aSize, SurfaceFormat aFormat) {
 
 bool DrawTargetSkia::Init(SkCanvas* aCanvas) {
   mCanvas = aCanvas;
+  // This overload is only used by PrintTargetSkPDF, to wrap the SkCanvas for
+  // a PDF page (or its reference canvas) obtained from SkPDF::MakeDocument().
+  mIsPDFCanvas = true;
 
   SkImageInfo imageInfo = mCanvas->imageInfo();
 

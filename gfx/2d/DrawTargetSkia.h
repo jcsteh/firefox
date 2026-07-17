@@ -174,6 +174,8 @@ class DrawTargetSkia : public DrawTarget {
 
   void AccessibleId(uint64_t aBrowsingContextId, uint64_t aAccId) final;
 
+  bool SupportsGlyphSourceText() const final { return mIsPDFCanvas; }
+
  private:
   friend class SourceSurfaceSkia;
 
@@ -202,6 +204,10 @@ class DrawTargetSkia : public DrawTarget {
   RefPtr<SourceSurfaceSkia> mSnapshot;
   Mutex mSnapshotLock MOZ_UNANNOTATED;
   bool mIsClear = false;
+  // Set by Init(SkCanvas*), which is only used to wrap the canvas for a PDF
+  // page (or its reference canvas) obtained from SkPDF::MakeDocument(). See
+  // SupportsGlyphSourceText().
+  bool mIsPDFCanvas = false;
 
 #ifdef XP_DARWIN
   friend class BorrowedCGContext;
