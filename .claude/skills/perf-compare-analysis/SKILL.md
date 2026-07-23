@@ -1,8 +1,11 @@
 ---
 name: perf-compare-analysis
-description: Statistically analyze a Perfherder / perf.compare try-vs-base performance comparison export (a JSON file, typically named perf-compare-all-revisions.json when downloaded from perf.compare, with header names mapping to arrays of suite/platform/test comparison rows, each with base_runs/new_runs, delta_percentage, cliffs_delta, mann_whitney_test, etc). Use when the user shares a perf.compare comparison JSON (whatever it's actually named - people often rename it) and asks to flag regressions/improvements, check whether a perf change is real, or assess statistical significance of a try push's performance results. Trigger on phrases like "perf compare", "perf.compare", "perf-compare-all-revisions", "is this regression real", "flag perf changes", or when a Perfherder-style comparison JSON is attached.
-argument-hint: "[path to perf comparison JSON, e.g. perf-compare-all-revisions.json] [optional: metric name to focus on]"
+description: Statistically analyze a Perfherder / perf.compare try-vs-base performance comparison, fetched live from a perf.compare URL (e.g. https://perf.compare/compare-results?... or compare-lando-results?...). Use when the user shares a perf.compare URL and asks to flag regressions/improvements, check whether a perf change is real, or assess statistical significance of a try push's performance results. Trigger on phrases like "perf compare", "perf.compare", "is this regression real", "flag perf changes", or when a perf.compare URL is shared.
+argument-hint: "[perf.compare URL] [optional: metric name to focus on]"
 allowed-tools:
+  - Bash(py .claude/skills/perf-compare-analysis/scripts/fetch.py:*)
+  - Bash(python3 .claude/skills/perf-compare-analysis/scripts/fetch.py:*)
+  - Bash(python .claude/skills/perf-compare-analysis/scripts/fetch.py:*)
   - Bash(py .claude/skills/perf-compare-analysis/scripts/analyze.py:*)
   - Bash(python3 .claude/skills/perf-compare-analysis/scripts/analyze.py:*)
   - Bash(python .claude/skills/perf-compare-analysis/scripts/analyze.py:*)
@@ -14,31 +17,75 @@ allowed-tools:
 # Perf compare analysis
 
 You are helping a Firefox engineer interpret a perf.compare/Perfherder try-vs-base
-comparison export. These exports cover dozens to hundreds of suite/platform/test
+comparison. A single comparison covers dozens to hundreds of suite/platform/test
 combinations at once, and Perfherder's own significance flags (`is_meaningful`,
 `direction_of_change`) are based on magnitude thresholds, not corrected p-values.
 Two things go wrong if you just eyeball `delta_percentage` and `direction_of_change`:
 
-1. **Multiple comparisons.** A single comparison file easily has 300+ testable
+1. **Multiple comparisons.** A single comparison easily covers 300+ testable
    metrics. At an uncorrected alpha=0.05, chance alone produces roughly 5% of
    them as "significant" - that can be more false positives than real ones.
-2. **Rounding.** Perfherder rounds its stored p-value to 2 decimals, which
-   hides how far (or close) a result actually is from a defensible threshold.
+2. **Rounding.** Treeherder rounds the returned p-value (and Cliff's delta) to
+   2 decimals server-side, which hides how far (or close) a result actually is
+   from a defensible threshold.
 
-This applies to any Perfherder/perf.compare export, for any test suite (JS
+This applies to any Perfherder/perf.compare comparison, for any test suite (JS
 benchmarks, page load, accessibility, mobile, etc.) - nothing about the tool or
-the workflow below is specific to one subsystem. The comparison JSON shape
+the workflow below is specific to one subsystem. The comparison shape
 (`suite`/`platform`/`test`/`base_runs`/`new_runs`/...) is the same regardless of
 what the tests measure.
 
+## Getting the data
+
+Ask the user for a **perf.compare URL** - that's the only input they need to
+give you; don't ask them to download/export a JSON file themselves. Under the
+hood this is a two-script pipeline: `fetch.py` turns the URL into a JSON file,
+and `analyze.py` reads that file. Fetch **once per analysis session** and
+reuse the saved file for every `analyze.py` call that follows (quick pass,
+then maybe `--stats`, then maybe a `--metric` recheck) - don't re-fetch just
+because you're running the script again on the same comparison.
+
+```
+py .claude/skills/perf-compare-analysis/scripts/fetch.py <perf.compare-url> artifacts/perf-compare.json
+```
+
+Save into `artifacts/` (create it if it doesn't exist) per this repo's usual
+convention for command output; pick a more specific filename than shown here
+if you expect to compare more than one push in the same conversation.
+
+`fetch.py` accepts URLs like:
+
+```
+https://perf.compare/compare-results?baseRev=<rev>&newRev=<rev>&baseRepo=try&newRepo=try&framework=<id>
+https://perf.compare/compare-lando-results?baseLando=<id>&newLando=<id>&baseRepo=try&newRepo=try&framework=<id>
+```
+
+(`compare-lando-results` URLs use Lando landing-job IDs instead of revisions;
+it resolves them via Lando's API automatically.) It requests
+`test_version=mann-whitney-u`, the same parameter perf.compare's own UI uses,
+so the fetched data has the same rich fields (`cliffs_delta`,
+`mann_whitney_test`, `direction_of_change`, ...) the perf.compare UI itself
+shows.
+
+If the URL points at an old/GC'd try push, Treeherder returns an HTTP 400 with
+a plain-text reason (e.g. "No new push with revision ... from repo try.") -
+`fetch.py` surfaces that message directly; relay it to the user rather than
+guessing what went wrong, and suggest checking whether the push still exists
+on Treeherder or getting a fresher URL.
+
+Treat a saved file as a snapshot, not a live view - the try push's underlying
+data can keep changing as more retriggers land. If the user comes back later
+in the same conversation wanting current numbers for the same comparison,
+re-run `fetch.py` rather than assuming the old file is still accurate.
+
 ## Workflow
 
-The script is invoked as `<python-launcher> .claude/skills/perf-compare-analysis/scripts/analyze.py ...`.
+Both scripts are invoked as `<python-launcher> .claude/skills/perf-compare-analysis/scripts/<script>.py ...`.
 `py`, `python3`, and `python` are all pre-approved in this skill's
-`allowed-tools`, so none of them should need a separate permission prompt -
-but only one of them is likely to actually be on PATH for a given user, and
-guessing wrong just wastes a round trip. Don't default to any one of them
-blindly:
+`allowed-tools` for both `fetch.py` and `analyze.py`, so none of them should
+need a separate permission prompt - but only one of them is likely to
+actually be on PATH for a given user, and guessing wrong just wastes a round
+trip. Don't default to any one of them blindly:
 
 - Check the user's own CLAUDE.md/AGENTS.md first for an explicit convention
   (e.g. this user's global instructions say to always use `py` on Windows).
@@ -49,11 +96,17 @@ blindly:
   environment; substitute whichever launcher you've confirmed for the
   environment you're actually in.
 
-1. **Quick pass first.** Run the bundled script with no extra flags beyond
-   `--metric`:
+0. **Fetch once** (see "Getting the data" above):
 
    ```
-   py .claude/skills/perf-compare-analysis/scripts/analyze.py <path-to-json> --metric <focus-metric>
+   py .claude/skills/perf-compare-analysis/scripts/fetch.py <perf.compare-url> artifacts/perf-compare.json
+   ```
+
+1. **Quick pass first.** Run `analyze.py` against the saved file with no
+   extra flags beyond `--metric`:
+
+   ```
+   py .claude/skills/perf-compare-analysis/scripts/analyze.py artifacts/perf-compare.json --metric <focus-metric>
    ```
 
    `--metric` is a case-insensitive substring match on the `test` field (e.g. the
@@ -66,16 +119,17 @@ blindly:
 
 2. **Reach for `--stats` only when a quick-pass result needs scrutiny** - it's
    borderline, disputed, the user asks about statistical significance directly,
-   or you are about to assert a result is (or isn't) real. Add `--stats` (and
-   optionally `--dump-runs`):
+   or you are about to assert a result is (or isn't) real. Re-run `analyze.py`
+   against the *same saved file* (no need to `fetch.py` again) with `--stats`
+   (and optionally `--dump-runs`):
 
    ```
-   python3 .claude/skills/perf-compare-analysis/scripts/analyze.py <path-to-json> --metric <focus-metric> --stats --dump-runs
+   py .claude/skills/perf-compare-analysis/scripts/analyze.py artifacts/perf-compare.json --metric <focus-metric> --stats --dump-runs
    ```
 
    This recomputes exact Mann-Whitney U p-values from `base_runs`/`new_runs`
-   (Perfherder's stored value is rounded to 2 decimals, which hides how close a
-   borderline result really is) and applies a Benjamini-Hochberg FDR correction
+   (Treeherder's own returned value is rounded to 2 decimals, which hides how
+   close a borderline result really is) and applies a Benjamini-Hochberg FDR correction
    *jointly across every computable comparison in the file* - not just within
    one metric, since a single try push tests dozens to hundreds of metrics at
    once. It reuses Perfherder's own `cliffs_delta`/`cliffs_interpretation`
@@ -125,8 +179,8 @@ blindly:
 Before presenting a flagged metric as attributable to "the patch":
 
 - **Identify what's actually being compared. Don't assume it's the local
-  repo's current `HEAD` or working diff.** The comparison file's `base_rev`
-  and `new_rev` fields name the two revisions Perfherder compared, but those
+  repo's current `HEAD` or working diff.** Each row's `base_rev` and `new_rev`
+  fields name the two revisions Perfherder compared, but those
   are often try-push revisions with no corresponding local checkout, and the
   user may be analyzing someone else's push, an old push, or something
   unrelated to whatever is currently checked out. If it isn't obvious from

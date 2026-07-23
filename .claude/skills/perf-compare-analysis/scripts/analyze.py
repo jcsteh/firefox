@@ -3,27 +3,29 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-"""Analyze a Perfherder / perf.compare comparison export.
+"""Analyze a Perfherder / perf.compare comparison.
 
-Input is the JSON export from a perf.compare (or Perfherder) try-vs-base
-comparison: a list of objects, each mapping a header name to a list of
-comparison rows (one row per suite/platform/test combination). This is
-the shape produced by perf.compare's "download JSON" / export feature.
+FILE is a JSON file previously saved by fetch.py -- a flat list of
+comparison rows with the rich per-row fields perf.compare's own UI computes
+server-side (direction_of_change, is_meaningful, cliffs_delta,
+mann_whitney_test, base_standard_stats, ...).
 
-By default this prints a quick pass using Perfherder's own per-row fields
-(delta_percentage, direction_of_change, is_meaningful, is_confident) --
-the same signal the perf.compare UI itself highlights, and sufficient for
-most "what changed" questions.
+By default this prints a quick pass using those fields (delta_percentage,
+direction_of_change, is_meaningful, is_confident) -- the same signal the
+perf.compare UI itself highlights, and sufficient for most "what changed"
+questions.
 
 Pass --stats for a second, heavier pass: exact Mann-Whitney U p-values
-recomputed from the raw per-run data (Perfherder's stored p-value is
-rounded to 2 decimals, hiding how close borderline results are to a real
-threshold) plus a Benjamini-Hochberg FDR correction applied jointly across
-every computable comparison in the file (a single try push tests dozens to
-hundreds of metrics at once, so an uncorrected per-metric p<0.05 is weaker
-evidence than it looks). Reach for --stats when a flagged result is
-borderline, disputed, or about to be reported as "real"/"not real" -- not
-as the default first thing to run.
+recomputed from the raw per-run data. Even with test_version=mann-whitney-u
+(what fetch.py requests), Treeherder's own returned p-value (and
+cliffs_delta) is rounded to 2 decimals, hiding how close a borderline result
+really is to a defensible threshold -- recomputing from base_runs/new_runs
+recovers that precision. This pass also applies a Benjamini-Hochberg FDR
+correction jointly across every computable comparison in the file (a single
+try push tests dozens to hundreds of metrics at once, so an uncorrected
+per-metric p<0.05 is weaker evidence than it looks). Reach for --stats when a
+flagged result is borderline, disputed, or about to be reported as
+"real"/"not real" -- not as the default first thing to run.
 """
 
 import argparse
@@ -31,16 +33,6 @@ import json
 import math
 import sys
 from collections import defaultdict
-
-
-def load_rows(path):
-    with open(path, encoding="utf-8") as f:
-        data = json.load(f)
-    rows = []
-    for entry in data:
-        for _header, vals in entry.items():
-            rows.extend(vals)
-    return rows
 
 
 def mannwhitney_p(base, new):
@@ -195,8 +187,13 @@ def fmt_row(x, base_p_field=True):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("perf_json", help="Path to the perf.compare/Perfherder comparison JSON export")
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    parser.add_argument(
+        "file",
+        help="Path to a JSON file previously saved by fetch.py.",
+    )
     parser.add_argument(
         "--metric",
         help="Case-insensitive substring to filter test names (e.g. TotalTime). If given, the quick "
@@ -226,7 +223,9 @@ def main(argv=None):
     )
     args = parser.parse_args(argv)
 
-    rows = load_rows(args.perf_json)
+    with open(args.file, encoding="utf-8") as f:
+        rows = json.load(f)
+
     total = len(rows)
     tests = sorted(set(r.get("test") for r in rows))
     print(f"Loaded {total} comparison rows across {len(tests)} distinct test metrics.")
