@@ -432,6 +432,10 @@ class PuppeteerRunner(MozbuildObject):
             "--no-coverage",
         ]
 
+        grep = params.get("grep")
+        if grep:
+            mocha_options += ["--grep", grep]
+
         env = {
             # Checked by Puppeteer's custom mocha config
             "CI": "1",
@@ -598,6 +602,12 @@ def create_parser_puppeteer():
         help="Defines a total amount of chunks to run.",
     )
     p.add_argument(
+        "--grep",
+        type=str,
+        default=None,
+        help="Only run tests matching this mocha --grep pattern.",
+    )
+    p.add_argument(
         "-v",
         dest="verbosity",
         action="count",
@@ -670,6 +680,7 @@ def puppeteer_test(
     product="firefox",
     this_chunk="1",
     total_chunks="1",
+    grep=None,
     **kwargs,
 ):
     logger = mozlog.commandline.setup_logging(
@@ -729,6 +740,7 @@ def puppeteer_test(
         "extra_launcher_options": options,
         "this_chunk": this_chunk,
         "total_chunks": total_chunks,
+        "grep": grep,
     }
     puppeteer = command_context._spawn(PuppeteerRunner)
     try:
