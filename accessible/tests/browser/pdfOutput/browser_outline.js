@@ -41,7 +41,15 @@ addPdfOutlineTest(
       ],
     },
   ],
-  { chrome: true, topLevel: true }
+  {
+    chrome: true,
+    topLevel: true,
+    remoteIframe: true,
+    // Make the iframe larger than the (rather small) default, as headings which
+    // are clipped by the iframe aren't drawn, so they don't appear in the
+    // outline.
+    iframeAttrs: { style: "height: 500px;" },
+  }
 );
 
 addPdfOutlineTest(

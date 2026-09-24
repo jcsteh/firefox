@@ -297,16 +297,16 @@ void SkPDFStructTree::move(SkPDF::StructureElementNode& node,
     const SkString& type = node.fTypeString;
     wantTitle |= fOutline == SkPDF::Metadata::Outline::StructureElementHeaders &&
                  type.size() == 2 && type[0] == 'H' && '1' <= type[1] && type[1] <= '6';
+    // If alt text was provided for this node, we want to use that alt text
+    // alone for the outline, so don't accumulate title text from glyphs drawn
+    // within it or its descendants.
+    wantTitle &= node.fAlt.isEmpty();
     structElem->fWantTitle = wantTitle;
 
     static SkString nonStruct("NonStruct");
     structElem->fStructType = node.fTypeString.isEmpty() ? nonStruct : std::move(node.fTypeString);
     structElem->fNamespace = std::move(node.fNamespace);
-    if (node.fExposeAlt) {
-        structElem->fAlt = std::move(node.fAlt);
-    } else {
-        structElem->fTitle = std::move(node.fAlt);
-    }
+    structElem->fAlt = std::move(node.fAlt);
     structElem->fLang = std::move(node.fLang);
 
     size_t childCount = node.fChildVector.size();

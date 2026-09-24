@@ -312,13 +312,15 @@ void PdfStructTreeBuilder::BuildStructSubtree(Accessible* aAcc,
       // this?
       break;
     case roles::HEADING: {
-      // For the PDF outline, SkPDF can accumulate text from headings itself,
-      // but it requires that glyph runs include text, whereas we provide glyph
-      // indexes when drawing. Rather than plumbing the text through to the draw
-      // target, we instead explicitly provide the heading name as alt text
-      // here, since it's readily available.
-      AccNameToPdfAlt(aAcc, aPdf);
-      aPdf.fExposeAlt = false;
+      // For the PDF outline, SkPDF accumulates the title text itself from
+      // the glyph runs drawn within the heading. However, if the accessible
+      // name doesn't come from the heading's own content (e.g. aria-label),
+      // that text never appears in the rendered glyphs, so provide it
+      // explicitly as alt text in that case.
+      nsAutoString name;
+      if (aAcc->Name(name) != eNameFromSubtree && !name.IsEmpty()) {
+        aPdf.fAlt = SkString(NS_ConvertUTF16toUTF8(name).get());
+      }
       int32_t level = aAcc->GroupPosition().level;
       // PDF has H1 through H6.
       if (1 <= level && level <= 6) {
